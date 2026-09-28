@@ -37,6 +37,16 @@ class PrescriptionReminderQueue {
         `Follow-up reminder failed for appointment ${job?.data?.appointmentId}: ${err.message}`
       );
     });
+
+    // Without an 'error' listener, BullMQ's internal errors (Redis blips,
+    // connection limits) surface as unhandled EventEmitter errors and crash
+    // the process.
+    this.queue.on('error', (err) =>
+      logger.warn(`[PrescriptionReminderQueue] Queue error: ${err.message}`)
+    );
+    this.worker.on('error', (err) =>
+      logger.warn(`[PrescriptionReminderQueue] Worker error: ${err.message}`)
+    );
   }
 
   private async processJob(job: { data: FollowUpJobData }) {

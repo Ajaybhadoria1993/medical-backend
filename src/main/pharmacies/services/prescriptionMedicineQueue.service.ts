@@ -46,6 +46,9 @@ class PrescriptionMedicineQueue {
     };
 
     this.queue = new Queue('prescription-medicines', { connection });
+    this.queue.on('error', (err) =>
+      logger.error('Prescription medicine queue error', err)
+    );
     this.startWorker();
   }
 

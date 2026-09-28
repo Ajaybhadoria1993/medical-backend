@@ -48,6 +48,7 @@ class LoginAlertQueue {
     };
 
     this.queue = new Queue('login-alerts', { connection });
+    this.queue.on('error', (err) => logger.error('Login alert queue error', err));
     this.startWorker();
   }
 

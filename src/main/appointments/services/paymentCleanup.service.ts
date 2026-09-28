@@ -1,5 +1,6 @@
 import { Queue, Worker } from 'bullmq';
 import { PaymentReservationService } from './paymentReservation.service';
+import logger from '../../../utils/logger';
 
 interface PaymentCleanupJobData {
   appointmentId: string;
@@ -22,6 +23,16 @@ class PaymentCleanupQueue {
       'appointment-payment-cleanup',
       this.processJob.bind(this),
       { connection }
+    );
+
+    // Without an 'error' listener, BullMQ's internal errors (Redis blips,
+    // connection limits) surface as unhandled EventEmitter errors and crash
+    // the process.
+    this.queue.on('error', (err) =>
+      logger.warn(`[PaymentCleanupQueue] Queue error: ${err.message}`)
+    );
+    this.worker.on('error', (err) =>
+      logger.warn(`[PaymentCleanupQueue] Worker error: ${err.message}`)
     );
   }
 

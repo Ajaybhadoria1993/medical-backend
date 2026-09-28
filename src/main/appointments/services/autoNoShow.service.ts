@@ -49,6 +49,16 @@ class AutoNoShowQueue {
     this.worker = new Worker('auto-no-show', this.processJob.bind(this), {
       connection,
     });
+
+    // Without an 'error' listener, BullMQ's internal errors (Redis blips,
+    // connection limits) surface as unhandled EventEmitter errors and crash
+    // the process.
+    this.queue.on('error', (err) =>
+      logger.warn(`[AutoNoShowQueue] Queue error: ${err.message}`)
+    );
+    this.worker.on('error', (err) =>
+      logger.warn(`[AutoNoShowQueue] Worker error: ${err.message}`)
+    );
   }
 
   private async processJob(job: { data: AutoNoShowJobData }) {

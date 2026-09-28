@@ -11,6 +11,7 @@ import {
 } from '../utils/whatsappTemplate.utils';
 import { getAppointmentParticipants } from '../models/appointmentParticipants.model';
 import { queueConnection } from '../queues/queueConnection';
+import logger from '../../../utils/logger';
 
 interface WhatsAppReminderJobData {
   appointmentId: string;
@@ -33,6 +34,16 @@ class AppointmentWhatsAppReminderQueue {
       'appointment-whatsapp-reminders',
       this.processJob.bind(this),
       { connection: queueConnection }
+    );
+
+    // Without an 'error' listener, BullMQ's internal errors (Redis blips,
+    // connection limits) surface as unhandled EventEmitter errors and crash
+    // the process.
+    this.queue.on('error', (err) =>
+      logger.warn(`[AppointmentWhatsAppReminderQueue] Queue error: ${err.message}`)
+    );
+    this.worker.on('error', (err) =>
+      logger.warn(`[AppointmentWhatsAppReminderQueue] Worker error: ${err.message}`)
     );
   }
 
