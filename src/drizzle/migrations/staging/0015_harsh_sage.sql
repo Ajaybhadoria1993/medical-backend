@@ -1,0 +1,1 @@
+ALTER TABLE "prescription_templates" ADD COLUMN "section_config" jsonb;

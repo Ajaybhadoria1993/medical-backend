@@ -1,0 +1,2 @@
+ALTER TABLE "clinics" ADD COLUMN "is_clinic_phone_verified" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "doctor_preferences" ADD COLUMN "advice_suggestions_list" json DEFAULT '["Take medicines as prescribed.","Take adequate rest.","Maintain proper hydration.","Avoid self-medication.","Complete the full course of antibiotics.","Do light exercise daily.","Maintain personal hygiene.","Monitor temperature twice a day.","Avoid smoking and alcohol.","Follow up if symptoms persist."]'::json;

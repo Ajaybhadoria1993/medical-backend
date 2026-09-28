@@ -1,0 +1,442 @@
+name: CI/CD Pipeline
+
+concurrency:
+  group: cms-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: ["main", "staging"]
+    tags:
+      - "v*"
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # 1. Continuous Integration: Test and Build
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Validate branch name
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: sh ./scripts/check-branch-name.sh "$BRANCH_NAME"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Secret scan
+        run: npx secretlint "**/*"
+
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true # Optional: Fail on lint errors
+
+      - name: Build
+        run: npm run build
+
+  # 2. Continuous Deployment: Deploy to Staging (auto, every push to staging)
+  deploy-staging:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.deployment_status.outputs.status }}
+      result: ${{ job.status }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set staging image tag
+        id: vars
+        run: echo "tag=staging-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image tag already exists
+        id: check_tag
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          if docker manifest inspect "$DOCKERHUB_USERNAME/cms-backend:$TAG" > /dev/null 2>&1; then
+            echo "Tag $TAG already exists on Docker Hub, skipping build and push."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $TAG not found, will build and push."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and Push Docker Image
+        if: steps.check_tag.outputs.exists != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/cms-backend:staging
+            ${{ secrets.DOCKERHUB_USERNAME }}/cms-backend:${{ steps.vars.outputs.tag }}
+          cache-from: type=gha,scope=cms-backend-staging
+          cache-to: type=gha,mode=max,scope=cms-backend-staging
+
+      # Deploy using AWS SSM (Send-Command) instead of SSH.
+      # You need to set secrets in GitHub Repo Settings:
+      # AWS_ACCESS_KEY_ID, AWS_ACCESS_KEY_SECRET, AWS_REGION, STAGING_INSTANCE_ID, STAGING_DEPLOY_PATH
+      # The target EC2 instance must have the SSM Agent running and an IAM instance profile
+      # with the AmazonSSMManagedInstanceCore policy attached.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_ACCESS_KEY_SECRET }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to Staging Server via SSM
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_TAG: ${{ steps.vars.outputs.tag }}
+          INSTANCE_ID: ${{ secrets.STAGING_INSTANCE_ID }}
+        run: |
+          set -e
+
+          SCRIPT=$(cat <<EOF
+          cd /home/ubuntu/medisatu/MediSetu_backend
+          git pull origin staging
+
+          echo " Logging in to Docker registry..."
+          docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
+
+          echo " Pulling Docker image $IMAGE_TAG..."
+          docker pull "$DOCKERHUB_USERNAME/cms-backend:$IMAGE_TAG"
+
+          echo "Deploying app service with docker/docker-compose.staging.yml..."
+          IMAGE_TAG="$IMAGE_TAG" docker compose -f docker/docker-compose.staging.yml up -d
+
+          echo "Waiting for app to become healthy..."
+          ATTEMPTS=0
+          MAX_ATTEMPTS=10
+          SLEEP_SECONDS=15
+          while [ \$ATTEMPTS -lt \$MAX_ATTEMPTS ]; do
+            STATUS=\$(docker inspect -f '{{.State.Health.Status}}' cms-backend-app-stg 2>/dev/null || echo "unknown")
+            echo "Container health status (attempt \$((ATTEMPTS+1))): \$STATUS"
+            if [ "\$STATUS" = "healthy" ]; then
+              echo "App is healthy"
+              break
+            fi
+            ATTEMPTS=\$((ATTEMPTS+1))
+            sleep \$SLEEP_SECONDS
+          done
+
+          if [ "\$STATUS" != "healthy" ]; then
+            echo "App did not report healthy in time. Final Docker health: \$STATUS"
+            echo "Trying direct HTTP probe on http://localhost:5000/ ..."
+            if curl -fsS http://localhost:5000/ >/dev/null 2>&1; then
+              echo "HTTP probe succeeded, continuing deployment despite Docker health=\$STATUS"
+            else
+              echo "HTTP probe failed, app seems unavailable. Recent logs:"
+              docker logs --tail=100 cms-backend-app-stg || true
+              exit 1
+            fi
+          fi
+
+          echo "Cleaning up old Docker images on server (keep latest 3)..."
+          docker images "$DOCKERHUB_USERNAME/cms-backend" --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' | grep ':staging-' | sort -k2 -r | tail -n +4 | awk '{print \$1}' | xargs -r docker rmi || true
+          EOF
+          )
+
+          jq -n --arg script "$SCRIPT" '{commands: [$script]}' > ssm-params.json
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy staging $IMAGE_TAG" \
+            --parameters file://ssm-params.json \
+            --query "Command.CommandId" --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          echo "Polling for command completion (up to 20 minutes)..."
+          MAX_POLLS=120
+          POLL_INTERVAL=10
+          POLL=0
+          STATUS="Pending"
+          while [ $POLL -lt $MAX_POLLS ]; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" --output text 2>/dev/null || echo "Pending")
+            echo "Poll $((POLL+1))/$MAX_POLLS: status=$STATUS"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+            POLL=$((POLL+1))
+            sleep $POLL_INTERVAL
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "{Status:Status,StdOut:StandardOutputContent,StdErr:StandardErrorContent}" \
+            --output json | tee ssm-output.json
+
+          STATUS=$(jq -r '.Status' ssm-output.json)
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::SSM command finished with status $STATUS"
+            exit 1
+          fi
+
+      - name: Set deployment status
+        id: deployment_status
+        if: always()
+        run: |
+          echo "status=${{ job.status }}" >> $GITHUB_OUTPUT
+
+  # 3. Continuous Deployment: Deploy to Production (auto, every push to main)
+  deploy:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.deployment_status.outputs.status }}
+      result: ${{ job.status }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set prod image tag
+        id: vars
+        run: echo "tag=prod-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image tag already exists
+        id: check_tag
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          if docker manifest inspect "$DOCKERHUB_USERNAME/cms-backend:$TAG" > /dev/null 2>&1; then
+            echo "Tag $TAG already exists on Docker Hub, skipping build and push."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $TAG not found, will build and push."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and Push Docker Image
+        if: steps.check_tag.outputs.exists != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/cms-backend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/cms-backend:${{ steps.vars.outputs.tag }}
+          cache-from: type=gha,scope=cms-backend-prod
+          cache-to: type=gha,mode=max,scope=cms-backend-prod
+
+      - name: Cleanup old Docker Hub prod tags (keep latest 2, never touch latest/staging)
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          echo "Fetching tags for $DOCKERHUB_USERNAME/cms-backend"
+          TAGS_JSON=$(curl -s -u "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" "https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/cms-backend/tags/?page_size=100")
+          if [ -z "$TAGS_JSON" ]; then
+            echo "No tags JSON returned, skipping cleanup."
+            exit 0
+          fi
+          if ! echo "$TAGS_JSON" | jq empty >/dev/null 2>&1; then
+            echo "Invalid JSON from Docker Hub, skipping cleanup."
+            exit 0
+          fi
+          echo "All prod tags (newest last):"
+          echo "$TAGS_JSON" | jq -r 'try (.results | map(select(.name | test("^prod-"))) | sort_by(.last_updated) | .[].name) catch empty'
+          OLD_TAGS=$(echo "$TAGS_JSON" | jq -r 'try (.results | map(select(.name | test("^prod-"))) | sort_by(.last_updated) | .[0:-2] | .[].name) catch empty')
+          if [ -z "$OLD_TAGS" ]; then
+            echo "Nothing to delete (0 or 2 prod tags total)."
+            exit 0
+          fi
+          echo "Prod tags selected for deletion:"
+          echo "$OLD_TAGS"
+          echo "$OLD_TAGS" | while read tag; do
+            if [ -n "$tag" ]; then
+              echo "Deleting old Docker Hub tag: $tag"
+              status=$(curl -s -o /tmp/delete_tag_resp.json -w "%{http_code}" -u "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" -X DELETE "https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/cms-backend/tags/$tag/")
+              echo "Delete response for $tag: HTTP $status"
+            fi
+          done || true
+
+      # Deploy using AWS SSM (Send-Command) instead of SSH.
+      # You need to set secrets in GitHub Repo Settings:
+      # AWS_ACCESS_KEY_ID, AWS_ACCESS_KEY_SECRET, AWS_REGION, PROD_INSTANCE_ID, DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+      # The target EC2 instance must have the SSM Agent running and an IAM instance profile
+      # with the AmazonSSMManagedInstanceCore policy attached.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_ACCESS_KEY_SECRET }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to Server via SSM
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_TAG: ${{ steps.vars.outputs.tag }}
+          INSTANCE_ID: ${{ secrets.PROD_INSTANCE_ID }}
+        run: |
+          set -e
+
+          SCRIPT=$(cat <<EOF
+          cd /home/ubuntu/medisetu/InfinityMedisetu_BE
+          git pull origin main
+
+          echo " Logging in to Docker registry..."
+          docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
+
+          echo " Pulling Docker image $IMAGE_TAG..."
+          docker pull "$DOCKERHUB_USERNAME/cms-backend:$IMAGE_TAG"
+
+          echo "Deploying app service with docker/docker-compose.prod.yml (Kafka/Redis unchanged)..."
+          IMAGE_TAG="$IMAGE_TAG" docker compose -f docker/docker-compose.prod.yml up -d app
+
+          echo "Waiting for app to become healthy..."
+          ATTEMPTS=0
+          MAX_ATTEMPTS=10
+          SLEEP_SECONDS=15
+          while [ \$ATTEMPTS -lt \$MAX_ATTEMPTS ]; do
+            STATUS=\$(docker inspect -f '{{.State.Health.Status}}' cms-backend-app 2>/dev/null || echo "unknown")
+            echo "Container health status (attempt \$((ATTEMPTS+1))): \$STATUS"
+            if [ "\$STATUS" = "healthy" ]; then
+              echo "App is healthy"
+              break
+            fi
+            ATTEMPTS=\$((ATTEMPTS+1))
+            sleep \$SLEEP_SECONDS
+          done
+
+          if [ "\$STATUS" != "healthy" ]; then
+            echo "App did not report healthy in time. Final Docker health: \$STATUS"
+            echo "Trying direct HTTP probe on http://localhost:5000/ ..."
+            if curl -fsS http://localhost:5000/ >/dev/null 2>&1; then
+              echo "HTTP probe succeeded, continuing deployment despite Docker health=\$STATUS"
+            else
+              echo "HTTP probe failed, app seems unavailable. Recent logs:"
+              docker logs --tail=100 cms-backend-app || true
+              exit 1
+            fi
+          fi
+
+          echo "Cleaning up old Docker images on server (keep latest 2)..."
+          docker images "$DOCKERHUB_USERNAME/cms-backend" --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' | sort -k2 -r | tail -n +3 | awk '{print \$1}' | xargs -r docker rmi || true
+
+          echo "Disk usage on server:"
+          df -h
+
+          echo "Docker disk usage:"
+          docker system df || true
+          EOF
+          )
+
+          jq -n --arg script "$SCRIPT" '{commands: [$script]}' > ssm-params.json
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy prod $IMAGE_TAG" \
+            --parameters file://ssm-params.json \
+            --query "Command.CommandId" --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          echo "Polling for command completion (up to 20 minutes)..."
+          MAX_POLLS=120
+          POLL_INTERVAL=10
+          POLL=0
+          STATUS="Pending"
+          while [ $POLL -lt $MAX_POLLS ]; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" --output text 2>/dev/null || echo "Pending")
+            echo "Poll $((POLL+1))/$MAX_POLLS: status=$STATUS"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+            POLL=$((POLL+1))
+            sleep $POLL_INTERVAL
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --query "{Status:Status,StdOut:StandardOutputContent,StdErr:StandardErrorContent}" \
+            --output json | tee ssm-output.json
+
+          STATUS=$(jq -r '.Status' ssm-output.json)
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::SSM command finished with status $STATUS"
+            exit 1
+          fi
+
+      - name: Set deployment status
+        id: deployment_status
+        if: always()
+        run: |
+          echo "status=${{ job.status }}" >> $GITHUB_OUTPUT
+
+  # 4. Notification: Email team with production deploy result
+  notify:
+    needs: deploy
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send deployment email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "[IMS Backend] Deploy ${{ needs.deploy.outputs.status }} for main"
+          to: harshitsharma@igtechso.com,anujbhadoriya@igtechso.com,uditchouhan@igtechso.com,vishalsharma@igtechso.com
+          from: ${{ secrets.SMTP_FROM }}
+          secure: false
+          html_body: |
+            <h2>IMS Backend Deployment Report</h2>
+            <p><b>Status:</b> ${{ needs.deploy.outputs.status }} (Job result: ${{ needs.deploy.result }})</p>
+            <p><b>Branch:</b> main</p>
+            <p><b>Repository:</b> ${{ github.repository }}</p>
+            <p><b>Commit:</b> ${{ github.sha }}</p>
+            <p><b>GitHub Actions run:</b> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">View logs</a></p>

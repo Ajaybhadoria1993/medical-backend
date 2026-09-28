@@ -1,0 +1,1 @@
+ALTER TABLE "doctor_session_overrides" ADD COLUMN "appointment_type" varchar;

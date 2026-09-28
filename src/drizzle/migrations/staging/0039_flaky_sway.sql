@@ -1,0 +1,1 @@
+ALTER TABLE "doctor_qualifications" ALTER COLUMN "qualification_type" SET DATA TYPE varchar(100);

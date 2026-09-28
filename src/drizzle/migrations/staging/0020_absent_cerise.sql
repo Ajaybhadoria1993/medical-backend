@@ -1,0 +1,1 @@
+ALTER TABLE "visiting_requests" ALTER COLUMN "report_card_id" DROP NOT NULL;

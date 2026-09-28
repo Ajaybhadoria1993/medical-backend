@@ -1,0 +1,2 @@
+CREATE INDEX "ix_medicines_name_trgm" ON "medicines" USING gin ("name" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "ix_medicines_generic_name_trgm" ON "medicines" USING gin ("generic_name" gin_trgm_ops);

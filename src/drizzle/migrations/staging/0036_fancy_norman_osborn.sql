@@ -1,0 +1,1 @@
+ALTER TABLE "clinics" ADD COLUMN "clinic_location" text;

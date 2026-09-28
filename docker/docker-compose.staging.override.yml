@@ -1,0 +1,20 @@
+# Local-only override for testing the published staging image on your machine.
+# The real staging server uses docker-compose.staging.yml alone (its .env points
+# at the actual staging DB host, not host.docker.internal).
+#
+# Usage (run from the repo root):
+#   docker compose -f docker/docker-compose.staging.yml -f docker/docker-compose.staging.override.yml up -d
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      - STAGING_DB_HOST=host.docker.internal
+      - STAGING_DB_PORT=5433
+      - STAGING_DB_NAME=ms43_staging
+      - STAGING_DB_USER=postgres
+      - STAGING_DB_PASS=root
+      - STAGING_DB_URL=postgresql://postgres:root@host.docker.internal:5433/ms43_staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

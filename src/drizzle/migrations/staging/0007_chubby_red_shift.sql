@@ -1,0 +1,1 @@
+ALTER TABLE "clinic_assign" ADD COLUMN "max_advance_booking_days" integer DEFAULT 7 NOT NULL;

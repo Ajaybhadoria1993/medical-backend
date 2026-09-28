@@ -1,0 +1,1 @@
+ALTER TYPE "public"."session_override_type" ADD VALUE 'missed_dismissed';

@@ -1,0 +1,1 @@
+ALTER TABLE "clinic_settings" ADD COLUMN "show_clinic_number_publicly" boolean DEFAULT true NOT NULL;

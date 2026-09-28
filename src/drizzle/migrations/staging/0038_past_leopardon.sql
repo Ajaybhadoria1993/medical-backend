@@ -1,0 +1,1 @@
+ALTER TABLE "doctor_preferences" ADD COLUMN "pre_diagnosis_list" json DEFAULT '[]'::json;

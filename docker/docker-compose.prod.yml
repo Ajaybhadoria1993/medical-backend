@@ -1,0 +1,49 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis-prd
+    restart: always
+    command: redis-server --appendonly yes
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: 'json-file'
+
+  app:
+    image: harhsitsharma/cms-backend:${IMAGE_TAG:-latest}
+    container_name: cms-backend-app
+    restart: always
+    ports:
+      - '5000:5000'
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=5000
+      - ENABLE_LOGIN_ALERTS_QUEUE=true
+      # Clear any AWS credential env vars from .env so the SDK
+      # falls back to EC2 IAM role credentials via Instance Metadata.
+      - AWS_ACCESS_TOKEN=
+      - AWS_SECRET_TOKEN=
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5000/ || exit 1
+      interval: 30s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: 'json-file'
+
+volumes:
+  redis-data:

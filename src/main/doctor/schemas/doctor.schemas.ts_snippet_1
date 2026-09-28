@@ -1,0 +1,9 @@
+
+export const getSubscriptionsSchema = z.object({
+  pageSize: z.string().transform((val) => Number(val)).optional().default('100'),
+  pageNumber: z.string().transform((val) => Number(val)).optional().default('1'),
+  search: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+export type GetSubscriptionsDto = z.infer<typeof getSubscriptionsSchema>;

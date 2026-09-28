@@ -1,0 +1,1 @@
+CREATE INDEX "family_links_linked_idx" ON "patient_family_links" USING btree ("linked_patient_id");

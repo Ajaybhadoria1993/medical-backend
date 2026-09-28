@@ -1,0 +1,1 @@
+ALTER TABLE "user_professionals" ADD COLUMN "specialization" text[];

@@ -1,0 +1,1 @@
+ALTER TABLE "clinic_subscriptions" ADD COLUMN "discount" numeric(12, 2) DEFAULT '0.00';
