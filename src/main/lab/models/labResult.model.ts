@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { LabOrderModel } from '../../test/models/labOrder.model';
+import { LabTestCatalogModel } from '../../test/models/labTestCatalog.model';
 import { UserModel } from '../../users/models/user.model';
 import { LabsModel } from './lab.model';
 
@@ -71,6 +72,10 @@ export const LabReportTemplateParametersModel = pgTable(
       { onDelete: 'cascade' }
     ),
     labId: uuid('lab_id').references(() => LabsModel.id),
+    labTestCatalogId: uuid('lab_test_catalog_id').references(
+      () => LabTestCatalogModel.id,
+      { onDelete: 'set null' }
+    ),
     sectionName: varchar('section_name', { length: 255 }),
     parameterName: varchar('parameter_name', { length: 255 }).notNull(),
     unit: varchar('unit', { length: 80 }),
@@ -94,6 +99,9 @@ export const LabReportTemplateParametersModel = pgTable(
       table.templateId
     ),
     index('idx_lab_report_template_parameters_lab_id').on(table.labId),
+    index('idx_lab_report_template_parameters_lab_test_catalog_id').on(
+      table.labTestCatalogId
+    ),
     index('idx_lab_report_template_parameters_base_parameter_id').on(
       table.baseParameterId
     ),

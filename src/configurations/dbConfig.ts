@@ -14,9 +14,9 @@ export const databaseConfig: Readonly<{
     | 'verify-full'
     | undefined;
   max: number;
-  idleTimeoutMillis: number;
-  connectionTimeoutMillis: number;
-  lifetime: number;
+  idle_timeout: number;
+  connect_timeout: number;
+  max_lifetime: number;
   onnotice?: (notice: any) => void;
 }> = {
   host: envConfig.DB_HOST,
@@ -27,10 +27,12 @@ export const databaseConfig: Readonly<{
   ssl: ['localhost', 'host.docker.internal'].includes(envConfig.DB_HOST)
     ? false
     : 'require',
-  max: 100,
-  idleTimeoutMillis: 10_000, // Idle timeout in seconds
-  connectionTimeoutMillis: 10_000, // Connection timeout in seconds
-  lifetime: 30000,
+  // Prod and staging share one db.t4g.micro (~80 connections), so the two pools must fit together.
+  max: envConfig.NODE_ENV === 'production' ? 50 : 20,
+  // postgres.js option names, all in seconds.
+  idle_timeout: 10,
+  connect_timeout: 10,
+  max_lifetime: 60 * 30,
   onnotice: (notice) => {
     // Only log important notices, or ignore them if they are just about existing objects
     if (

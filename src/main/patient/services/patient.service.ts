@@ -4,6 +4,7 @@ import {
   count,
   eq,
   ne,
+  not,
   or,
   inArray,
   isNull,
@@ -12,13 +13,14 @@ import {
   asc,
   isNotNull,
   gte,
+  lt,
   lte,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { TokenSessionService } from '../../appointment-engine/services/tokenSession.service';
 import { database } from '../../../configurations/dbConnection';
 import redisClient from '../../../configurations/redisConfig';
-import { CacheKeys } from '../../../utils/cache.util';
+import { CacheKeys, invalidateCacheMany } from '../../../utils/cache.util';
 import { HttpError } from '../../../middlewear/errorHandler';
 import { pagination } from '../../../utils/utils';
 import { UserModel } from '../../users/models/user.model';
@@ -26,6 +28,11 @@ import { UserProfileModel } from '../../users/models/userProfile.model';
 import { PatientFamilyLinksModel } from '../models/patientFamilyLinks.model';
 import { LabOrderModel } from '../../test/models/labOrder.model';
 import { TestCatalogModel } from '../../test/models/testCatalog.model';
+import {
+  getLabOrderPayment,
+  labOrderPaymentColumns,
+  labOrderWithPaymentColumns,
+} from '../../lab/utils/labOrderPayment';
 import { APPOINTMENT_TEST_WORKFLOW_STATUS } from '../../test/constants/appointmentTest.constants';
 import {
   LabOrderResultsModel,
@@ -52,6 +59,8 @@ import { doctorManualPrescriptionModel } from '../../appointments/models/doctorM
 import { patientGallery } from '../../appointments/models/patientGallery.model';
 import { AppointmentClinicalModel } from '../../appointments/models/appointmentClinical.model';
 import { AppointmentPaymentModel } from '../../appointments/models/appointment-payment.model';
+import { AppointmentMoneySync } from '../../appointments/services/appointmentMoneySync.service';
+import { SYSTEM_ACTOR_ID } from '../../money';
 import {
   normalizePaymentMode,
   isOnlinePaymentMode,
@@ -62,8 +71,15 @@ import {
   PaymentService,
   ConfigurationResolver,
   DynamicSplitEngine,
+  OnlineFeeLedger,
 } from '../../payment';
 import { envConfig } from '../../../utils/envConfig';
+import { bookingPaymentOptions } from '../../../utils/bookingPayments.utils';
+import {
+  getISTDateString,
+  toStoredAppointmentDate,
+} from '../../../utils/istDateTime';
+import { ExaminationService } from '../../examination';
 import {
   VerifyAppointmentPaymentDto,
   ListFavoriteDoctorsQueryDto,
@@ -79,6 +95,7 @@ import { deleteFromS3 } from '../../../configurations/s3';
 import { signS3Url } from '../../files/services/fileUrl.service';
 import { DOCUMENT_TTL_SECONDS } from '../../files/utils/s3Ref.utils';
 import logger from '../../../utils/logger';
+import { revokeUserTokens } from '../../../utils/authUtils';
 import { broadcastAppointmentChange } from '../../../utils/appointmentRealtime';
 import { signalAppointmentChange } from '../../realtime';
 import {
@@ -88,25 +105,29 @@ import {
   ClinicAvailability,
 } from '../../clinic/models/clinic.model';
 import { ClinicSettingsModel } from '../../clinic/models/clinicSettings.model';
+import { ClinicSymptomModel } from '../../clinic/models/clinic-symptom.model';
+import { ClinicSymptomService } from '../../clinic/services/clinic-symptom.service';
 import { UserProfessionalModel } from '../../users/models/userProfessional.model';
-import { FinancialLedgerModel } from '../../appointments/models/financialLedger.model';
 import {
+  DoctorExperienceModel,
   DoctorQualificationModel,
   DoctorFavoriteModel,
 } from '../../doctor/models/doctor.model';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { AppointmentService } from '../../appointments/services/appointment.service';
+import { AppointmentSlotsService } from '../../appointments/services/appointmentSlots.service';
 import { PaymentReservationService } from '../../appointments/services/paymentReservation.service';
 import {
   buildActiveAppointmentFilter,
   filterExpiredPendingAppointments,
 } from '../../appointments/services/appointment.service';
 import { DoctorServices } from '../../doctor/services/doctor.service';
-import { toPublicTimings } from '../../doctor/utils/doctorPublicProfile.utils';
 import {
-  LimitationService,
-  FEATURE_KEYS,
-} from '../../subscription/services/limitation.service';
+  toPatientTimings,
+  toPublicTimings,
+} from '../../doctor/utils/doctorPublicProfile.utils';
+import { withAppointmentCounts } from './patientDoctorAppointmentCount.service';
+import { LimitationService, FEATURE_KEYS } from '../../subscription';
 
 // ─── Shared column selection ──────────────────────────────────────────────────
 
@@ -134,17 +155,12 @@ const PROFILE_COLUMNS = {
   chronicConditions: UserProfileModel.chronicConditions,
 } as const;
 
-// ─── Service ──────────────────────────────────────────────────────────────────
-
 export class PatientService {
-  // ─────────────────────────────────────────────────────────────────────────
-  // 1. GET MY PROFILE
-  // ─────────────────────────────────────────────────────────────────────────
+  /** Statuses that end a visit; such an appointment is past even when dated today or later. */
+  private static readonly CLOSED_APPOINTMENT_STATUSES: (
+    'Completed' | 'Cancelled' | 'NoShow' | 'Missed'
+  )[] = ['Completed', 'Cancelled', 'NoShow', 'Missed'];
 
-  /**
-   * GET /api/v1/patient/my-profile
-   * Returns the full profile (users + user_profiles) of the authenticated patient.
-   */
   static async getMyProfile(userId: string) {
     const cacheKey = `patient_profile:${userId}`;
     try {
@@ -218,7 +234,7 @@ export class PatientService {
       if (payload[key] !== undefined) profileFields[key] = payload[key];
     }
 
-    return await database.transaction(async (tx) => {
+    const profile = await database.transaction(async (tx) => {
       if (Object.keys(userFields).length > 0) {
         // Guard: email must not be claimed by another account
         if (userFields.email) {
@@ -266,13 +282,6 @@ export class PatientService {
         }
       }
 
-      // Invalidate Redis cache
-      await redisClient.del(`user:${userId}`);
-      await redisClient.del(`patient_profile:${userId}`);
-      await redisClient.del(`patient_account:${userId}`);
-      await redisClient.del(`patient:${userId}`);
-      await redisClient.del(`patient:${userId}:withFamily`);
-
       const [updated] = await tx
         .select(PROFILE_COLUMNS)
         .from(UserModel)
@@ -282,6 +291,22 @@ export class PatientService {
 
       return updated;
     });
+
+    // After commit: clearing inside the transaction lets a concurrent read
+    // re-cache the pre-update profile.
+    try {
+      await redisClient.del(`user:${userId}`);
+      await redisClient.del(`patient_profile:${userId}`);
+      await redisClient.del(`patient_account:${userId}`);
+      await invalidateCacheMany(CacheKeys.patientDetailAll(userId));
+    } catch (err) {
+      logger.error(
+        'Failed to invalidate patient caches on profile update',
+        err
+      );
+    }
+
+    return profile;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -452,7 +477,10 @@ export class PatientService {
 
       try {
         await redisClient.del(`patient_account:${primaryPatientId}`);
-        await redisClient.del(`patient:${primaryPatientId}:withFamily`);
+        await invalidateCacheMany([
+          ...CacheKeys.patientDetailAll(primaryPatientId),
+          ...CacheKeys.patientDetailAll(linkedPatientId),
+        ]);
       } catch (err) {
         logger.error(
           'Failed to invalidate patient caches on adding family member',
@@ -623,9 +651,9 @@ export class PatientService {
       );
     }
 
-    const { relationship, name, ...profilePayload } = payload;
+    const { relationship, name, email, ...profilePayload } = payload;
 
-    return await database.transaction(async (tx) => {
+    const updated = await database.transaction(async (tx) => {
       // 3️⃣ Update link relationship if changed
       if (relationship !== undefined && relationship !== link.relationship) {
         await tx
@@ -634,11 +662,33 @@ export class PatientService {
           .where(eq(PatientFamilyLinksModel.id, link.id));
       }
 
-      // 4️⃣ Update users.name if provided
-      if (name !== undefined) {
+      // 4️⃣ Update users.name / users.email if provided
+      if (email !== undefined) {
+        // Guard: email must not be claimed by another account
+        const [conflict] = await tx
+          .select({ id: UserModel.id })
+          .from(UserModel)
+          .where(
+            and(eq(UserModel.email, email), ne(UserModel.id, familyMemberId))
+          )
+          .limit(1);
+
+        if (conflict) {
+          throw new HttpError(
+            400,
+            'This email is already in use by another account.'
+          );
+        }
+      }
+
+      if (name !== undefined || email !== undefined) {
         await tx
           .update(UserModel)
-          .set({ name, updatedAt: new Date() })
+          .set({
+            ...(name !== undefined && { name }),
+            ...(email !== undefined && { email }),
+            updatedAt: new Date(),
+          })
           .where(eq(UserModel.id, familyMemberId));
       }
 
@@ -673,7 +723,7 @@ export class PatientService {
       }
 
       // 6️⃣ Return updated profile
-      const [updated] = await tx
+      const [row] = await tx
         .select({
           linkId: PatientFamilyLinksModel.id,
           relationship: PatientFamilyLinksModel.relationship,
@@ -693,21 +743,24 @@ export class PatientService {
         )
         .limit(1);
 
-      try {
-        await redisClient.del(`patient_account:${primaryPatientId}`);
-        await redisClient.del(`patient_profile:${familyMemberId}`);
-        await redisClient.del(`patient:${familyMemberId}`);
-        await redisClient.del(`patient:${familyMemberId}:withFamily`);
-        await redisClient.del(`patient:${primaryPatientId}:withFamily`);
-      } catch (err) {
-        logger.error(
-          'Failed to invalidate patient caches on updating family member',
-          err
-        );
-      }
-
-      return updated;
+      return row;
     });
+
+    try {
+      await redisClient.del(`patient_account:${primaryPatientId}`);
+      await redisClient.del(`patient_profile:${familyMemberId}`);
+      await invalidateCacheMany([
+        ...CacheKeys.patientDetailAll(familyMemberId),
+        ...CacheKeys.patientDetailAll(primaryPatientId),
+      ]);
+    } catch (err) {
+      logger.error(
+        'Failed to invalidate patient caches on updating family member',
+        err
+      );
+    }
+
+    return updated;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -721,6 +774,20 @@ export class PatientService {
    * Does NOT delete the linked patient's user record — they may have their
    * own mobile login or be linked from another primary patient.
    */
+  /** Switches the patient's own login off; no data or family members are touched. */
+  static async deactivateOwnAccount(userId: string) {
+    await database
+      .update(UserModel)
+      .set({ userStatus: 'Inactive', updatedAt: new Date() })
+      .where(eq(UserModel.id, userId));
+    await invalidateCacheMany([
+      CacheKeys.authUser(userId),
+      CacheKeys.patientAccount(userId),
+    ]);
+    // Not caught: a login that stays alive after "delete" is worse than a 500.
+    await revokeUserTokens(userId);
+  }
+
   static async removeFamilyMember(
     primaryPatientId: string,
     familyMemberId: string
@@ -768,9 +835,10 @@ export class PatientService {
     try {
       await redisClient.del(`patient_account:${primaryPatientId}`);
       await redisClient.del(`patient_profile:${familyMemberId}`);
-      await redisClient.del(`patient:${familyMemberId}`);
-      await redisClient.del(`patient:${familyMemberId}:withFamily`);
-      await redisClient.del(`patient:${primaryPatientId}:withFamily`);
+      await invalidateCacheMany([
+        ...CacheKeys.patientDetailAll(familyMemberId),
+        ...CacheKeys.patientDetailAll(primaryPatientId),
+      ]);
     } catch (err) {
       logger.error(
         'Failed to invalidate patient caches on removing family member',
@@ -816,8 +884,7 @@ export class PatientService {
       await redisClient.del(`user:${userId}`);
       await redisClient.del(`patient_profile:${userId}`);
       await redisClient.del(`patient_account:${userId}`);
-      await redisClient.del(`patient:${userId}`);
-      await redisClient.del(`patient:${userId}:withFamily`);
+      await invalidateCacheMany(CacheKeys.patientDetailAll(userId));
     } catch (err) {
       logger.error(
         'Failed to invalidate patient caches on profile image update',
@@ -989,14 +1056,15 @@ export class PatientService {
           }); // "HH:MM"
         }
 
-        const { slots } = await AppointmentService.getAvailableSlotsForDate(
-          clinicId,
-          {
-            date: dateStr,
-            time: timeFilter,
-          },
-          { doctorId }
-        );
+        const { slots } =
+          await AppointmentSlotsService.getAvailableSlotsForDate(
+            clinicId,
+            {
+              date: dateStr,
+              time: timeFilter,
+            },
+            { doctorId }
+          );
 
         const firstAvailable = slots.find((s) => {
           if (s.totalTokens !== undefined) {
@@ -1037,7 +1105,10 @@ export class PatientService {
     return null;
   }
 
-  static async searchDirectory(query: PatientDirectorySearchDto) {
+  static async searchDirectory(
+    query: PatientDirectorySearchDto,
+    patientId?: string
+  ) {
     const filters = [
       sql`${UserModel.userType} IN ('Admin', 'Doctor')`,
       eq(UserModel.userStatus, 'Active'),
@@ -1095,6 +1166,12 @@ export class PatientService {
       );
     }
 
+    if (query.minExperience !== undefined) {
+      filters.push(
+        sql`coalesce(${UserProfessionalModel.yearsOfExperience}, 0) >= ${query.minExperience}`
+      );
+    }
+
     const likesCountField = sql<number>`(
       SELECT COALESCE(count(*)::int, 0)
       FROM ${DoctorFavoriteModel}
@@ -1109,6 +1186,7 @@ export class PatientService {
     const selectFields: any = {
       doctor: {
         id: UserModel.id,
+        userName: UserModel.userName,
         name: UserModel.name,
         email: UserModel.email,
         mobile: UserModel.mobile,
@@ -1208,7 +1286,8 @@ export class PatientService {
     const limit = Math.max(parseInt(query.pageSize || '10', 10), 1);
     const offset = (page - 1) * limit;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    // IST day: the UTC date is still yesterday until 05:30 IST.
+    const todayStr = getISTDateString();
     const targetDateStr = (query as any).date || todayStr;
     const isAvailableOnly = (query as any).available === true;
 
@@ -1216,7 +1295,12 @@ export class PatientService {
     let totalRecords = 0;
 
     const orderFields: any[] = [];
-    if (query.search) {
+    if (query.sortBy === 'experience') {
+      orderFields.push(
+        sql`coalesce(${UserProfessionalModel.yearsOfExperience}, 0) DESC`
+      );
+    }
+    if (query.search && query.sortBy !== 'rating') {
       orderFields.push(desc(relevanceScoreField));
     }
     orderFields.push(desc(ratingScoreField));
@@ -1231,11 +1315,12 @@ export class PatientService {
       const availabilityChecks = await Promise.all(
         allData.map(async (item: any) => {
           try {
-            const { slots } = await AppointmentService.getAvailableSlotsForDate(
-              item.clinic.id,
-              { date: targetDateStr },
-              { doctorId: item.doctor.id }
-            );
+            const { slots } =
+              await AppointmentSlotsService.getAvailableSlotsForDate(
+                item.clinic.id,
+                { date: targetDateStr },
+                { doctorId: item.doctor.id }
+              );
             const isAvailable = slots.some((s) => {
               if (s.totalTokens !== undefined) {
                 return (s.availableTokens ?? 0) > 0;
@@ -1327,8 +1412,7 @@ export class PatientService {
             item.clinic.onlineBookingEnabledAssign === true &&
             item.clinic.onlineBookingEnabledSettings === true,
           maxAdvanceBookingDays: item.clinic.maxAdvanceBookingDays ?? 7,
-          payOnlineEnabled: item.clinic.payOnlineEnabled === true,
-          payAtClinicEnabled: item.clinic.payAtClinicEnabled === true,
+          ...bookingPaymentOptions(item.clinic),
           showClinicNumber: item.clinic.showClinicNumber !== false,
           services,
         };
@@ -1346,7 +1430,13 @@ export class PatientService {
     const totalPages = Math.ceil(totalRecords / limit);
 
     return {
-      data: dataWithSlotsAndServices,
+      data: patientId
+        ? await withAppointmentCounts(
+            patientId,
+            dataWithSlotsAndServices,
+            (item) => item.doctor.id
+          )
+        : dataWithSlotsAndServices,
       pagination: {
         totalRecords,
         totalPages,
@@ -1386,136 +1476,160 @@ export class PatientService {
     }
 
     if (!doctorData) {
-      const [profile] = await database
-        .select({
-          id: UserModel.id,
-          name: UserModel.name,
-          gender: UserProfileModel.gender,
-          profileImage: UserProfileModel.profileImage,
-          qualification: UserProfessionalModel.qualification,
-          yearsOfExperience: UserProfessionalModel.yearsOfExperience,
-          speciality: UserProfessionalModel.speciality,
-          specialization: UserProfessionalModel.specialization,
-          registrationNumber: UserProfessionalModel.registrationNumber,
-          about: UserProfessionalModel.about,
-          isVerified: sql<boolean>`(${UserModel.userStatus} = 'Active')`,
-          averageRating: UserProfessionalModel.averageRating,
-          reviewCount: UserProfessionalModel.reviewCount,
-        })
-        .from(UserModel)
-        .leftJoin(UserProfileModel, eq(UserProfileModel.userId, UserModel.id))
-        .leftJoin(
-          UserProfessionalModel,
-          eq(UserProfessionalModel.userId, UserModel.id)
-        )
-        .where(
-          and(
-            eq(UserModel.id, doctorId),
-            sql`${UserModel.userType} IN ('Admin', 'Doctor')`,
-            eq(UserModel.userStatus, 'Active')
+      // Independent reads, so they run together; a missing doctor still 404s below.
+      const [
+        [profile],
+        qualifications,
+        experiences,
+        clinics,
+        services,
+        [patientCountResult],
+      ] = await Promise.all([
+        database
+          .select({
+            id: UserModel.id,
+            name: UserModel.name,
+            gender: UserProfileModel.gender,
+            profileImage: UserProfileModel.profileImage,
+            qualification: UserProfessionalModel.qualification,
+            yearsOfExperience: UserProfessionalModel.yearsOfExperience,
+            speciality: UserProfessionalModel.speciality,
+            specialization: UserProfessionalModel.specialization,
+            registrationNumber: UserProfessionalModel.registrationNumber,
+            languagesSpoken: UserProfessionalModel.languagesSpoken,
+            about: UserProfessionalModel.about,
+            isVerified: sql<boolean>`(${UserModel.userStatus} = 'Active')`,
+            averageRating: UserProfessionalModel.averageRating,
+            reviewCount: UserProfessionalModel.reviewCount,
+          })
+          .from(UserModel)
+          .leftJoin(UserProfileModel, eq(UserProfileModel.userId, UserModel.id))
+          .leftJoin(
+            UserProfessionalModel,
+            eq(UserProfessionalModel.userId, UserModel.id)
           )
-        )
-        .limit(1);
+          .where(
+            and(
+              eq(UserModel.id, doctorId),
+              sql`${UserModel.userType} IN ('Admin', 'Doctor')`,
+              eq(UserModel.userStatus, 'Active')
+            )
+          )
+          .limit(1),
+        database
+          .select()
+          .from(DoctorQualificationModel)
+          .where(eq(DoctorQualificationModel.userId, doctorId)),
+        database
+          .select()
+          .from(DoctorExperienceModel)
+          .where(eq(DoctorExperienceModel.userId, doctorId))
+          .orderBy(
+            desc(DoctorExperienceModel.isCurrent),
+            desc(DoctorExperienceModel.startYear),
+            desc(DoctorExperienceModel.startMonth)
+          ),
+        database
+          .select({
+            id: ClinicModel.id,
+            clinicName: ClinicModel.clinicName,
+            tagline: ClinicModel.Tagline,
+            clinicAddress: ClinicModel.clinicAddress,
+            clinicLocation: ClinicModel.clinicLocation,
+            clinicPhone: ClinicModel.clinicPhone,
+            state: ClinicModel.State,
+            city: ClinicModel.City,
+            zipCode: ClinicModel.ZipCode,
+            clinicLogo: ClinicModel.clinicLogo,
+            latitude: ClinicModel.latitude,
+            longitude: ClinicModel.longitude,
+            onlineBookingEnabled: ClinicAssignModel.onlineBookingEnabled,
+            clinicOnlineBookingEnabled:
+              ClinicSettingsModel.onlineBookingEnabled,
+            maxAdvanceBookingDays: ClinicAssignModel.maxAdvanceBookingDays,
+            payOnlineEnabled: ClinicSettingsModel.payOnlineEnabled,
+            payAtClinicEnabled: ClinicSettingsModel.payAtClinicEnabled,
+            showClinicNumber: ClinicSettingsModel.showClinicNumberPublicly,
+          })
+          .from(ClinicAssignModel)
+          .innerJoin(
+            ClinicModel,
+            eq(ClinicModel.id, ClinicAssignModel.clinicId)
+          )
+          .innerJoin(
+            ClinicSettingsModel,
+            eq(ClinicSettingsModel.clinicId, ClinicModel.id)
+          )
+          .where(
+            and(
+              eq(ClinicAssignModel.userId, doctorId),
+              eq(ClinicModel.status, 'Active'),
+              ...(isWeb
+                ? []
+                : [
+                    eq(ClinicAssignModel.onlineBookingEnabled, true),
+                    eq(ClinicSettingsModel.onlineBookingEnabled, true),
+                  ])
+            )
+          ),
+        database
+          .select({
+            id: ClinicServiceModel.id,
+            clinicId: ClinicServiceModel.clinicId,
+            serviceName: ClinicServiceModel.serviceName,
+            price: ClinicServiceModel.price,
+            currency: ClinicServiceModel.currency,
+            additionalServices: ClinicServiceModel.additionalServices,
+            durationDays: ClinicServiceModel.durationDays,
+          })
+          .from(ClinicServiceModel)
+          .where(
+            and(
+              eq(ClinicServiceModel.doctorId, doctorId),
+              eq(ClinicServiceModel.isDeleted, false),
+              eq(ClinicServiceModel.canBeBookedByPatient, true)
+            )
+          )
+          .orderBy(asc(ClinicServiceModel.serviceName)),
+        database
+          .select({
+            count: sql<number>`count(distinct ${AppointmentModel.patientId})::int`,
+          })
+          .from(AppointmentModel)
+          .where(eq(AppointmentModel.doctorId, doctorId)),
+      ]);
 
       if (!profile) {
         throw new HttpError(404, 'Doctor profile not found or inactive');
       }
 
-      const qualifications = await database
-        .select()
-        .from(DoctorQualificationModel)
-        .where(eq(DoctorQualificationModel.userId, doctorId));
-
-      const clinics = await database
-        .select({
-          id: ClinicModel.id,
-          clinicName: ClinicModel.clinicName,
-          tagline: ClinicModel.Tagline,
-          clinicAddress: ClinicModel.clinicAddress,
-          clinicLocation: ClinicModel.clinicLocation,
-          clinicPhone: ClinicModel.clinicPhone,
-          state: ClinicModel.State,
-          city: ClinicModel.City,
-          zipCode: ClinicModel.ZipCode,
-          clinicLogo: ClinicModel.clinicLogo,
-          latitude: ClinicModel.latitude,
-          longitude: ClinicModel.longitude,
-          onlineBookingEnabled: ClinicAssignModel.onlineBookingEnabled,
-          clinicOnlineBookingEnabled: ClinicSettingsModel.onlineBookingEnabled,
-          maxAdvanceBookingDays: ClinicAssignModel.maxAdvanceBookingDays,
-          payOnlineEnabled: ClinicSettingsModel.payOnlineEnabled,
-          payAtClinicEnabled: ClinicSettingsModel.payAtClinicEnabled,
-          showClinicNumber: ClinicSettingsModel.showClinicNumberPublicly,
-        })
-        .from(ClinicAssignModel)
-        .innerJoin(ClinicModel, eq(ClinicModel.id, ClinicAssignModel.clinicId))
-        .innerJoin(
-          ClinicSettingsModel,
-          eq(ClinicSettingsModel.clinicId, ClinicModel.id)
-        )
-        .where(
-          and(
-            eq(ClinicAssignModel.userId, doctorId),
-            eq(ClinicModel.status, 'Active'),
-            ...(isWeb
-              ? []
-              : [
-                  eq(ClinicAssignModel.onlineBookingEnabled, true),
-                  eq(ClinicSettingsModel.onlineBookingEnabled, true),
-                ])
-          )
-        );
-
-      const services = await database
-        .select({
-          id: ClinicServiceModel.id,
-          clinicId: ClinicServiceModel.clinicId,
-          serviceName: ClinicServiceModel.serviceName,
-          price: ClinicServiceModel.price,
-          currency: ClinicServiceModel.currency,
-          additionalServices: ClinicServiceModel.additionalServices,
-          durationDays: ClinicServiceModel.durationDays,
-        })
-        .from(ClinicServiceModel)
-        .where(
-          and(
-            eq(ClinicServiceModel.doctorId, doctorId),
-            eq(ClinicServiceModel.isDeleted, false),
-            eq(ClinicServiceModel.canBeBookedByPatient, true)
-          )
-        )
-        .orderBy(asc(ClinicServiceModel.serviceName));
-
-      // When accessed from public web, filter clinics based on subscription public_booking_page feature
-      let accessibleClinics = clinics;
+      // Public web always shows the profile; the public_booking_page plan
+      // feature only decides whether a clinic can be booked from it.
+      const bookableOnWeb = new Set<string>();
       if (isWeb) {
-        const checks = await Promise.all(
+        await Promise.all(
           clinics.map(async (clinic) => {
             const check = await LimitationService.isFeatureEnabled(
               clinic.id,
               FEATURE_KEYS.PUBLIC_BOOKING_PAGE
             );
-            return { clinic, allowed: check.allowed };
+            if (check.allowed) bookableOnWeb.add(clinic.id);
           })
         );
-        accessibleClinics = checks
-          .filter((c) => c.allowed)
-          .map((c) => c.clinic);
-
-        if (accessibleClinics.length === 0) {
-          throw new HttpError(404, 'Doctor profile not found or inactive');
-        }
       }
 
-      const clinicsWithServices = accessibleClinics.map((clinic) => ({
+      const clinicsWithServices = clinics.map((clinic) => ({
         ...clinic,
         onlineBookingEnabled:
           clinic.onlineBookingEnabled === true &&
-          clinic.clinicOnlineBookingEnabled === true,
+          clinic.clinicOnlineBookingEnabled === true &&
+          (!isWeb || bookableOnWeb.has(clinic.id)),
         maxAdvanceBookingDays: clinic.maxAdvanceBookingDays ?? 7,
-        payOnlineEnabled: clinic.payOnlineEnabled === true,
-        payAtClinicEnabled: clinic.payAtClinicEnabled === true,
+        ...bookingPaymentOptions(clinic),
         showClinicNumber: clinic.showClinicNumber !== false,
+        // Clinics can opt out of showing their number; never send it then.
+        clinicPhone:
+          clinic.showClinicNumber !== false ? clinic.clinicPhone : null,
         services: services.filter((s) => s.clinicId === clinic.id),
       }));
 
@@ -1528,23 +1642,19 @@ export class PatientService {
           );
           return {
             ...clinic,
-            timings: toPublicTimings(rawTimings),
+            timings: isWeb
+              ? toPublicTimings(rawTimings)
+              : toPatientTimings(rawTimings),
           };
         })
       );
 
-      // Fetch total patients (all unique patient IDs with appointments for this doctor)
-      const [patientCountResult] = await database
-        .select({
-          count: sql<number>`count(distinct ${AppointmentModel.patientId})::int`,
-        })
-        .from(AppointmentModel)
-        .where(eq(AppointmentModel.doctorId, doctorId));
       const totalPatients = patientCountResult?.count || 0;
 
       doctorData = {
         ...profile,
         qualifications,
+        experiences,
         clinics: clinicsWithTimings,
         totalPatients,
       };
@@ -1579,6 +1689,20 @@ export class PatientService {
       ...doctorData,
       isFavorite,
     };
+  }
+
+  // Patient-app profile; the base method stays count-free for its list callers.
+  static async getDoctorProfileForPatient(doctorId: string, patientId: string) {
+    const profile = await PatientService.getDoctorPublicProfile(
+      doctorId,
+      patientId
+    );
+    const [result] = await withAppointmentCounts(
+      patientId,
+      [profile],
+      (item) => item.id
+    );
+    return result;
   }
 
   static async toggleDoctorFavorite(patientId: string, doctorId: string) {
@@ -1658,7 +1782,7 @@ export class PatientService {
     const totalRecords = Number(totalCount?.count || 0);
     const totalPages = Math.ceil(totalRecords / limit);
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getISTDateString();
 
     // Resolve the full public profile for each doctor and attach their next available slot
     const doctors = await Promise.all(
@@ -1709,7 +1833,7 @@ export class PatientService {
     );
 
     return {
-      data: doctors,
+      data: await withAppointmentCounts(patientId, doctors, (item) => item.id),
       pagination: {
         totalRecords,
         totalPages,
@@ -1755,7 +1879,7 @@ export class PatientService {
       }); // "HH:MM"
     }
 
-    return await AppointmentService.getAvailableSlotsForDate(
+    return await AppointmentSlotsService.getAvailableSlotsForDate(
       query.clinicId,
       {
         date: query.date,
@@ -1763,6 +1887,11 @@ export class PatientService {
       },
       { doctorId }
     );
+  }
+
+  // Symptoms the patient can pick from while booking at this clinic
+  static async getClinicSymptoms(clinicId: string) {
+    return { symptoms: await ClinicSymptomService.listBookable(clinicId) };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1844,17 +1973,17 @@ export class PatientService {
       payload.paymentMode ||
       ''
     ).toLowerCase();
-    const requestedProvider = ['razorpay', 'cashfree'].includes(rawProvider)
-      ? rawProvider
-      : undefined;
+    const requestedProvider =
+      rawProvider === 'razorpay' ? rawProvider : undefined;
 
-    if (isOnlinePayment && !onlineBookingClinicSettings.payOnlineEnabled) {
+    const paymentOptions = bookingPaymentOptions(onlineBookingClinicSettings);
+    if (isOnlinePayment && !paymentOptions.payOnlineEnabled) {
       throw new HttpError(
         400,
         'Online payment is not available for this clinic.'
       );
     }
-    if (!isOnlinePayment && !onlineBookingClinicSettings.payAtClinicEnabled) {
+    if (!isOnlinePayment && !paymentOptions.payAtClinicEnabled) {
       throw new HttpError(
         400,
         'Pay at clinic is not available; please pay online.'
@@ -1877,6 +2006,11 @@ export class PatientService {
         throw new HttpError(404, 'Clinic not found');
       }
     }
+
+    const clinicSymptomIds = await ClinicSymptomService.assertBookable(
+      payload.clinicId,
+      payload.clinicSymptomIds ?? []
+    );
 
     // Validate slot/token availability first
     const validationResult =
@@ -1958,6 +2092,7 @@ export class PatientService {
             appointmentTime: payload.appointmentTime,
             appointmentType: 'Consultation',
             appointmentNotes: payload.notes,
+            clinicSymptomIds,
             paymentMode: payload.paymentMode,
             price: payload.price,
             paymentNotes: payload.paymentNotes,
@@ -2056,6 +2191,7 @@ export class PatientService {
         appointmentTime: payload.appointmentTime,
         appointmentType: 'Consultation',
         appointmentNotes: payload.notes,
+        clinicSymptomIds,
         paymentMode: normalizePaymentMode(payload.paymentMode),
         paymentStatus:
           payload.paymentStatus ??
@@ -2063,6 +2199,7 @@ export class PatientService {
         price: payload.price,
         paymentNotes: payload.paymentNotes,
         sessionIndex: payload.sessionIndex,
+        bookingSource: (payload as any).bookingSource || 'mobile_app',
       },
       userId
     );
@@ -2102,6 +2239,15 @@ export class PatientService {
     let appointment: any = null;
 
     if (tempBooking) {
+      // Symptoms were validated at checkout; drop any deactivated/deleted since,
+      // without failing a booking that is already paid.
+      if (tempBooking.payload.clinicSymptomIds?.length) {
+        tempBooking.payload.clinicSymptomIds =
+          await ClinicSymptomService.filterBookable(
+            tempBooking.payload.clinicId,
+            tempBooking.payload.clinicSymptomIds
+          );
+      }
       // Create the appointment in the database since payment succeeded
       try {
         appointment = await AppointmentService.createAppointment(
@@ -2113,6 +2259,10 @@ export class PatientService {
             sessionIndex: tempBooking.sessionIndex ?? undefined,
             paymentStatus: 'Paid',
             paymentNotes: `Paid via Razorpay. Ref: ${paymentId}`,
+            bookingSource:
+              (tempBooking.payload as any)?.bookingSource ||
+              tempBooking.deducedBookingSource ||
+              'mobile_app',
           },
           tempBooking.userId
         );
@@ -2127,16 +2277,6 @@ export class PatientService {
 
         // Save mapping in Redis (TTL: 1 hour) to handle duplicate calls/webhooks gracefully
         await redisClient.setex(tempBookingMappedKey, 3600, appointment.id);
-
-        // Fetch payment record ID
-        const [paymentRecord] = await database
-          .select({
-            id: AppointmentPaymentModel.id,
-            price: AppointmentPaymentModel.price,
-          })
-          .from(AppointmentPaymentModel)
-          .where(eq(AppointmentPaymentModel.appointmentId, appointment.id))
-          .limit(1);
 
         // Update the payment record with Razorpay gatewayOrderId, transactionId, and split details
         const updateData: any = {
@@ -2170,98 +2310,31 @@ export class PatientService {
           .update(AppointmentPaymentModel)
           .set(updateData)
           .where(eq(AppointmentPaymentModel.appointmentId, appointment.id));
-
-        // Insert ledger entries
-        if (paymentRecord) {
-          const split = tempBooking.splitDetails;
-          const priceVal =
-            split && split.totalCheckoutPrice
-              ? parseFloat(String(split.totalCheckoutPrice))
-              : parseFloat(paymentRecord.price || '0');
-          const commVal = split
-            ? parseFloat(split.platformCommission || '0')
-            : 0;
-          const gstVal = split ? parseFloat(split.gstAmount || '0') : 0;
-          const pgVal = split ? parseFloat(split.pgFee || '0') : 0;
-          const convVal = split
-            ? parseFloat(split.platformFee ?? split.convenienceFee ?? '0')
-            : 0;
-          const txVal = split ? parseFloat(split.clinicShareAmount || '0') : 0;
-
-          const ledgerValues: any[] = [
+        // The Razorpay payment and its fees, keyed by its id, commit together; every confirm path records them once.
+        await database.transaction(async (t) => {
+          await AppointmentMoneySync.afterChange(
+            t,
+            appointment.id,
+            SYSTEM_ACTOR_ID,
             {
-              appointmentId: appointment.id,
-              clinicId: appointment.clinicId,
-              paymentId: paymentRecord.id,
-              entryType: 'PAYMENT_RECEIVED',
-              amount: String(priceVal),
-              description: 'Patient payment captured',
-              gatewayReferenceId: paymentId,
-            },
-          ];
-
-          if (commVal > 0) {
-            ledgerValues.push({
-              appointmentId: appointment.id,
-              clinicId: appointment.clinicId,
-              paymentId: paymentRecord.id,
-              entryType: 'PLATFORM_COMMISSION',
-              amount: String(-commVal),
-              description: 'Platform commission retained',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (gstVal > 0) {
-            ledgerValues.push({
-              appointmentId: appointment.id,
-              clinicId: appointment.clinicId,
-              paymentId: paymentRecord.id,
-              entryType: 'GST',
-              amount: String(-gstVal),
-              description: 'GST on platform commission',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (pgVal > 0) {
-            ledgerValues.push({
-              appointmentId: appointment.id,
-              clinicId: appointment.clinicId,
-              paymentId: paymentRecord.id,
-              entryType: 'PG_FEE',
-              amount: String(-pgVal),
-              description: 'Razorpay PG processing fee',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (convVal > 0) {
-            ledgerValues.push({
-              appointmentId: appointment.id,
-              clinicId: appointment.clinicId,
-              paymentId: paymentRecord.id,
-              entryType: 'CONVENIENCE_FEE',
-              amount: String(convVal),
-              description: 'PG convenience fee markup charged to patient',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (txVal > 0) {
-            ledgerValues.push({
-              appointmentId: appointment.id,
-              clinicId: appointment.clinicId,
-              paymentId: paymentRecord.id,
-              entryType: 'TRANSFER_CREATED',
-              amount: String(-txVal),
-              description: 'Routed split transfer to clinic sub-account',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          await database.insert(FinancialLedgerModel).values(ledgerValues);
-        }
+              move: {
+                kind: 'pay',
+                paymentMode: 'Online',
+                channel: 'online',
+                gatewayRef: paymentId,
+                requestId: `razorpay:pay:${paymentId}`,
+              },
+            }
+          );
+          await OnlineFeeLedger.record(t, {
+            clinicId: tempBooking.payload.clinicId,
+            patientId: tempBooking.payload.patientId,
+            doctorId: tempBooking.payload.doctorId,
+            appointmentId: appointment.id,
+            paymentId,
+            snapshot: tempBooking.splitDetails?.snapshot,
+          });
+        });
 
         // Delete the temporary booking and lock keys
         await redisClient.del(tempBookingKey);
@@ -2302,20 +2375,9 @@ export class PatientService {
             // Save mapping in Redis (TTL: 1 hour)
             await redisClient.setex(tempBookingMappedKey, 3600, appointment.id);
 
-            // Fetch payment record ID
-            const [paymentRecord] = await database
-              .select({
-                id: AppointmentPaymentModel.id,
-                price: AppointmentPaymentModel.price,
-              })
-              .from(AppointmentPaymentModel)
-              .where(eq(AppointmentPaymentModel.appointmentId, appointment.id))
-              .limit(1);
-
             // Update the payment record with Razorpay gatewayOrderId, refund marker and split details
             const updateData: any = {
               gatewayOrderId: tempBooking.gatewayOrderId || null,
-              refundNotes: 'Refund Required: Slot occupied by another booking',
             };
 
             if (tempBooking.splitDetails) {
@@ -2344,100 +2406,31 @@ export class PatientService {
               .update(AppointmentPaymentModel)
               .set(updateData)
               .where(eq(AppointmentPaymentModel.appointmentId, appointment.id));
-
-            // Insert ledger entries
-            if (paymentRecord) {
-              const split = tempBooking.splitDetails;
-              const priceVal =
-                split && split.totalCheckoutPrice
-                  ? parseFloat(String(split.totalCheckoutPrice))
-                  : parseFloat(paymentRecord.price || '0');
-              const commVal = split
-                ? parseFloat(split.platformCommission || '0')
-                : 0;
-              const gstVal = split ? parseFloat(split.gstAmount || '0') : 0;
-              const pgVal = split ? parseFloat(split.pgFee || '0') : 0;
-              const convVal = split
-                ? parseFloat(split.platformFee ?? split.convenienceFee ?? '0')
-                : 0;
-              const txVal = split
-                ? parseFloat(split.clinicShareAmount || '0')
-                : 0;
-
-              const ledgerValues: any[] = [
+            // The Razorpay payment and its fees, keyed by its id, commit together; every confirm path records them once.
+            await database.transaction(async (t) => {
+              await AppointmentMoneySync.afterChange(
+                t,
+                appointment.id,
+                SYSTEM_ACTOR_ID,
                 {
-                  appointmentId: appointment.id,
-                  clinicId: appointment.clinicId,
-                  paymentId: paymentRecord.id,
-                  entryType: 'PAYMENT_RECEIVED',
-                  amount: String(priceVal),
-                  description: 'Patient payment captured',
-                  gatewayReferenceId: paymentId,
-                },
-              ];
-
-              if (commVal > 0) {
-                ledgerValues.push({
-                  appointmentId: appointment.id,
-                  clinicId: appointment.clinicId,
-                  paymentId: paymentRecord.id,
-                  entryType: 'PLATFORM_COMMISSION',
-                  amount: String(-commVal),
-                  description: 'Platform commission retained',
-                  gatewayReferenceId: paymentId,
-                });
-              }
-
-              if (gstVal > 0) {
-                ledgerValues.push({
-                  appointmentId: appointment.id,
-                  clinicId: appointment.clinicId,
-                  paymentId: paymentRecord.id,
-                  entryType: 'GST',
-                  amount: String(-gstVal),
-                  description: 'GST on platform commission',
-                  gatewayReferenceId: paymentId,
-                });
-              }
-
-              if (pgVal > 0) {
-                ledgerValues.push({
-                  appointmentId: appointment.id,
-                  clinicId: appointment.clinicId,
-                  paymentId: paymentRecord.id,
-                  entryType: 'PG_FEE',
-                  amount: String(-pgVal),
-                  description: 'Razorpay PG processing fee',
-                  gatewayReferenceId: paymentId,
-                });
-              }
-
-              if (convVal > 0) {
-                ledgerValues.push({
-                  appointmentId: appointment.id,
-                  clinicId: appointment.clinicId,
-                  paymentId: paymentRecord.id,
-                  entryType: 'CONVENIENCE_FEE',
-                  amount: String(convVal),
-                  description: 'PG convenience fee markup charged to patient',
-                  gatewayReferenceId: paymentId,
-                });
-              }
-
-              if (txVal > 0) {
-                ledgerValues.push({
-                  appointmentId: appointment.id,
-                  clinicId: appointment.clinicId,
-                  paymentId: paymentRecord.id,
-                  entryType: 'TRANSFER_CREATED',
-                  amount: String(-txVal),
-                  description: 'Routed split transfer to clinic sub-account',
-                  gatewayReferenceId: paymentId,
-                });
-              }
-
-              await database.insert(FinancialLedgerModel).values(ledgerValues);
-            }
+                  move: {
+                    kind: 'pay',
+                    paymentMode: 'Online',
+                    channel: 'online',
+                    gatewayRef: paymentId,
+                    requestId: `razorpay:pay:${paymentId}`,
+                  },
+                }
+              );
+              await OnlineFeeLedger.record(t, {
+                clinicId: tempBooking.payload.clinicId,
+                patientId: tempBooking.payload.patientId,
+                doctorId: tempBooking.payload.doctorId,
+                appointmentId: appointment.id,
+                paymentId,
+                snapshot: tempBooking.splitDetails?.snapshot,
+              });
+            });
 
             // Log activity history for the late conflict
             await AppointmentActivityHistoryService.logActivity({
@@ -2447,7 +2440,6 @@ export class PatientService {
               newState: {
                 id: appointment.id,
                 paymentStatus: 'Paid',
-                refundNotes: 'Refund Required',
                 appointmentStatus: 'Cancelled',
               },
               remarks: `Payment received late. Slot was already occupied. Refund required (Ref: ${paymentId})`,
@@ -2536,7 +2528,6 @@ export class PatientService {
               newState: {
                 id: appointmentId,
                 paymentStatus: 'Paid',
-                refundNotes: 'Refund Required',
               },
               remarks: `Payment received late. Slot was already occupied. Refund required (Ref: ${paymentId})`,
             });
@@ -2744,6 +2735,13 @@ export class PatientService {
           updatedAt: new Date(),
         })
         .where(eq(AppointmentPaymentModel.appointmentId, appointmentId));
+      // Payment failed: the bill is recorded, no money moved.
+      await AppointmentMoneySync.afterChange(
+        tx,
+        appointmentId,
+        performedByUserId,
+        { chargesOnly: true }
+      );
 
       // Log CANCELLED activity
       await AppointmentActivityHistoryService.logActivity({
@@ -2934,6 +2932,10 @@ export class PatientService {
       );
     }
 
+    if (query.doctorId) {
+      filters.push(eq(AppointmentModel.doctorId, query.doctorId));
+    }
+
     if (query.startDate) {
       const start = new Date(`${query.startDate}T00:00:00.000Z`);
       filters.push(gte(AppointmentModel.appointmentDate, start));
@@ -2943,38 +2945,25 @@ export class PatientService {
       filters.push(lte(AppointmentModel.appointmentDate, end));
     }
 
-    if (query.upcomingOnly) {
-      const now = new Date();
-      const istDateParts = now
-        .toLocaleDateString('en-GB', {
-          timeZone: 'Asia/Kolkata',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        })
-        .split('/'); // [dd, mm, yyyy]
-      const istTodayYMD = `${istDateParts[2]}-${istDateParts[1]}-${istDateParts[0]}`;
-
-      filters.push(
-        sql`CAST(${AppointmentModel.appointmentDate} AS date) >= CAST(${istTodayYMD} AS date)`
-      );
+    if (query.upcomingOnly && query.pastOnly) {
+      throw new HttpError(400, 'Use either upcomingOnly or pastOnly, not both');
     }
 
-    if (query.pastOnly) {
-      const now = new Date();
-      const istDateParts = now
-        .toLocaleDateString('en-GB', {
-          timeZone: 'Asia/Kolkata',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        })
-        .split('/'); // [dd, mm, yyyy]
-      const istTodayYMD = `${istDateParts[2]}-${istDateParts[1]}-${istDateParts[0]}`;
-
+    // Upcoming and past split every appointment: a finished visit today is past, not upcoming.
+    // Stored dates are the IST day at UTC midnight, so a plain compare matches and uses the date index.
+    const istToday = toStoredAppointmentDate(new Date());
+    const closed = inArray(
+      AppointmentModel.appointmentStatus,
+      PatientService.CLOSED_APPOINTMENT_STATUSES
+    );
+    if (query.upcomingOnly) {
       filters.push(
-        sql`CAST(${AppointmentModel.appointmentDate} AS date) < CAST(${istTodayYMD} AS date)`
+        gte(AppointmentModel.appointmentDate, istToday),
+        not(closed)
       );
+    }
+    if (query.pastOnly) {
+      filters.push(or(lt(AppointmentModel.appointmentDate, istToday), closed)!);
     }
 
     const sortOrder = query.sortOrder || 'desc';
@@ -2993,10 +2982,12 @@ export class PatientService {
           ? asc(AppointmentModel.appointmentDate)
           : desc(AppointmentModel.appointmentDate)
       );
+      // Token visits carry a placeholder time, so shift and token number order them within a day.
+      const dir = sortOrder === 'asc' ? asc : desc;
       orderClauses.push(
-        sortOrder === 'asc'
-          ? asc(AppointmentModel.appointmentTime)
-          : desc(AppointmentModel.appointmentTime)
+        dir(AppointmentModel.sessionIndex),
+        dir(AppointmentModel.tokenNo),
+        dir(AppointmentModel.appointmentTime)
       );
     }
 
@@ -3010,6 +3001,7 @@ export class PatientService {
         dayEndTime: ClinicAvailability.endTime,
         tokenNo: AppointmentModel.tokenNo,
         appointmentStatus: AppointmentModel.appointmentStatus,
+        clinicServiceId: AppointmentModel.clinicServiceId,
         createdAt: AppointmentModel.createdAt,
         patient: {
           id: UserModel.id,
@@ -3021,9 +3013,8 @@ export class PatientService {
         doctor: {
           id: sql<string>`doctor_user.id`,
           name: sql<string>`doctor_user.name`,
-          speciality: sql<
-            string | null
-          >`(SELECT speciality FROM user_professionals WHERE user_id = doctor_user.id LIMIT 1)`,
+          speciality: UserProfessionalModel.speciality,
+          yearsOfExperience: UserProfessionalModel.yearsOfExperience,
           profileImage: sql<
             string | null
           >`(SELECT profile_image FROM user_profiles WHERE user_id = doctor_user.id LIMIT 1)`,
@@ -3052,6 +3043,10 @@ export class PatientService {
       .innerJoin(
         sql`${UserModel} as doctor_user`,
         eq(sql`doctor_user.id`, AppointmentModel.doctorId)
+      )
+      .leftJoin(
+        UserProfessionalModel,
+        eq(UserProfessionalModel.userId, sql`doctor_user.id`)
       )
       .leftJoin(
         AppointmentPaymentModel,
@@ -3140,14 +3135,14 @@ export class PatientService {
         }
       }
 
-      // 3️⃣ Call AppointmentService.getAppointment by passing an authorized user block to bypass role check
+      // 3️⃣ Call AppointmentService.getAppointmentDetails by passing an authorized user block to bypass role check
       const requestingUser = {
         id: userId,
         userType: 'Admin', // Use Admin role to bypass doctor/receptionist ownership checks
         clinicId: appointment.clinicId,
       };
 
-      const details = await AppointmentService.getAppointment(
+      const details = await AppointmentService.getAppointmentDetails(
         resolvedId,
         requestingUser
       );
@@ -3207,8 +3202,7 @@ export class PatientService {
               clinicInfo.onlineBookingEnabledAssign === true &&
               clinicInfo.onlineBookingEnabledSettings === true,
             maxAdvanceBookingDays: clinicInfo.maxAdvanceBookingDays ?? 7,
-            payOnlineEnabled: clinicInfo.payOnlineEnabled === true,
-            payAtClinicEnabled: clinicInfo.payAtClinicEnabled === true,
+            ...bookingPaymentOptions(clinicInfo),
             showClinicNumber: clinicInfo.showClinicNumber !== false,
           }
         : null;
@@ -3217,10 +3211,10 @@ export class PatientService {
       const labReportsList = await database
         .select({
           id: LabOrderModel.id,
-          uniqueTestId: LabOrderModel.uniqueTestId,
+          uniqueTestId: sql<string | null>`null`,
           reportStatus: LabOrderModel.reportStatus,
-          paymentStatus: LabOrderModel.paymentStatus,
-          price: LabOrderModel.price,
+          paymentStatus: labOrderPaymentColumns.paymentStatus,
+          price: labOrderPaymentColumns.price,
           reportPdf: LabOrderModel.reportPdf,
           workflowStatus: LabOrderModel.workflowStatus,
           sampleStatus: LabOrderModel.sampleStatus,
@@ -3352,6 +3346,14 @@ export class PatientService {
 
       return {
         ...details,
+        // Fetched as Admin for scope, so the patient's copy is filtered as the Patient role here.
+        reportCard: details.reportCard && {
+          ...details.reportCard,
+          additionalInformation: ExaminationService.notesFor(
+            details.reportCard.additionalInformation,
+            'Patient'
+          ),
+        },
         clinic,
         labReports: mappedReports,
         primaryPatient,
@@ -3493,11 +3495,35 @@ export class PatientService {
             clinicInfo.onlineBookingEnabledAssign === true &&
             clinicInfo.onlineBookingEnabledSettings === true,
           maxAdvanceBookingDays: clinicInfo.maxAdvanceBookingDays ?? 7,
-          payOnlineEnabled: clinicInfo.payOnlineEnabled === true,
-          payAtClinicEnabled: clinicInfo.payAtClinicEnabled === true,
+          ...bookingPaymentOptions(clinicInfo),
           showClinicNumber: clinicInfo.showClinicNumber !== false,
         }
       : null;
+
+    // Resolve symptom ids to the same {id,name,description,status} shape the
+    // confirmed-appointment path returns under `symptoms`.
+    const pendingSymptomIds = tempBooking.payload.clinicSymptomIds;
+    const symptoms =
+      Array.isArray(pendingSymptomIds) &&
+      pendingSymptomIds.length > 0 &&
+      tempBooking.payload.clinicId
+        ? await database
+            .select({
+              id: ClinicSymptomModel.id,
+              name: ClinicSymptomModel.name,
+              description: ClinicSymptomModel.description,
+              status: ClinicSymptomModel.status,
+            })
+            .from(ClinicSymptomModel)
+            .where(
+              and(
+                inArray(ClinicSymptomModel.id, pendingSymptomIds),
+                eq(ClinicSymptomModel.clinicId, tempBooking.payload.clinicId),
+                eq(ClinicSymptomModel.status, 'Active'),
+                eq(ClinicSymptomModel.isDeleted, false)
+              )
+            )
+        : [];
 
     // Fetch primary user info if this patient is linked as a family member
     const [primaryLink] = await database
@@ -3556,16 +3582,13 @@ export class PatientService {
           ? String(tempBooking.splitDetails.gstAmount)
           : null,
         paymentNotes: tempBooking.payload.paymentNotes,
-        refundMode: null,
-        refundedAmount: null,
-        refundNotes: null,
         transactionId: null,
         gatewayOrderId: tempBooking.gatewayOrderId,
         gatewayResponse: null,
         consentNotes: null,
         consentFile: null,
         commonSymptoms: null,
-        clinicSymptomIds: null,
+        clinicSymptomIds: tempBooking.payload.clinicSymptomIds ?? null,
         bookingSource: tempBooking.deducedBookingSource || 'Mobile',
       },
       doctor: doctorInfo
@@ -3579,6 +3602,7 @@ export class PatientService {
           }
         : null,
       clinic,
+      symptoms,
       primaryPatient,
     };
   }
@@ -3837,15 +3861,14 @@ export class PatientService {
         )
       );
 
-    return doctorsList.map((item: any) => {
+    const doctors = doctorsList.map((item: any) => {
       const mappedClinic = {
         ...item.clinic,
         onlineBookingEnabled:
           item.clinic.onlineBookingEnabledAssign === true &&
           item.clinic.onlineBookingEnabledSettings === true,
         maxAdvanceBookingDays: item.clinic.maxAdvanceBookingDays ?? 7,
-        payOnlineEnabled: item.clinic.payOnlineEnabled === true,
-        payAtClinicEnabled: item.clinic.payAtClinicEnabled === true,
+        ...bookingPaymentOptions(item.clinic),
         showClinicNumber: item.clinic.showClinicNumber !== false,
       };
       delete mappedClinic.onlineBookingEnabledAssign;
@@ -3856,6 +3879,7 @@ export class PatientService {
         clinic: mappedClinic,
       };
     });
+    return withAppointmentCounts(userId, doctors, (item) => item.id);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -3907,10 +3931,10 @@ export class PatientService {
     const labReportsList = await database
       .select({
         id: LabOrderModel.id,
-        uniqueTestId: LabOrderModel.uniqueTestId,
+        uniqueTestId: sql<string | null>`null`,
         reportStatus: LabOrderModel.reportStatus,
-        paymentStatus: LabOrderModel.paymentStatus,
-        price: LabOrderModel.price,
+        paymentStatus: labOrderPaymentColumns.paymentStatus,
+        price: labOrderPaymentColumns.price,
         reportPdf: LabOrderModel.reportPdf,
         workflowStatus: LabOrderModel.workflowStatus,
         sampleStatus: LabOrderModel.sampleStatus,
@@ -4078,7 +4102,7 @@ export class PatientService {
       // 1. Fetch the lab order record
       const [order] = await trx
         .select({
-          order: LabOrderModel,
+          order: labOrderWithPaymentColumns,
           testName: TestCatalogModel.name,
         })
         .from(LabOrderModel)
@@ -4138,11 +4162,19 @@ export class PatientService {
           reportPdf: reportFileUrl,
           reportStatus: 'Completed',
           workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.COMPLETED,
-          isExternalLabReport: true, // Mark it as an external report uploaded by the patient
           updatedAt: now,
         })
         .where(eq(LabOrderModel.id, appointmentTestId))
         .returning();
+
+      const payment = await getLabOrderPayment(trx, appointmentTestId);
+      const updatedOrderWithPayment = {
+        ...updatedOrder,
+        price: payment?.price ?? null,
+        paymentStatus: payment?.paymentStatus ?? 'pending',
+        paymentMode: payment?.paymentMode ?? null,
+        paymentNotes: payment?.paymentNotes ?? null,
+      };
 
       // 4. Delete old report PDF from S3 if it changed
       if (oldPdfUrl && oldPdfUrl !== reportFileUrl) {
@@ -4157,7 +4189,7 @@ export class PatientService {
         action: 'TEST_REPORT_UPLOADED',
         performedBy: userId,
         previousState: order.order,
-        newState: updatedOrder,
+        newState: updatedOrderWithPayment,
         remarks: `${order.testName} - report uploaded by patient`,
         tx: trx,
       });
@@ -4174,7 +4206,7 @@ export class PatientService {
         .limit(1);
 
       return {
-        updatedOrder,
+        updatedOrder: updatedOrderWithPayment,
         patientUser,
         orderClinicId,
         orderPatientId,

@@ -30,10 +30,14 @@ export function formatDoctorName(name: string | null | undefined): string {
  * unassigned appointment must still send, falling back to a generic phrase.
  */
 export interface NotificationContext extends AppointmentParticipants {
+  clinicId: string | null;
   patientMobile: string | null;
   clinicName: string | null;
   smsEnabled: boolean;
   whatsappEnabled: boolean;
+  appointmentDate: Date;
+  appointmentTime: string | null;
+  tokenNo: number | null;
 }
 
 /**
@@ -50,6 +54,10 @@ export async function getNotificationContext(
   const [row] = await database
     .select({
       patientId: AppointmentModel.patientId,
+      clinicId: AppointmentModel.clinicId,
+      appointmentDate: AppointmentModel.appointmentDate,
+      appointmentTime: AppointmentModel.appointmentTime,
+      tokenNo: AppointmentModel.tokenNo,
       doctorName: doctor.name,
       patientName: patient.name,
       patientMobile: patient.mobile,
@@ -77,10 +85,14 @@ export async function getNotificationContext(
   return {
     doctorName: formatDoctorName(row.doctorName),
     patientName: row.patientName?.trim() || PATIENT_NAME_FALLBACK,
+    clinicId: row.clinicId,
     patientMobile,
     clinicName: row.clinicName,
     smsEnabled: row.smsEnabled ?? false,
     whatsappEnabled: row.whatsappEnabled ?? false,
+    appointmentDate: row.appointmentDate,
+    appointmentTime: row.appointmentTime,
+    tokenNo: row.tokenNo,
   };
 }
 

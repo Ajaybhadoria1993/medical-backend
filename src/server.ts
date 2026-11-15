@@ -7,6 +7,15 @@ import {
 import logger from './utils/logger';
 import { initCronJobs } from './cron';
 
+// Node 22 exits on any unhandled rejection; one dropped outside connection
+// (e.g. the remote medicine DB resetting a socket) must not take the API down.
+process.on('unhandledRejection', (reason) => {
+  logger.error(
+    '[Process] Unhandled promise rejection (server kept running):',
+    reason
+  );
+});
+
 async function startServer() {
   try {
     const appInstance = await serverStarter();

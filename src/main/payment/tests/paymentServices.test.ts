@@ -1,6 +1,5 @@
 import { PaymentProviderResolver } from '../services/paymentProviderResolver';
 import { PaymentService } from '../services/payment.service';
-import { ReconciliationAuditor } from '../services/reconciliationAuditor.service';
 import { database } from '../../../configurations/dbConnection';
 import { PaymentStrategyFactory } from '../factory/paymentStrategy.factory';
 import { ConfigurationResolver } from '../engine/configurationResolver';
@@ -54,9 +53,9 @@ describe('Payment Services & Components Unit Tests', () => {
       const result = await PaymentProviderResolver.resolve(
         'SUBSCRIPTION_UPGRADE',
         'clinic_1',
-        'cashfree'
+        'testpay'
       );
-      expect(result.provider).toBe('cashfree');
+      expect(result.provider).toBe('testpay');
       expect(result.routeAccountId).toBeUndefined();
     });
 
@@ -65,8 +64,8 @@ describe('Payment Services & Components Unit Tests', () => {
         createSelectChain([
           {
             clinicId: 'clinic_1',
-            paymentProvider: 'cashfree',
-            gatewayAccountId: 'cf_sub_vendor_99',
+            paymentProvider: 'testpay',
+            gatewayAccountId: 'sub_vendor_99',
             routeStatus: 'ACTIVE',
           },
         ])
@@ -75,10 +74,10 @@ describe('Payment Services & Components Unit Tests', () => {
       const result = await PaymentProviderResolver.resolve(
         'APPOINTMENT',
         'clinic_1',
-        'cashfree'
+        'testpay'
       );
-      expect(result.provider).toBe('cashfree');
-      expect(result.routeAccountId).toBe('cf_sub_vendor_99');
+      expect(result.provider).toBe('testpay');
+      expect(result.routeAccountId).toBe('sub_vendor_99');
     });
 
     it('should bypass Razorpay Route split and return routeAccountId as undefined when ENABLE_RAZORPAY_ROUTE is false', async () => {
@@ -136,68 +135,6 @@ describe('Payment Services & Components Unit Tests', () => {
     });
   });
 
-  describe('ReconciliationAuditor', () => {
-    it('should detect transfer split discrepancies when settled amount differs from recorded transfer amount', async () => {
-      (database.select as jest.Mock).mockReturnValue(
-        createSelectChain([
-          {
-            id: 'tx_123',
-            gatewayOrderId: 'order_rzp_100',
-            transferredAmount: '450.00',
-          },
-        ])
-      );
-      (database.update as jest.Mock).mockReturnValue(createUpdateChain());
-
-      const report = [
-        {
-          gatewayOrderId: 'order_rzp_100',
-          gatewayPaymentId: 'pay_100',
-          gatewayName: 'razorpay',
-          amountCaptured: 500,
-          paymentGatewayFee: 10,
-          transferredAmount: 400, // Discrepancy! Expected 450
-          settlementStatus: 'SETTLED' as const,
-        },
-      ];
-
-      const auditResult = await ReconciliationAuditor.auditTransactions(report);
-      expect(auditResult.audited).toBe(1);
-      expect(auditResult.discrepancies).toBe(1);
-      expect(database.update).toHaveBeenCalled();
-    });
-
-    it('should pass cleanly when settled transfers match local database records', async () => {
-      (database.select as jest.Mock).mockReturnValue(
-        createSelectChain([
-          {
-            id: 'tx_123',
-            gatewayOrderId: 'order_rzp_100',
-            transferredAmount: '450.00',
-          },
-        ])
-      );
-      (database.update as jest.Mock).mockReturnValue(createUpdateChain());
-
-      const report = [
-        {
-          gatewayOrderId: 'order_rzp_100',
-          gatewayPaymentId: 'pay_100',
-          gatewayName: 'razorpay',
-          amountCaptured: 500,
-          paymentGatewayFee: 10,
-          transferredAmount: 450, // Matches perfectly
-          settlementStatus: 'SETTLED' as const,
-        },
-      ];
-
-      const auditResult = await ReconciliationAuditor.auditTransactions(report);
-      expect(auditResult.audited).toBe(1);
-      expect(auditResult.discrepancies).toBe(0);
-      expect(database.update).not.toHaveBeenCalled();
-    });
-  });
-
   describe('PaymentService', () => {
     it('should orchestrate createCheckoutSession: dynamic splits + payment intent + strategy order creation', async () => {
       (ConfigurationResolver.getMergedConfigs as jest.Mock).mockResolvedValue([
@@ -210,10 +147,6 @@ describe('Payment Services & Components Unit Tests', () => {
           rateOrAmount: 2,
           taxRate: 18,
           taxTreatment: 'TAX_EXCLUSIVE',
-          feePayer: 'PATIENT',
-          feeRecipient: 'PLATFORM',
-          deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
-          applicationLevel: 'APPOINTMENT_LEVEL',
           priority: 1,
           effectiveFrom: new Date('2020-01-01'),
           effectiveTo: null,

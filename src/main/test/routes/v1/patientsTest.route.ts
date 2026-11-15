@@ -18,7 +18,7 @@ import {
   requireAdmin,
   requireClinic,
 } from '../../../../middlewear/auth.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 
 const testRouter = Router();
 

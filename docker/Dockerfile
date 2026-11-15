@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:22-slim AS builder
+FROM node:26-slim AS builder
 WORKDIR /app
 
 # Use cache mount for npm to speed up installs even when package.json changes
@@ -19,12 +19,15 @@ ENV HUSKY=0 \
 
 # Install minimal system deps required by @sparticuz/chromium
 # (much lighter than full chromium — no X11, no dbus needed)
+# Liberation (Arial on Linux) has no ₹, so DejaVu and Noto are installed for PDFs to print it, not a box.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     apt-get update --fix-missing && apt-get install -y \
     ca-certificates \
     fonts-liberation \
+    fonts-dejavu-core \
+    fonts-noto-core \
     fonts-noto-color-emoji \
     libatk1.0-0 \
     libatk-bridge2.0-0 \

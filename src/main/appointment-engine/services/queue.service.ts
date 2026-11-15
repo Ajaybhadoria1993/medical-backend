@@ -227,7 +227,9 @@ export class QueueService {
    */
   static async skip(
     clinicId: string,
-    appointmentId: string
+    appointmentId: string,
+    actorType: string = 'Receptionist',
+    performedBy?: string
   ): Promise<DoctorQueueBoard> {
     const appointment = await QueueService.loadForAction(
       clinicId,
@@ -269,7 +271,10 @@ export class QueueService {
 
     // Advance only into an empty room: promoting while a consultation runs
     // would end it from the front desk. Busy means skip is exactly a hold.
-    if (nextUp && !parked.currentPatient) {
+    // Advancing confirms the next patient, so a doctor or admin may only do it on their own queue.
+    const mayAdvance =
+      !['Doctor', 'Admin'].includes(actorType) || performedBy === doctorId;
+    if (nextUp && !parked.currentPatient && mayAdvance) {
       await QueueService.putInRoom(
         clinicId,
         doctorId,
@@ -408,6 +413,15 @@ export class QueueService {
       doctorId,
       date,
       startedAt.toISOString()
+    );
+    // Dynamic: the notification module's import chain would load the realtime
+    // bus into this engine module.
+    void import('../../notifications/services/appointmentNotification.service').then(
+      ({ AppointmentNotificationService }) =>
+        AppointmentNotificationService.sendPatientWhatsApp(
+          appointmentId,
+          'consultationStarted'
+        )
     );
 
     // Taking a patient in *is* the doctor confirming them, so the status

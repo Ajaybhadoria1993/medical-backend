@@ -12,12 +12,12 @@ export const emailVerifyHtml = (
   verifyUrl: string,
   clinic?: ClinicRow
 ) => {
-  const clinicName = clinic?.clinicName ?? 'Medisetu';
+  const clinicName = clinic?.clinicName ?? 'MediArogya';
   const displayName = name.trim() || 'there';
 
   return renderEmailLayout({
     title: 'Verify Your Email',
-    preview: 'Confirm your email address for Infinity Medisetu.',
+    preview: 'Confirm your email address for MediArogya.',
     greeting: `Hi, ${displayName} 👋`,
     headline: `Welcome to ${clinicName}!`,
     message: 'Please confirm your email address by clicking the button below.',
@@ -42,7 +42,7 @@ export const emailGenratePasswordHtml = (
 
   return renderEmailLayout({
     title: 'Your Account Password',
-    preview: 'Your Infinity Medisetu account credentials are ready.',
+    preview: 'Your MediArogya account credentials are ready.',
     greeting: `Hi, ${displayName} 👋`,
     headline: 'Your account has been created successfully.',
     message: 'Use the credentials below to log in.',
@@ -81,7 +81,7 @@ export const generateResetPasswordEmail = (
 
   return renderEmailLayout({
     title: 'Reset Your Password',
-    preview: 'Reset your Infinity Medisetu password.',
+    preview: 'Reset your MediArogya password.',
     greeting: `Hi, ${displayName} 👋`,
     headline: 'Reset your password securely.',
     message:
@@ -107,7 +107,7 @@ export const passwordSetupEmailTemplate = (
 
   return renderEmailLayout({
     title: 'Set Your Password',
-    preview: 'Set your Infinity Medisetu account password.',
+    preview: 'Set your MediArogya account password.',
     greeting: `Hi, ${displayName} 👋`,
     headline: `Welcome to ${clinicName}!`,
     message:

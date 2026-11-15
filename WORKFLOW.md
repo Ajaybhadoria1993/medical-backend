@@ -177,6 +177,9 @@ Full lists live in the playbooks; these are the ones that cost time repeatedly.
 - No `src/` path alias exists — imports are relative.
 
 **Backend**
+- `loadRoutes` mounts a feature's route files via `Promise.all`, so their order is **not** fixed. A
+  `/:id` route in `{feature}.route.ts` can catch `/{feature}/settings` meant for `settings.route.ts`;
+  guard it with `router.param('id', …)` calling `next('router')` for a non-id (treatmentPlan does).
 - Every tenant-scoped query filters by `req.clinicId`/`req.labId` **from the
   token**. A missing filter leaks one clinic's patient data to another.
 - Success goes through `sendOk`/`sendCreated`/`sendNoContent`; errors are
@@ -230,6 +233,14 @@ Full lists live in the playbooks; these are the ones that cost time repeatedly.
   `word_similarity()` and `gin_trgm_ops` then fail with `42883` — run `CREATE EXTENSION IF NOT EXISTS pg_trgm` on dev.
 - The limits overview counts doctors, staff, labs and pharmacies, and is cached twice (Redis 120s, FE never expires). A write
   changing one must call `LimitationService.invalidateClinicCache` after commit and invalidate FE `Limitations`, or counts go stale.
+- `GET /appointments/:appointmentId` matches any one-segment path under `/appointments`, so another `appointments` route file
+  mounted at `/appointments/x` must expose two segments (`/follow-ups/due`), or the appointment route may answer it.
+- `AppointmentActivityHistoryService.logActivity` catches and only logs insert errors. Fine for side logs; a write the user is
+  told succeeded (a follow-up call) inserts directly so a failure reaches them.
+- Two `export interface X` in one file merge silently, so a second `PlanCall` broke callers of the first with a missing-field error.
+  Grep the name in `types/` before adding a type.
+- A query comparing an enum column with a value the DB doesn't have yet fails `22P02` (surfaced as 404 "Failed query"). Run the
+  migration before testing code that adds enum values.
 
 **Both**
 - Every comment ≤2 lines, JSDoc included. Comments explain **why**, not what.
@@ -243,6 +254,9 @@ Full lists live in the playbooks; these are the ones that cost time repeatedly.
 - `git mv` from PowerShell failed with "The system cannot find the path specified" (2026-09-15); the same command in Bash worked.
 - `src/main/patient/tests/patient.service.test.ts` did not finish in 6m40s (2026-09-14) and left
   6 Jest node processes running. Don't run it as a gate; if you must, stop the leftover `jest` processes.
+- IDE diagnostics on a file VS Code has not opened return `[]`, the same as a clean file (2026-10-12).
+  A new file's types are proven only by `typecheck:watch` or the pre-commit build: a BE `Array.at()`
+  (ES2022 lib; BE targets ES2020) passed "no diagnostics" and failed the commit hook.
 - Measured timings: FE `tsc -b` 2m41s cold / 2m08s warm, `typecheck:watch` 22s.
   BE typecheck 1m45s cold / 4s warm. Re-measure before quoting these as fact.
 
@@ -315,6 +329,15 @@ their correction is the highest-value input this file gets.
 
 Newest first. One line per rule change, with what triggered it. Append here
 whenever §7 fires — this is what makes the file's growth visible.
+
+**2026-10-16** — §6 backend traps: one-segment paths under `/appointments`, `logActivity` swallowing errors, merged
+duplicate interfaces, and `22P02` before an enum migration. *Trigger:* building the reception Follow-ups list.
+
+**2026-10-12** — §6 backend trap: route files mount in no fixed order. *Trigger:* the treatment-plan
+`/:planId` router could catch `/treatment-plan/settings` depending on which dynamic import finished first.
+
+**2026-10-12** — §6 machine fact: IDE diagnostics return `[]` for unopened files. *Trigger:* a treatment-plan
+util used `Array.at()`; "no diagnostics" was reported, and the husky build failed the commit.
 
 **2026-09-16** — §6 backend trap: doctor rooms are fixed at connect. *Trigger:* a newly added doctor saw "All reception (0 online)"
 while two receptionists were logged in, because they had connected before the doctor existed.

@@ -18,6 +18,8 @@ const redisClient = new Redis({
   host: envConfig.REDIS_HOST,
   port: envConfig.REDIS_PORT,
   password: envConfig.REDIS_PASSWORD,
+  username: envConfig.REDIS_USERNAME,
+  tls: envConfig.REDIS_TLS,
   maxRetriesPerRequest: null,
   commandTimeout: 2000,
   retryStrategy: (times) => Math.min(times * 200, 5000),

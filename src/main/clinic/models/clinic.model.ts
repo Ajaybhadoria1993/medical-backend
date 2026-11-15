@@ -7,8 +7,11 @@ import {
   text,
   integer,
   uniqueIndex,
+  index,
   doublePrecision,
+  pgSequence,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { UserModel } from '../../users/models/user.model';
 import { numeric } from 'drizzle-orm/pg-core';
 import { pgEnum } from 'drizzle-orm/pg-core';
@@ -26,6 +29,9 @@ export const clinicOnboardingStatusEnum = pgEnum('clinic_onboarding_status', [
   'IN_PROGRESS',
   'COMPLETED',
 ]);
+
+// Feeds clinicCode; the DB hands out numbers so simultaneous sign-ups can't collide.
+export const clinicCodeSeq = pgSequence('clinic_code_seq');
 
 // permission types (string identifiers)
 export const ClinicModel = pgTable(
@@ -62,10 +68,35 @@ export const ClinicModel = pgTable(
     deletedAt: timestamp('deleted_at'),
     deletedBy: uuid('deleted_by').references(() => UserModel.id),
     deleteReason: varchar('delete_reason', { length: 500 }),
+    // Human-facing ID (MED-000128) for search and support; clinic names aren't unique.
+    clinicCode: varchar('clinic_code', { length: 16 })
+      .default(sql`'MED-' || lpad(nextval('clinic_code_seq')::text, 6, '0')`)
+      .notNull(),
+    // Free text checked by Zod, so adding a source needs no migration.
+    acquisitionSource: varchar('acquisition_source', { length: 32 })
+      .default('Unknown')
+      .notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow(),
   },
-  (table) => [uniqueIndex('user_unique').on(table.userId)]
+  (table) => [
+    uniqueIndex('user_unique').on(table.userId),
+    uniqueIndex('clinics_clinic_code_unique').on(table.clinicCode),
+    // Trigram GIN: lets the Super Admin clinic search's ILIKE '%q%' skip a table scan. Needs pg_trgm.
+    index('ix_clinics_name_trgm').using(
+      'gin',
+      table.clinicName.op('gin_trgm_ops')
+    ),
+    index('ix_clinics_code_trgm').using(
+      'gin',
+      table.clinicCode.op('gin_trgm_ops')
+    ),
+    index('ix_clinics_phone_trgm').using(
+      'gin',
+      table.clinicPhone.op('gin_trgm_ops')
+    ),
+    index('ix_clinics_city_trgm').using('gin', table.City.op('gin_trgm_ops')),
+  ]
 );
 
 export const ClinicServiceModel = pgTable(

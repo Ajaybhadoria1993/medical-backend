@@ -5,62 +5,39 @@ import {
   requireClinic,
   requireSuperAdmin,
 } from '../../../../middlewear/auth.middleware';
+import { requireBillingAdmin } from '../../middlewares/billingAdmin.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
-  cancelClinicSubscription,
   checkPlanDowngrade,
-  createPlan,
-  deletePlan,
   downloadInvoicePdf,
   getBillingHistory,
   getSubscriptionActivity,
   getClinicSubscription,
   getPlans,
-  initialSubscribeClinic,
-  manageFeatures,
-  razorpayWebhookController,
+  getAllPlans,
   reportPaymentFailed,
   retrySubscriptionPayment,
   schedulePlanDowngrade,
   scheduleSubscriptionCancellation,
   subscribeClinic,
-  subscribeWithAutoPay,
   undoScheduledPlanChange,
   undoSubscriptionCancellation,
   updatePlan,
   verifyAndSubscribe,
+  razorpayWebhookController,
 } from '../../controllers/subscription.controller';
 import {
-  cancelSubscribeSchema,
   checkPlanDowngradeSchema,
-  createPlanSchema,
-  initialSubscribeSchema,
-  manageFeaturesBodySchema,
-  manageFeaturesParamsSchema,
   planIdParamsSchema,
   reportPaymentFailedSchema,
   schedulePlanDowngradeSchema,
   subscribeClinicSchema,
-  subscribeWithAutoPaySchema,
   updatePlanSchema,
   verifySubscriptionSchema,
 } from '../../schemas/subscription.schemas';
 
 const subscriptionRouter = express.Router();
-
-/**
- * @route POST /api/v1/subscription/plans
- * @desc Create a new subscription plan
- * @access Private (Super Admin)
- */
-subscriptionRouter.post(
-  '/plans',
-  requireAuth,
-  requireSuperAdmin,
-  validate(createPlanSchema, 'body'),
-  createPlan
-);
 
 /**
  * @route PATCH /api/v1/subscription/plans/:id
@@ -77,38 +54,19 @@ subscriptionRouter.patch(
 );
 
 /**
- * @route DELETE /api/v1/subscription/plans/:id
- * @desc Delete a subscription plan
- * @access Private (Super Admin)
- */
-subscriptionRouter.delete(
-  '/plans/:id',
-  requireAuth,
-  requireSuperAdmin,
-  validate(planIdParamsSchema, 'params'),
-  deletePlan
-);
-
-/**
- * @route PATCH /api/v1/subscription/manage-features/:planId
- * @desc Manage features for a plan (add, update, delete)
- * @access Private (Super Admin)
- */
-subscriptionRouter.patch(
-  '/manage-features/:planId',
-  requireAuth,
-  requireSuperAdmin,
-  validate(manageFeaturesParamsSchema, 'params'),
-  validate(manageFeaturesBodySchema, 'body'),
-  manageFeatures
-);
-
-/**
  * @route GET /api/v1/subscription/plans
  * @desc Get all available subscription plans
  * @access Public (no auth required — clinics need to browse plans)
  */
 subscriptionRouter.get('/plans', getPlans);
+
+/** @route GET /api/v1/subscription/plans/all — every plan, hidden ones included (Super Admin) */
+subscriptionRouter.get(
+  '/plans/all',
+  requireAuth,
+  requireSuperAdmin,
+  getAllPlans
+);
 
 /**
  * @route POST /api/v1/subscription/subscribe
@@ -118,28 +76,16 @@ subscriptionRouter.get('/plans', getPlans);
 subscriptionRouter.post(
   '/subscribe',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   validate(subscribeClinicSchema, 'body'),
   subscribeClinic
 );
 
-/**
- * @route POST /api/v1/subscription/subscribe-autopay
- * @desc Subscribe to a paid plan with AutoPay (pay now + auto-renew)
- * @access Private (Admin + Clinic)
- */
-subscriptionRouter.post(
-  '/subscribe-autopay',
-  requireAuth,
-  requireAdmin,
-  requireClinic,
-  validate(subscribeWithAutoPaySchema, 'body'),
-  subscribeWithAutoPay
-);
-
 subscriptionRouter.post(
   '/verify-subscription',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   validate(verifySubscriptionSchema, 'body'),
   verifyAndSubscribe
@@ -148,37 +94,10 @@ subscriptionRouter.post(
 subscriptionRouter.post(
   '/report-payment-failed',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   validate(reportPaymentFailedSchema, 'body'),
   reportPaymentFailed
-);
-
-subscriptionRouter.post(
-  '/razorpay',
-  express.raw({ type: 'application/json' }),
-  razorpayWebhookController
-);
-
-subscriptionRouter.post(
-  '/initial-subscribe',
-  requireAuth,
-  requireClinic,
-  validate(initialSubscribeSchema, 'body'),
-  initialSubscribeClinic
-);
-
-/**
- * @route PUT /api/v1/subscription/cancel/:subscriptionId
- * @desc Cancel an active clinic subscription (immediate)
- * @access Private
- */
-subscriptionRouter.put(
-  '/cancel/:subscriptionId',
-  requireAuth,
-  requireAdmin,
-  requireClinic,
-  validate(cancelSubscribeSchema, 'params'),
-  cancelClinicSubscription
 );
 
 /**
@@ -189,6 +108,7 @@ subscriptionRouter.put(
 subscriptionRouter.put(
   '/schedule-cancel',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   scheduleSubscriptionCancellation
 );
@@ -201,6 +121,7 @@ subscriptionRouter.put(
 subscriptionRouter.put(
   '/undo-cancel',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   undoSubscriptionCancellation
 );
@@ -213,7 +134,7 @@ subscriptionRouter.put(
 subscriptionRouter.post(
   '/check-downgrade',
   requireAuth,
-  requireAdmin,
+  requireBillingAdmin,
   requireClinic,
   validate(checkPlanDowngradeSchema, 'body'),
   checkPlanDowngrade
@@ -227,7 +148,7 @@ subscriptionRouter.post(
 subscriptionRouter.put(
   '/schedule-downgrade',
   requireAuth,
-  requireAdmin,
+  requireBillingAdmin,
   requireClinic,
   validate(schedulePlanDowngradeSchema, 'body'),
   schedulePlanDowngrade
@@ -241,7 +162,7 @@ subscriptionRouter.put(
 subscriptionRouter.put(
   '/undo-downgrade',
   requireAuth,
-  requireAdmin,
+  requireBillingAdmin,
   requireClinic,
   undoScheduledPlanChange
 );
@@ -254,7 +175,7 @@ subscriptionRouter.put(
 subscriptionRouter.post(
   '/payment/retry',
   requireAuth,
-  requireAdmin,
+  requireBillingAdmin,
   requireClinic,
   retrySubscriptionPayment
 );
@@ -267,6 +188,7 @@ subscriptionRouter.post(
 subscriptionRouter.get(
   '/billing-history',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   getBillingHistory
 );
@@ -279,6 +201,7 @@ subscriptionRouter.get(
 subscriptionRouter.get(
   '/invoice/:invoiceId/download',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   downloadInvoicePdf
 );
@@ -291,6 +214,7 @@ subscriptionRouter.get(
 subscriptionRouter.get(
   '/activity',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   getSubscriptionActivity
 );
@@ -308,93 +232,11 @@ subscriptionRouter.get(
   getClinicSubscription
 );
 
-// ============ RENEWAL REMINDER ROUTES ============
-
-import {
-  sendExpiryReminders,
-  sendReminderToClinic,
-} from '../../controllers/renewalReminder.controller';
-
-/**
- * @route POST /api/v1/subscription/reminders/send-expiry-reminders
- * @desc Send renewal reminders to all clinics with expiring plans (cron/admin)
- * @access Private (Super Admin)
- */
-subscriptionRouter.post(
-  '/reminders/send-expiry-reminders',
-  requireAuth,
-  requireSuperAdmin,
-  sendExpiryReminders
-);
-
-/**
- * @route POST /api/v1/subscription/reminders/send-to-clinic
- * @desc Send renewal reminder to a specific clinic
- * @access Private (Admin + Clinic)
- */
-subscriptionRouter.post(
-  '/reminders/send-to-clinic',
-  requireAuth,
-  requireAdmin,
-  requireClinic,
-  sendReminderToClinic
-);
-
-// ============ AUTO-RENEWAL ROUTES ============
-
-import {
-  enableAutoRenew,
-  disableAutoRenew,
-  getAutoRenewStatus,
-} from '../../controllers/autoRenew.controller';
-
-/**
- * @route GET /api/v1/subscription/auto-renew/status
- * @desc Get auto-renewal status for the clinic
- * @access Private (Clinic)
- */
-subscriptionRouter.get(
-  '/auto-renew/status',
-  requireAuth,
-  requireClinic,
-  getAutoRenewStatus
-);
-
-/**
- * @route POST /api/v1/subscription/auto-renew/enable
- * @desc Enable auto-renewal (creates Razorpay subscription)
- * @access Private (Clinic)
- */
-subscriptionRouter.post(
-  '/auto-renew/enable',
-  requireAuth,
-  requireAdmin,
-  requireClinic,
-  enableAutoRenew
-);
-
-/**
- * @route POST /api/v1/subscription/auto-renew/disable
- * @desc Disable auto-renewal (cancels Razorpay subscription)
- * @access Private (Clinic)
- */
-subscriptionRouter.post(
-  '/auto-renew/disable',
-  requireAuth,
-  requireAdmin,
-  requireClinic,
-  disableAutoRenew
-);
+/** @route POST /api/v1/subscription/razorpay — old webhook link, same handler as /api/v2/subscription/webhooks/razorpay
+ *  @access Razorpay (signature-checked). Kept so the Razorpay dashboard needs no change; remove once it points at v2. */
+subscriptionRouter.post('/razorpay', razorpayWebhookController);
 
 export default subscriptionRouter;
-
-docsRegistry.addEndpoint({
-  method: 'post',
-  path: '/api/v1/subscription/plans',
-  description: 'create subscriptions plan (Super Admin)',
-  requestSchema: createPlanSchema,
-  tags: ['subscriptions', 'plan', 'super-admin'],
-});
 
 docsRegistry.addEndpoint({
   method: 'patch',
@@ -406,36 +248,11 @@ docsRegistry.addEndpoint({
 });
 
 docsRegistry.addEndpoint({
-  method: 'delete',
-  path: '/api/v1/subscription/plans/:id',
-  description: 'delete a subscription plan (Super Admin)',
-  params: planIdParamsSchema,
-  tags: ['subscriptions', 'plan', 'super-admin'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'patch',
-  path: '/api/v1/subscription/manage-features/:planId',
-  description: 'Manage features (add, update, delete) for a plan (Super Admin)',
-  params: manageFeaturesParamsSchema,
-  requestSchema: manageFeaturesBodySchema,
-  tags: ['subscriptions', 'features', 'super-admin'],
-});
-
-docsRegistry.addEndpoint({
   method: 'post',
   path: '/api/v1/subscription/subscribe',
   description: 'subscribe to a plan',
   requestSchema: subscribeClinicSchema,
   tags: ['subscriptions', 'subscribe'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'put',
-  path: '/api/v1/subscription/cancel/:subscriptionId',
-  description: 'cancel subscription',
-  params: cancelSubscribeSchema,
-  tags: ['subscriptions', 'cancel'],
 });
 
 docsRegistry.addEndpoint({

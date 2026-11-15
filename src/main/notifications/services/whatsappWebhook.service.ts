@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { envConfig } from '../../../utils/envConfig';
 import logger from '../../../utils/logger';
+import { recordDeliveryStatus } from '../../credits';
 
 export class WhatsAppWebhookService {
   /**
@@ -50,9 +51,8 @@ export class WhatsAppWebhookService {
 
   /**
    * Processes delivery-status/error callbacks (sent/delivered/read/failed).
-   * Outbound-only integration: we only log `failed` statuses so they're
-   * visible instead of silently disappearing, same as the existing
-   * catch-and-log pattern in sendAppointmentNotification.
+   * Logs failures and hands every status to the credits module for cost and
+   * give-backs. Not awaited: Meta retries anything that is not a fast 200.
    */
   static processDeliveryStatusPayload(body: unknown): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,12 +62,22 @@ export class WhatsAppWebhookService {
       for (const change of changes) {
         const statuses = change?.value?.statuses ?? [];
         for (const status of statuses) {
+          if (typeof status?.id !== 'string') continue;
+
           if (status.status === 'failed') {
             const errorDetail = status.errors?.[0]?.title || 'Unknown error';
+            // No recipient_id: it is the patient's phone number (BE §11).
             logger.error(
-              `WhatsApp message ${status.id} to ${status.recipient_id} failed: ${errorDetail}`
+              `WhatsApp message ${status.id} failed: ${errorDetail}`
             );
           }
+
+          const billable = status.pricing?.billable;
+          void recordDeliveryStatus({
+            messageId: status.id,
+            status: String(status.status),
+            billable: typeof billable === 'boolean' ? billable : undefined,
+          });
         }
       }
     }

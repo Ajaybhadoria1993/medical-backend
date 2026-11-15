@@ -44,6 +44,7 @@ export const REQUIRED_SCALAR_PLACEHOLDERS = [
   '{{vitals.rbs}}',
   '{{vitals.pulse}}',
   '{{vitals.spo2}}',
+  '{{vitals.respiratoryRate}}',
   '{{vitals.temperatureC}}',
   '{{vitals.weightKg}}',
   '{{vitals.heightCm}}',
@@ -135,7 +136,7 @@ export const LOOP_REQUIREMENTS: LoopRequirement[] = [
 ] as const;
 
 export const HARD_CODED_REMOTE_IMAGE_PATTERN =
-  /<img\b[^>]*\bsrc=["']https?:\/\/(?!\{\{clinic\.logo\}\}|res\.cloudinary\.com\/ddzkedas8\/image\/upload\/v1772172278\/download_zafkmm\.png|infinitymedisetu\.com\/app\/assets\/images\/new-logo\.svg)[^"']+["'][^>]*>/i;
+  /<img\b[^>]*\bsrc=["']https?:\/\/(?!\{\{clinic\.logo\}\}|res\.cloudinary\.com\/ddzkedas8\/image\/upload\/v1772172278\/download_zafkmm\.png|infinitymedisetu\.com\/app\/assets\/images\/new-logo\.svg|infinitymedisetu\.com\/app\/assets\/images\/mediarogya-logo\.png)[^"']+["'][^>]*>/i;
 
 export const FORBIDDEN_TEMPLATE_PATTERNS = [
   {

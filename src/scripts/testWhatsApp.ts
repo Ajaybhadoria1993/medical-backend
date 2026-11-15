@@ -22,6 +22,7 @@ const SAMPLES: { [K in WhatsAppTemplateKey]: WhatsAppTemplateParams[K] } = {
     clinicName: 'Apollo Clinic',
     date: 'Thu, 23 Jul 2026',
     timeOrToken: 'Time: 10:00 AM',
+    appointmentId: '00000000-0000-0000-0000-000000000000',
   },
   appointmentReminder: {
     patientName: 'Asha Nair',
@@ -29,6 +30,27 @@ const SAMPLES: { [K in WhatsAppTemplateKey]: WhatsAppTemplateParams[K] } = {
     clinicName: 'Apollo Clinic',
     date: 'Thu, 23 Jul 2026',
     timeOrToken: 'Token No: 12',
+    appointmentId: '00000000-0000-0000-0000-000000000000',
+  },
+  appointmentCancelled: {
+    patientName: 'Asha Nair',
+    doctorName: 'Dr. Rajesh Kumar',
+    clinicName: 'Apollo Clinic',
+    date: 'Thu, 23 Jul 2026',
+    timeOrToken: 'Token No: 12',
+    appointmentId: '00000000-0000-0000-0000-000000000000',
+  },
+  consultationStarted: {
+    patientName: 'Asha Nair',
+    doctorName: 'Dr. Rajesh Kumar',
+    clinicName: 'Apollo Clinic',
+  },
+  doctorRunningLate: {
+    patientName: 'Asha Nair',
+    doctorName: 'Dr. Rajesh Kumar',
+    clinicName: 'Apollo Clinic',
+    timeOrToken: 'Token No: 12',
+    appointmentId: '00000000-0000-0000-0000-000000000000',
   },
   appointmentRescheduled: {
     patientName: 'Asha Nair',
@@ -48,6 +70,7 @@ const SAMPLES: { [K in WhatsAppTemplateKey]: WhatsAppTemplateParams[K] } = {
     patientName: 'Asha Nair',
     doctorName: 'Dr. Rajesh Kumar',
     clinicName: 'Apollo Clinic',
+    appointmentId: '00000000-0000-0000-0000-000000000000',
   },
   appointmentFollowUp: {
     patientName: 'Asha Nair',

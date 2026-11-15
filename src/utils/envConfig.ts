@@ -54,9 +54,12 @@ interface EnvConfigType {
   STAGING_AWS_BUCKET_NAME: string;
   PROD_AWS_BUCKET_NAME: string;
 
+  APP_VERSION: string;
   REDIS_HOST: string;
   REDIS_PORT: number;
   REDIS_PASSWORD?: string;
+  REDIS_USERNAME?: string;
+  REDIS_TLS?: { servername: string };
   TURNSTILE_SECRET_KEY: string;
   SUPER_ADMIN_NAME: string;
   SUPER_ADMIN_EMAIL: string;
@@ -68,6 +71,19 @@ interface EnvConfigType {
   RAZORPAY_WEBHOOK_SECRET: string;
   RAZORPAY_WEBHOOK_APP_SECRET: string;
   ENABLE_RAZORPAY_ROUTE: boolean;
+  ENABLE_ONLINE_APPOINTMENT_PAYMENTS: boolean;
+  ENABLE_SUBSCRIPTION_PAYMENTS: boolean;
+
+  INVOICE_PREFIX: string;
+  CREDIT_NOTE_PREFIX: string;
+  INVOICE_SAC_CODE: string;
+  INVOICE_SELLER_NAME: string;
+  INVOICE_SELLER_ADDRESS: string;
+  INVOICE_SELLER_CITY: string;
+  INVOICE_SELLER_STATE: string;
+  INVOICE_SELLER_STATE_CODE: string;
+  INVOICE_SELLER_POSTAL_CODE: string;
+  INVOICE_SELLER_GSTIN: string;
 
   GOOGLE_MAPS_API_KEY?: string;
   PAYMENT_LOCK_TTL_SECONDS?: number;
@@ -106,6 +122,8 @@ interface EnvConfigType {
   WHATSAPP_APP_SECRET: string;
   WHATSAPP_SENDING_ENABLED: boolean;
   WHATSAPP_FORCE_ENABLED: boolean;
+  API_DOCS_USER?: string;
+  API_DOCS_PASSWORD?: string;
   WHATSAPP_VIA_REGISTRY: ReadonlySet<string>;
   NOTIFICATIONS_INAPP_ENABLED: boolean;
   NOTIFICATIONS_REGISTRY_ENABLED: boolean;
@@ -122,6 +140,8 @@ interface EnvConfigType {
 // Create the environment configuration object
 const isProduction = process.env.NODE_ENV === 'production';
 const isStaging = process.env.NODE_ENV === 'staging';
+// REDIS_URL (redis:// or rediss:// = TLS) wins; unset falls back to REDIS_HOST/PORT/PASSWORD.
+const redisUrl = process.env.REDIS_URL ? new URL(process.env.REDIS_URL) : null;
 
 export const envConfig: EnvConfigType = {
   NODE_ENV: process.env.NODE_ENV || 'development',
@@ -215,9 +235,23 @@ export const envConfig: EnvConfigType = {
   STAGING_AWS_BUCKET_NAME: process.env.STAGING_AWS_BUCKET_NAME!,
   PROD_AWS_BUCKET_NAME: process.env.PROD_AWS_BUCKET_NAME!,
 
-  REDIS_HOST: process.env.REDIS_HOST || 'localhost',
-  REDIS_PORT: parseInt(process.env.REDIS_PORT || '6379', 10),
-  REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+  // Image tag the deploy ran (set in the compose files), stamped on server log lines.
+  APP_VERSION: process.env.APP_VERSION || 'local',
+  REDIS_HOST: redisUrl?.hostname || process.env.REDIS_HOST || 'localhost',
+  REDIS_PORT: parseInt(
+    (redisUrl ? redisUrl.port : process.env.REDIS_PORT) || '6379',
+    10
+  ),
+  REDIS_PASSWORD: redisUrl
+    ? decodeURIComponent(redisUrl.password) || undefined
+    : process.env.REDIS_PASSWORD,
+  REDIS_USERNAME: redisUrl
+    ? decodeURIComponent(redisUrl.username) || undefined
+    : undefined,
+  REDIS_TLS:
+    redisUrl?.protocol === 'rediss:'
+      ? { servername: redisUrl.hostname }
+      : undefined,
   TURNSTILE_SECRET_KEY:
     process.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA', // Default testing key
   SUPER_ADMIN_NAME: process.env.SUPER_ADMIN_NAME || 'Super Admin',
@@ -230,6 +264,22 @@ export const envConfig: EnvConfigType = {
   RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET!,
   RAZORPAY_WEBHOOK_APP_SECRET: process.env.RAZORPAY_WEBHOOK_APP_SECRET!,
   ENABLE_RAZORPAY_ROUTE: process.env.ENABLE_RAZORPAY_ROUTE === 'true',
+  ENABLE_ONLINE_APPOINTMENT_PAYMENTS:
+    process.env.ENABLE_ONLINE_APPOINTMENT_PAYMENTS === 'true',
+  ENABLE_SUBSCRIPTION_PAYMENTS:
+    process.env.ENABLE_SUBSCRIPTION_PAYMENTS === 'true',
+
+  // Placeholders until the accountant confirms; set the real values per environment.
+  INVOICE_PREFIX: process.env.INVOICE_PREFIX || 'IMS',
+  CREDIT_NOTE_PREFIX: process.env.CREDIT_NOTE_PREFIX || 'CN',
+  INVOICE_SAC_CODE: process.env.INVOICE_SAC_CODE || '998314',
+  INVOICE_SELLER_NAME: process.env.INVOICE_SELLER_NAME || 'MediArogya',
+  INVOICE_SELLER_ADDRESS: process.env.INVOICE_SELLER_ADDRESS || '',
+  INVOICE_SELLER_CITY: process.env.INVOICE_SELLER_CITY || '',
+  INVOICE_SELLER_STATE: process.env.INVOICE_SELLER_STATE || 'Madhya Pradesh',
+  INVOICE_SELLER_STATE_CODE: process.env.INVOICE_SELLER_STATE_CODE || '23',
+  INVOICE_SELLER_POSTAL_CODE: process.env.INVOICE_SELLER_POSTAL_CODE || '',
+  INVOICE_SELLER_GSTIN: process.env.INVOICE_SELLER_GSTIN || '',
 
   GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
   PAYMENT_LOCK_TTL_SECONDS: process.env.PAYMENT_LOCK_TTL_SECONDS
@@ -290,7 +340,7 @@ export const envConfig: EnvConfigType = {
   WHATSAPP_API_VERSION: process.env.WHATSAPP_API_VERSION || 'v20.0',
   WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET!,
   // Kill switch, off-by-default in staging so test data can't send real
-  // messages to real patients (see docs/WHATSAPP_META_SETUP.md).
+  // messages to real patients (see docs/notifications/WHATSAPP_META_SETUP.md).
   // WHATSAPP_SENDING_ENABLED=true|false in .env always wins if set explicitly.
   WHATSAPP_SENDING_ENABLED:
     process.env.WHATSAPP_SENDING_ENABLED !== undefined
@@ -302,6 +352,9 @@ export const envConfig: EnvConfigType = {
   // this is the escape hatch for that. Off by default: with it on, clinics that
   // deliberately disabled WhatsApp will message their patients anyway.
   WHATSAPP_FORCE_ENABLED: process.env.WHATSAPP_FORCE_ENABLED === 'true',
+  // Swagger at /api/api-docs is off unless both are set.
+  API_DOCS_USER: process.env.API_DOCS_USER,
+  API_DOCS_PASSWORD: process.env.API_DOCS_PASSWORD,
   // Template keys the registry sends instead of the legacy sender. One set
   // guards both sides, so a template is never sent twice or not at all.
   WHATSAPP_VIA_REGISTRY: new Set(

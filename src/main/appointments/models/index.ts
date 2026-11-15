@@ -15,8 +15,4 @@ export { doctorManualPrescriptionModel } from './doctorManualPrescription.model'
 export { medicalCertificateModel } from './medicalCertificate.model';
 export { patientGallery } from './patientGallery.model';
 export { doctorGallery } from './doctorGallery.model';
-export { FinancialLedgerModel } from './financialLedger.model';
-export {
-  VisitingRequestModel,
-  visitingRequestStatusEnum,
-} from './visitingRequest.model';
+export { doctorGalleryShare } from './doctorGalleryShare.model';

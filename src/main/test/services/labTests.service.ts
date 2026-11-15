@@ -30,6 +30,7 @@ import {
   updateLabTestsSchema,
 } from '../schemas/labTests.schema';
 import { LabOrderModel } from '../models/labOrder.model';
+import { labOrderPaymentColumns } from '../../lab/utils/labOrderPayment';
 import { UserModel } from '../../users/models/user.model';
 import { TestCatalogModel } from '../models/testCatalog.model';
 import {
@@ -500,7 +501,7 @@ export class labTestsService {
 
     if (query.paymentStatus) {
       baseConditions.push(
-        sql`${LabOrderModel.paymentStatus} = ${query.paymentStatus}`
+        sql`${labOrderPaymentColumns.paymentStatus} = ${query.paymentStatus}`
       );
     }
 
@@ -554,8 +555,8 @@ export class labTestsService {
       .select({
         id: LabOrderModel.id,
         reportStatus: LabOrderModel.reportStatus,
-        paymentStatus: LabOrderModel.paymentStatus,
-        price: LabOrderModel.price,
+        paymentStatus: labOrderPaymentColumns.paymentStatus,
+        price: labOrderPaymentColumns.price,
         reportPdf: LabOrderModel.reportPdf,
         createdAt: LabOrderModel.createdAt,
         patientId: UserModel.id,

@@ -1,6 +1,6 @@
-import { database } from '../../configurations/dbConnection';
+import { and, eq, isNull } from 'drizzle-orm';
 import { TestCatalogModel } from '../../main/test/models/testCatalog.model';
-import logger from '../../utils/logger';
+import { logSeed, newCounts, syncRow, tally } from './seedSync';
 
 const tests = [
   // -------- MD / General Physician --------
@@ -65,8 +65,12 @@ const tests = [
   { name: 'Bleeding Time', category: 'Blood' },
   { name: 'Clotting Time', category: 'Blood' },
   { name: 'PT INR', category: 'Blood' },
+  { name: 'APTT', category: 'Blood' },
+  { name: 'Factor VIII Assay', category: 'Blood' },
+  { name: 'Factor IX Assay', category: 'Blood' },
   { name: 'HBsAg', category: 'Serology' },
   { name: 'HIV 1 & 2', category: 'Serology' },
+  { name: 'Anti HCV', category: 'Serology' },
   { name: 'Oral Biopsy', category: 'Histopathology' },
   { name: 'FNAC Oral Lesion', category: 'Histopathology' },
 
@@ -96,6 +100,7 @@ const tests = [
   // -------- Neurology --------
   { name: 'MRI Brain', category: 'Radiology' },
   { name: 'CT Brain', category: 'Radiology' },
+  { name: 'CT Spine', category: 'Radiology' },
   { name: 'EEG', category: 'Neurology' },
   { name: 'NCV', category: 'Neurology' },
   { name: 'EMG', category: 'Neurology' },
@@ -115,25 +120,93 @@ const tests = [
   { name: 'Uroflowmetry', category: 'Urology' },
   { name: 'CT KUB', category: 'Radiology' },
   { name: 'Semen Analysis', category: 'Andrology' },
+
+  // -------- Specialty gaps (step I); names need a specialist's check --------
+  // Endocrine / Fertility
+  { name: 'Thyroid Profile (T3, T4, TSH)', category: 'Blood' },
+  { name: 'TSH', category: 'Blood' },
+  { name: 'Free T4', category: 'Blood' },
+  { name: 'Serum Cortisol', category: 'Blood' },
+  { name: 'Serum Prolactin', category: 'Blood' },
+  { name: 'PTH', category: 'Blood' },
+  { name: 'DEXA Scan', category: 'Radiology' },
+  { name: 'HSG', category: 'Radiology' },
+  // Blood
+  { name: 'Serum Ferritin', category: 'Blood' },
+  { name: 'Iron Studies', category: 'Blood' },
+  { name: 'Serum Folate', category: 'Blood' },
+  { name: 'Peripheral Smear', category: 'Blood' },
+  { name: 'Hb Electrophoresis', category: 'Blood' },
+  // Kidney / Rheum
+  { name: 'Serum Creatinine', category: 'Blood' },
+  { name: 'Blood Urea', category: 'Blood' },
+  { name: 'Serum Uric Acid', category: 'Blood' },
+  { name: 'Urine ACR', category: 'Urine' },
+  { name: 'USG KUB', category: 'Radiology' },
+  // Gyn
+  { name: 'OGTT', category: 'Blood' },
+  { name: 'NT Scan', category: 'Radiology' },
+  { name: 'Anomaly Scan', category: 'Radiology' },
+  { name: 'Growth Scan', category: 'Radiology' },
+  // Immunology
+  { name: 'ANA', category: 'Immunology' },
+  { name: 'Specific IgE Panel', category: 'Immunology' },
+  { name: 'Immunoglobulins (IgG, IgA, IgM)', category: 'Immunology' },
+  { name: 'Complement C3 / C4', category: 'Immunology' },
+  // Oncology
+  { name: 'CEA', category: 'Blood' },
+  { name: 'CA-125', category: 'Blood' },
+  { name: 'CA 19-9', category: 'Blood' },
+  { name: 'AFP', category: 'Blood' },
+  { name: 'PET-CT', category: 'Radiology' },
+  { name: 'Immunohistochemistry (IHC)', category: 'Histopathology' },
+  // Psychiatry
+  { name: 'Serum Lithium Level', category: 'Blood' },
+  { name: 'Serum Valproate Level', category: 'Blood' },
+  // Gastro / Chest
+  { name: 'FibroScan', category: 'Radiology' },
+  { name: 'Urea Breath Test (H. pylori)', category: 'Gastroenterology' },
+  { name: 'Sleep Study (Polysomnography)', category: 'Pulmonology' },
+  // Eye
+  { name: 'OCT', category: 'Ophthalmology' },
+  { name: 'Perimetry (Visual Field)', category: 'Ophthalmology' },
+  { name: 'Fundus Photography', category: 'Ophthalmology' },
+  { name: 'A-Scan Biometry', category: 'Ophthalmology' },
+  { name: 'B-Scan Ultrasound', category: 'Ophthalmology' },
+  { name: 'Corneal Topography', category: 'Ophthalmology' },
+  // ENT
+  { name: 'Pure Tone Audiometry', category: 'ENT' },
+  { name: 'Tympanometry', category: 'ENT' },
+  { name: 'BERA', category: 'ENT' },
+  { name: 'CT PNS', category: 'Radiology' },
+  // Vascular
+  { name: 'Venous Doppler (Legs)', category: 'Radiology' },
+  { name: 'Arterial Doppler (Legs)', category: 'Radiology' },
+  { name: 'CT Peripheral Angiography', category: 'Radiology' },
+  { name: 'Ankle Brachial Index (ABI)', category: 'Cardiology' },
+  { name: 'D-Dimer', category: 'Blood' },
+  // Derm
+  { name: 'KOH Mount', category: 'Dermatology' },
+  { name: 'Skin Biopsy', category: 'Histopathology' },
+  { name: 'Patch Test', category: 'Dermatology' },
+  { name: 'Wood Lamp Examination', category: 'Dermatology' },
+  { name: 'Dermoscopy', category: 'Dermatology' },
 ];
 
+/** Global tests (no clinic) by name; a changed category is updated. */
 export async function seedPatientTests() {
-  try {
-    logger.info('Seeding patient tests...');
-
-    for (const test of tests) {
-      await database
-        .insert(TestCatalogModel)
-        .values({
-          name: test.name,
-          category: test.category,
-        })
-        .onConflictDoNothing();
-    }
-
-    logger.info('Patient tests seeded successfully');
-  } catch (error) {
-    logger.error('Error seeding patient tests', error);
-    throw error;
+  const counts = newCounts();
+  const changed: string[] = [];
+  for (const test of tests) {
+    const { result } = await syncRow({
+      table: TestCatalogModel,
+      where: and(
+        eq(TestCatalogModel.name, test.name),
+        isNull(TestCatalogModel.clinicId)
+      ),
+      values: { name: test.name, category: test.category },
+    });
+    tally(counts, changed, test.name, result);
   }
+  logSeed('patient tests', counts, changed);
 }

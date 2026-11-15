@@ -40,14 +40,17 @@ import {
   uploadPharmacySupplierInvoice,
   uploadStockImport,
 } from '../../../../configurations/s3/pharmacy.storage';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const stockRouter = express.Router();
 
 stockRouter.post(
   '/add-stock',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(addStockSchema, 'body'),
   addStockController
 );
@@ -55,7 +58,7 @@ stockRouter.post(
 stockRouter.get(
   '/get-all-stock',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getStockQuerySchema, 'query'),
   getStocksController
 );
@@ -63,7 +66,7 @@ stockRouter.get(
 stockRouter.put(
   '/update-medicine-stock/:stockMedicineId',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(updateSingleStockMedicineSchema, 'body'),
   updateStockMedicineController
 );
@@ -71,7 +74,7 @@ stockRouter.put(
 stockRouter.get(
   '/get-stock/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getStockByIdParamsSchema, 'params'),
   getStockByIdController
 );
@@ -79,7 +82,7 @@ stockRouter.get(
 stockRouter.put(
   '/update-stock/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(updateStockParamsSchema, 'params'),
   validate(updateStockSchema, 'body'),
   updateStockController
@@ -88,7 +91,7 @@ stockRouter.put(
 stockRouter.post(
   '/upload-invoice/:stockId',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   fileCompressionMiddleware,
   uploadPharmacySupplierInvoice.single('invoice'),
   validate(updateStockInvoiceParamsSchema, 'params'),
@@ -98,7 +101,7 @@ stockRouter.post(
 stockRouter.get(
   '/get-available-stock',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getAvailableStockQuerySchema, 'query'),
   getAvailableStockController
 );
@@ -106,21 +109,21 @@ stockRouter.get(
 stockRouter.get(
   '/get-stock-cache',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getStockCacheController
 );
 
 stockRouter.get(
   '/export-all-stock',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   exportAllStockController
 );
 
 stockRouter.get(
   '/download-stock-sample-template',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   downloadStockSampleTemplateController
 );
 
@@ -128,21 +131,21 @@ stockRouter.post(
   '/import-stock',
   requireAuth,
   uploadStockImport.single('file'),
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   importStockController
 );
 
 stockRouter.get(
   '/stats',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getStockStatsController
 );
 
 stockRouter.get(
   '/get-expiry-stock',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getExpiryStockQuerySchema, 'query'),
   getExpiryStockController
 );
@@ -150,7 +153,7 @@ stockRouter.get(
 stockRouter.post(
   '/create-purchase-return',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createPurchaseReturnSchema, 'body'),
   createPurchaseReturnController
 );
@@ -158,7 +161,7 @@ stockRouter.post(
 stockRouter.get(
   '/get-purchase-returns',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPurchaseReturnsQuerySchema, 'query'),
   getPurchaseReturnsController
 );

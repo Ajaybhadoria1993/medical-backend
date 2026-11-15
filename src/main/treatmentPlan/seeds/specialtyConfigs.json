@@ -1,0 +1,529 @@
+[
+  {
+    "specialty": "ENT Specialist",
+    "planFields": [
+      { "key": "site", "label": "Area", "type": "select", "options": ["Ear", "Nose", "Sinus", "Throat", "Neck"], "required": true },
+      { "key": "side", "label": "Side", "type": "select", "options": ["Right", "Left", "Both"], "required": false },
+      {
+        "key": "procedure",
+        "label": "Procedure",
+        "type": "select",
+        "options": ["Tonsillectomy", "Adenoidectomy", "Septoplasty", "FESS", "Tympanoplasty", "Mastoidectomy", "Wax removal", "Other"],
+        "required": false
+      },
+      { "key": "anaesthesia", "label": "Anaesthesia", "type": "select", "options": ["Local", "General"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "pack_removed", "label": "Pack Removed", "type": "boolean", "required": false },
+      { "key": "healing", "label": "Healing", "type": "select", "options": ["Healthy", "Crusting", "Slough", "Infected", "Bleeding"], "required": false },
+      { "key": "graft", "label": "Graft", "type": "select", "options": ["Not applicable", "Taken", "Partial", "Failed"], "required": false },
+      { "key": "hearing_db", "label": "Hearing", "type": "number", "unit": "dB", "min": -10, "max": 120, "required": false },
+      { "key": "step_note", "label": "Finding", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "Ophthalmologist",
+    "planFields": [
+      { "key": "eye", "label": "Eye", "type": "select", "options": ["Right", "Left", "Both"], "required": true },
+      { "key": "iol_type", "label": "Lens (IOL)", "type": "select", "options": ["Monofocal", "Multifocal", "Toric", "None"], "required": false },
+      { "key": "iol_power", "label": "IOL Power", "type": "number", "unit": "D", "min": 0, "max": 40, "required": false },
+      {
+        "key": "drug",
+        "label": "Injection Drug",
+        "type": "select",
+        "options": ["Ranibizumab", "Aflibercept", "Bevacizumab", "Other"],
+        "required": false
+      }
+    ],
+    "stepFields": [
+      { "key": "vision", "label": "Vision", "type": "text", "required": false },
+      { "key": "iop", "label": "IOP", "type": "number", "unit": "mmHg", "min": 5, "max": 60, "required": false },
+      { "key": "step_note", "label": "Finding", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "General Surgeon",
+    "planFields": [
+      {
+        "key": "procedure",
+        "label": "Procedure",
+        "type": "select",
+        "options": ["Hernia repair", "Lap cholecystectomy", "Appendectomy", "Hemorrhoidectomy", "Fistulectomy", "Lump excision", "I&D", "Thyroidectomy", "Mastectomy", "Other"],
+        "required": false
+      },
+      { "key": "approach", "label": "Approach", "type": "select", "options": ["Open", "Laparoscopic", "Laser"], "required": false },
+      { "key": "site", "label": "Site", "type": "text", "required": false },
+      { "key": "side", "label": "Side", "type": "select", "options": ["Right", "Left", "Both", "Midline"], "required": false },
+      { "key": "anaesthesia", "label": "Anaesthesia", "type": "select", "options": ["Local", "Spinal", "General", "Sedation"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "preop_tests_done", "label": "Pre-op Tests Done", "type": "boolean", "required": false },
+      { "key": "anaesthesia_fit", "label": "Anaesthesia Fitness", "type": "boolean", "required": false },
+      { "key": "fasting_advised", "label": "Fasting (NPO) Advised", "type": "boolean", "required": false },
+      { "key": "findings", "label": "Operative Findings", "type": "text", "required": false },
+      { "key": "implant", "label": "Mesh / Implant", "type": "text", "required": false },
+      { "key": "complications", "label": "Complications", "type": "select", "options": ["None", "Bleeding", "Infection", "Other"], "required": false },
+      { "key": "hpe_sent", "label": "Sent for HPE", "type": "boolean", "required": false },
+      { "key": "wound_status", "label": "Wound", "type": "select", "options": ["Healthy", "Discharge", "Infected", "Gaping"], "required": false },
+      { "key": "sutures_removed", "label": "Sutures / Staples Removed", "type": "boolean", "required": false }
+    ]
+  },
+  {
+    "specialty": "Orthopedic Doctor",
+    "planFields": [
+      {
+        "key": "body_part",
+        "label": "Body Part",
+        "type": "select",
+        "options": ["Shoulder", "Elbow", "Wrist", "Hand", "Hip", "Knee", "Ankle", "Foot", "Cervical spine", "Lumbar spine", "Other"],
+        "required": true
+      },
+      { "key": "side", "label": "Side", "type": "select", "options": ["Right", "Left", "Both"], "required": false },
+      {
+        "key": "procedure",
+        "label": "Procedure",
+        "type": "select",
+        "options": ["Cast", "ORIF", "Knee replacement", "Hip replacement", "Arthroscopy", "ACL reconstruction", "Injection", "Spine surgery", "Other"],
+        "required": false
+      },
+      { "key": "implant", "label": "Implant (Type, Size, Lot)", "type": "text", "required": false },
+      { "key": "anaesthesia", "label": "Anaesthesia", "type": "select", "options": ["Local", "Regional block", "Spinal", "General"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "pain_score", "label": "Pain (0–10)", "type": "number", "min": 0, "max": 10, "required": false },
+      { "key": "rom", "label": "Movement (ROM)", "type": "text", "required": false },
+      { "key": "weight_bearing", "label": "Weight Bearing", "type": "select", "options": ["Non", "Toe-touch", "Partial", "Full"], "required": false },
+      { "key": "cast_type", "label": "Cast / Support", "type": "select", "options": ["Plaster", "Fibreglass", "Slab", "Brace", "None"], "required": false },
+      {
+        "key": "xray_finding",
+        "label": "X-ray",
+        "type": "select",
+        "options": ["Not done", "Aligned", "Healing", "United", "Delayed union", "Malunion"],
+        "required": false
+      },
+      { "key": "wound_status", "label": "Wound", "type": "select", "options": ["Healthy", "Discharge", "Infected", "Gaping"], "required": false },
+      { "key": "sutures_removed", "label": "Sutures / Staples Removed", "type": "boolean", "required": false }
+    ]
+  },
+  {
+    "specialty": "Plastic Surgeon",
+    "planFields": [
+      {
+        "key": "area",
+        "label": "Area",
+        "type": "multiselect",
+        "options": ["Face", "Nose", "Eyelids", "Ears", "Scalp", "Neck", "Chest / breast", "Abdomen", "Back", "Arms", "Thighs", "Hands", "Other"],
+        "required": true
+      },
+      { "key": "side", "label": "Side", "type": "select", "options": ["Right", "Left", "Both", "Midline"], "required": false },
+      { "key": "procedure_kind", "label": "Type", "type": "select", "options": ["Cosmetic", "Reconstructive"], "required": false },
+      { "key": "amount", "label": "Amount", "type": "number", "min": 0, "required": false },
+      { "key": "amount_unit", "label": "Amount Unit", "type": "select", "options": ["ml", "grafts", "cc"], "required": false },
+      { "key": "anaesthesia", "label": "Anaesthesia", "type": "select", "options": ["Local", "Local + sedation", "General"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "drain_removed", "label": "Drain Removed", "type": "boolean", "required": false },
+      { "key": "garment", "label": "Compression Garment", "type": "select", "options": ["Not needed", "Wearing", "Not wearing"], "required": false },
+      { "key": "splint_removed", "label": "Splint Removed", "type": "boolean", "required": false },
+      { "key": "healing", "label": "Healing", "type": "select", "options": ["Healthy", "Swelling", "Bruising", "Seroma", "Infection"], "required": false },
+      { "key": "photos_taken", "label": "Photos Taken", "type": "boolean", "required": false },
+      { "key": "sutures_removed", "label": "Sutures Removed", "type": "boolean", "required": false }
+    ]
+  },
+  {
+    "specialty": "Urologist",
+    "planFields": [
+      {
+        "key": "procedure",
+        "label": "Procedure",
+        "type": "select",
+        "options": ["ESWL", "URS", "PCNL", "TURP", "Cystoscopy", "Circumcision", "Vasectomy", "Hydrocelectomy", "Other"],
+        "required": true
+      },
+      { "key": "side", "label": "Side", "type": "select", "options": ["Right", "Left", "Both", "Not applicable"], "required": false },
+      { "key": "stone_size_mm", "label": "Stone Size", "type": "number", "unit": "mm", "min": 1, "max": 60, "required": false },
+      { "key": "stent_placed", "label": "DJ Stent Placed", "type": "boolean", "required": false },
+      { "key": "anaesthesia", "label": "Anaesthesia", "type": "select", "options": ["Local", "Spinal", "General"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "stent_removed", "label": "DJ Stent Removed", "type": "boolean", "required": false },
+      { "key": "catheter", "label": "Catheter", "type": "select", "options": ["None", "In place", "Removed"], "required": false },
+      { "key": "stone_status", "label": "Stone", "type": "select", "options": ["Present", "Fragmented", "Cleared"], "required": false },
+      { "key": "qmax", "label": "Qmax", "type": "number", "unit": "ml/s", "min": 0, "max": 50, "required": false },
+      { "key": "step_note", "label": "Finding", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "Vascular Specialist",
+    "planFields": [
+      { "key": "limb", "label": "Limb", "type": "select", "options": ["Right leg", "Left leg", "Both legs", "Right arm", "Left arm"], "required": true },
+      {
+        "key": "condition",
+        "label": "Condition",
+        "type": "select",
+        "options": ["Varicose veins", "Venous ulcer", "Peripheral artery disease", "DVT", "Diabetic foot", "Dialysis access"],
+        "required": false
+      },
+      { "key": "ceap", "label": "CEAP Grade", "type": "select", "options": ["C0", "C1", "C2", "C3", "C4", "C5", "C6"], "required": false },
+      { "key": "anaesthesia", "label": "Anaesthesia", "type": "select", "options": ["Local", "Tumescent", "Spinal", "General"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "ulcer_size", "label": "Ulcer Size", "type": "text", "required": false },
+      { "key": "healing", "label": "Healing", "type": "select", "options": ["Improving", "Same", "Worse", "Healed"], "required": false },
+      { "key": "compression", "label": "Compression", "type": "select", "options": ["None", "Class 1", "Class 2", "Class 3", "Bandage"], "required": false },
+      { "key": "doppler", "label": "Doppler", "type": "select", "options": ["Not done", "Normal", "Reflux", "DVT", "Occlusion"], "required": false },
+      { "key": "abi", "label": "ABI", "type": "number", "min": 0, "max": 1.5, "required": false },
+      { "key": "inr", "label": "INR", "type": "number", "min": 0.5, "max": 6, "required": false }
+    ]
+  },
+  {
+    "specialty": "Dermatologist",
+    "planFields": [
+      {
+        "key": "area",
+        "label": "Area",
+        "type": "multiselect",
+        "options": ["Scalp", "Face", "Neck", "Chest", "Back", "Abdomen", "Arms", "Hands", "Groin", "Legs", "Feet", "Nails", "Full body"],
+        "required": true
+      },
+      { "key": "skin_type", "label": "Skin Type (Fitzpatrick)", "type": "select", "options": ["I", "II", "III", "IV", "V", "VI"], "required": false },
+      {
+        "key": "condition",
+        "label": "Condition",
+        "type": "select",
+        "options": ["Acne", "Acne scars", "Pigmentation", "Vitiligo", "Psoriasis", "Eczema", "Warts", "Hair loss", "Unwanted hair", "Other"],
+        "required": false
+      }
+    ],
+    "stepFields": [
+      { "key": "score_type", "label": "Score", "type": "select", "options": ["None", "Acne grade", "PASI", "SCORAD", "VASI"], "required": false },
+      { "key": "severity_score", "label": "Severity Score", "type": "number", "min": 0, "max": 103, "required": false },
+      { "key": "laser_setting", "label": "Laser / UV Dose", "type": "text", "required": false },
+      { "key": "reaction", "label": "Reaction", "type": "select", "options": ["None", "Redness", "Peeling", "Blister", "Darkening", "Lightening"], "required": false },
+      { "key": "improvement", "label": "Improvement", "type": "select", "options": ["None", "< 25%", "25–50%", "50–75%", "> 75%"], "required": false },
+      { "key": "photos_taken", "label": "Photos Taken", "type": "boolean", "required": false }
+    ]
+  },
+  {
+    "specialty": "Physiotherapist",
+    "planFields": [
+      {
+        "key": "region",
+        "label": "Body Region",
+        "type": "select",
+        "options": ["Neck", "Shoulder", "Elbow", "Wrist / hand", "Upper back", "Lower back", "Hip", "Knee", "Ankle / foot", "Whole body (neuro)"],
+        "required": true
+      },
+      { "key": "side", "label": "Side", "type": "select", "options": ["Right", "Left", "Both"], "required": false },
+      {
+        "key": "condition",
+        "label": "Condition",
+        "type": "select",
+        "options": ["Post-surgery", "Sports injury", "Back / neck pain", "Frozen shoulder", "Stroke", "Arthritis", "Other"],
+        "required": false
+      },
+      { "key": "surgery_date", "label": "Surgery Date", "type": "date", "required": false },
+      { "key": "referred_by", "label": "Referred By", "type": "text", "required": false }
+    ],
+    "stepFields": [
+      {
+        "key": "modalities",
+        "label": "Treatment Given",
+        "type": "multiselect",
+        "options": ["IFT", "TENS", "Ultrasound", "Hot pack", "Cold pack", "Traction", "Laser", "Manual therapy", "Exercise", "Taping"],
+        "required": false
+      },
+      { "key": "pain_score", "label": "Pain (0–10)", "type": "number", "min": 0, "max": 10, "required": false },
+      { "key": "rom", "label": "Movement (ROM)", "type": "text", "required": false },
+      { "key": "power", "label": "Muscle Power (0–5)", "type": "number", "min": 0, "max": 5, "required": false },
+      { "key": "step_note", "label": "Progress Note", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "Anesthesiologist",
+    "planFields": [
+      { "key": "pain_site", "label": "Pain Site", "type": "select", "options": ["Back","Neck","Knee","Shoulder","Head / face","Other"], "required": true },
+      { "key": "procedure", "label": "Procedure", "type": "select", "options": ["Epidural steroid injection","Nerve block","Radiofrequency ablation","Trigger-point injection","Genicular nerve block"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "pain_score", "label": "Pain (0–10)", "type": "number", "min": 0, "max": 10, "required": false },
+      { "key": "relief", "label": "Relief", "type": "select", "options": ["None","< 50%","> 50%"], "required": false }
+    ]
+  },
+  {
+    "specialty": "Ayurvedic Doctor",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Joint pain","Digestive","Skin","Stress / sleep","Weight","Respiratory","Detox / wellness","Other"], "required": true },
+      { "key": "prakriti", "label": "Prakriti", "type": "select", "options": ["Vata","Pitta","Kapha","Vata-Pitta","Pitta-Kapha","Vata-Kapha","Sama"], "required": false },
+      { "key": "therapist_pref", "label": "Therapist Preference", "type": "select", "options": ["Male","Female","Any"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "therapies", "label": "Therapies Done", "type": "multiselect", "options": ["Abhyanga","Swedana","Shirodhara","Basti","Kati Basti","Janu Basti","Nasya","Virechana","Udvartana","Pizhichil","Elakizhi"], "required": false },
+      { "key": "oil_used", "label": "Oil / Medicine Used", "type": "text", "required": false },
+      { "key": "reaction", "label": "Reaction", "type": "select", "options": ["None","Comfortable","Mild discomfort","Stopped early"], "required": false },
+      { "key": "step_note", "label": "Note", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "Cardiologist",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["CAD","Post-PCI","Heart failure","AF","Valve","Device","Other"], "required": true },
+      { "key": "procedure_date", "label": "Procedure Date", "type": "date", "required": false }
+    ],
+    "stepFields": [
+      { "key": "bp", "label": "BP", "type": "text", "required": false },
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 300, "required": false },
+      { "key": "lvef", "label": "LVEF", "type": "number", "unit": "%", "min": 5, "max": 80, "required": false },
+      { "key": "inr", "label": "INR", "type": "number", "min": 0.5, "max": 6, "required": false },
+      { "key": "nyha", "label": "NYHA Class", "type": "select", "options": ["I","II","III","IV"], "required": false }
+    ]
+  },
+  {
+    "specialty": "Dentist",
+    "widget": "tooth_chart",
+    "planFields": [
+      { "key": "teeth", "label": "Teeth (FDI)", "type": "multiselect", "options": ["11","12","13","14","15","16","17","18","21","22","23","24","25","26","27","28","31","32","33","34","35","36","37","38","41","42","43","44","45","46","47","48"], "required": false },
+      { "key": "arch", "label": "Arch", "type": "select", "options": ["Upper","Lower","Both"], "required": false },
+      { "key": "anaesthesia", "label": "Anaesthesia", "type": "select", "options": ["None","Local","Sedation","General"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "tooth", "label": "Tooth (FDI)", "type": "select", "options": ["11","12","13","14","15","16","17","18","21","22","23","24","25","26","27","28","31","32","33","34","35","36","37","38","41","42","43","44","45","46","47","48"], "required": false },
+      { "key": "surfaces", "label": "Surfaces", "type": "multiselect", "options": ["Mesial","Distal","Occlusal","Buccal","Lingual"], "required": false },
+      { "key": "shade", "label": "Shade", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "Dietitian / Nutritionist",
+    "planFields": [
+      { "key": "goal", "label": "Goal", "type": "select", "options": ["Weight loss","Weight gain","Diabetes control","PCOS","Thyroid","Kidney diet","Heart health","Sports nutrition"], "required": true },
+      { "key": "food_preference", "label": "Food Preference", "type": "select", "options": ["Vegetarian","Non-vegetarian","Eggetarian","Vegan","Jain"], "required": false },
+      { "key": "start_weight", "label": "Start Weight", "type": "number", "unit": "kg", "min": 1, "max": 200, "required": false },
+      { "key": "target_weight", "label": "Target Weight", "type": "number", "unit": "kg", "min": 1, "max": 200, "required": false },
+      { "key": "mode", "label": "Mode", "type": "select", "options": ["In clinic","Online","Mixed"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 200, "required": false },
+      { "key": "waist_cm", "label": "Waist", "type": "number", "unit": "cm", "min": 30, "max": 200, "required": false },
+      { "key": "adherence", "label": "Followed the Chart", "type": "select", "options": ["Poorly","Partly","Mostly","Fully"], "required": false },
+      { "key": "step_note", "label": "Note", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "Emergency Medicine Specialist",
+    "planFields": [
+      { "key": "injury_type", "label": "Injury Type", "type": "select", "options": ["Cut","Burn","Bite","Fracture","Other"], "required": true },
+      { "key": "site", "label": "Site", "type": "text", "required": false }
+    ],
+    "stepFields": [
+      { "key": "wound_status", "label": "Wound", "type": "select", "options": ["Healthy","Infected","Healed"], "required": false },
+      { "key": "dose_given", "label": "Vaccine Dose Given", "type": "boolean", "required": false }
+    ]
+  },
+  {
+    "specialty": "Endocrinologist",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Type 1","Type 2","Thyroid","PCOS","Osteoporosis","Other"], "required": true },
+      { "key": "target_hba1c", "label": "Target HbA1c", "type": "number", "unit": "%", "min": 4, "max": 15, "required": false }
+    ],
+    "stepFields": [
+      { "key": "hba1c", "label": "HbA1c", "type": "number", "unit": "%", "min": 4, "max": 15, "required": false },
+      { "key": "fasting_sugar", "label": "Fasting Sugar", "type": "number", "unit": "mg/dL", "min": 40, "max": 600, "required": false },
+      { "key": "tsh", "label": "TSH", "type": "number", "unit": "mIU/L", "min": 0, "max": 100, "required": false },
+      { "key": "insulin_units_day", "label": "Insulin per Day", "type": "number", "unit": "units", "min": 0, "max": 300, "required": false },
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 300, "required": false }
+    ]
+  },
+  {
+    "specialty": "Fertility Specialist",
+    "planFields": [
+      { "key": "partner_linked", "label": "Partner Linked", "type": "boolean", "required": false },
+      { "key": "protocol", "label": "Protocol", "type": "select", "options": ["Natural","Letrozole","Antagonist","Long agonist"], "required": false }
+    ],
+    "stepFields": []
+  },
+  {
+    "specialty": "Gastroenterologist",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["GERD","H. pylori","Liver","IBD","Pancreas","Other"], "required": true },
+      { "key": "procedure", "label": "Procedure", "type": "select", "options": ["Endoscopy","Colonoscopy","None"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 300, "required": false },
+      { "key": "bilirubin", "label": "Bilirubin", "type": "number", "unit": "mg/dL", "min": 0, "max": 40, "required": false },
+      { "key": "alt", "label": "ALT", "type": "number", "unit": "U/L", "min": 0, "max": 5000, "required": false },
+      { "key": "biopsy_result", "label": "Biopsy Result", "type": "select", "options": ["Pending","Normal","Abnormal"], "required": false }
+    ]
+  },
+  {
+    "specialty": "General Physician",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Diabetes","Hypertension","Thyroid","Vaccine","Wound","Other"], "required": true },
+      { "key": "target", "label": "Target", "type": "text", "required": false }
+    ],
+    "stepFields": [
+      { "key": "bp", "label": "BP", "type": "text", "required": false },
+      { "key": "sugar_fasting", "label": "Fasting Sugar", "type": "number", "unit": "mg/dL", "min": 40, "max": 600, "required": false },
+      { "key": "hba1c", "label": "HbA1c", "type": "number", "unit": "%", "min": 4, "max": 15, "required": false },
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 300, "required": false }
+    ]
+  },
+  {
+    "specialty": "Geriatrician",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Frailty","Falls","Memory","Post-discharge","Vaccine","Other"], "required": true },
+      { "key": "carer_name", "label": "Carer Name", "type": "text", "required": false }
+    ],
+    "stepFields": [
+      { "key": "falls_since_last", "label": "Falls Since Last Visit", "type": "number", "min": 0, "max": 50, "required": false },
+      { "key": "tug_seconds", "label": "Timed Up and Go", "type": "number", "unit": "sec", "min": 0, "max": 120, "required": false },
+      { "key": "mini_cog", "label": "Mini-Cog", "type": "number", "min": 0, "max": 5, "required": false }
+    ]
+  },
+  {
+    "specialty": "Gynecologist",
+    "planFields": [
+      { "key": "lmp", "label": "LMP", "type": "date", "required": false },
+      { "key": "edd", "label": "EDD", "type": "date", "required": false },
+      { "key": "gpal", "label": "GPAL", "type": "text", "required": false }
+    ],
+    "stepFields": [
+      { "key": "weeks", "label": "Weeks", "type": "text", "required": false },
+      { "key": "bp", "label": "BP", "type": "text", "required": false },
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 300, "required": false },
+      { "key": "fhr", "label": "Fetal Heart Rate", "type": "number", "unit": "bpm", "min": 60, "max": 220, "required": false }
+    ]
+  },
+  {
+    "specialty": "Hematologist",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Iron deficiency","B12","Thalassaemia","ITP","Haemophilia","Clot","Other"], "required": true }
+    ],
+    "stepFields": [
+      { "key": "hb", "label": "Hb", "type": "number", "unit": "g/dL", "min": 2, "max": 22, "required": false },
+      { "key": "platelets", "label": "Platelets", "type": "number", "unit": "×10³/µL", "min": 0, "max": 1500, "required": false },
+      { "key": "ferritin", "label": "Ferritin", "type": "number", "unit": "ng/mL", "min": 0, "max": 20000, "required": false },
+      { "key": "units_transfused", "label": "Units Transfused", "type": "number", "min": 0, "max": 10, "required": false }
+    ]
+  },
+  {
+    "specialty": "Homeopathic Doctor",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Allergy / recurrent cold","Skin","Hair fall","Child immunity","Chronic disease","Joint pain","Digestive","Stress / sleep","Other"], "required": true },
+      { "key": "thermal", "label": "Thermal", "type": "select", "options": ["Chilly","Hot","Ambithermal"], "required": false },
+      { "key": "mode", "label": "Mode", "type": "select", "options": ["In clinic","Online"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "improvement", "label": "Improvement", "type": "select", "options": ["None","< 25%","25–50%","50–75%","> 75%"], "required": false },
+      { "key": "aggravation", "label": "Aggravation After Remedy", "type": "boolean", "required": false },
+      { "key": "step_note", "label": "Note", "type": "text", "required": false }
+    ]
+  },
+  {
+    "specialty": "Immunologist",
+    "planFields": [
+      { "key": "allergen", "label": "Allergen", "type": "text", "required": true },
+      { "key": "route", "label": "Route", "type": "select", "options": ["Injection","Under-tongue drops"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "dose", "label": "Dose", "type": "text", "required": false },
+      { "key": "reaction", "label": "Reaction", "type": "select", "options": ["None","Local","Systemic"], "required": false }
+    ]
+  },
+  {
+    "specialty": "Nephrologist",
+    "planFields": [
+      { "key": "ckd_stage", "label": "CKD Stage", "type": "select", "options": ["G1","G2","G3a","G3b","G4","G5"], "required": false },
+      { "key": "on_dialysis", "label": "On Dialysis", "type": "boolean", "required": false },
+      { "key": "access", "label": "Dialysis Access", "type": "select", "options": ["AV fistula","Graft","Catheter"], "required": false }
+    ],
+    "stepFields": [
+      { "key": "creatinine", "label": "Creatinine", "type": "number", "unit": "mg/dL", "min": 0, "max": 25, "required": false },
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 300, "required": false }
+    ]
+  },
+  {
+    "specialty": "Neurologist",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Stroke","Epilepsy","Migraine","Parkinson's","Neuropathy","Post-surgery","Other"], "required": true }
+    ],
+    "stepFields": [
+      { "key": "seizures_since_last", "label": "Seizures Since Last Visit", "type": "number", "min": 0, "max": 500, "required": false },
+      { "key": "headache_days", "label": "Headache Days (Month)", "type": "number", "min": 0, "max": 31, "required": false },
+      { "key": "mrs", "label": "mRS", "type": "number", "min": 0, "max": 6, "required": false }
+    ]
+  },
+  {
+    "specialty": "Oncologist",
+    "planFields": [
+      { "key": "site", "label": "Cancer Site", "type": "select", "options": ["Breast","Lung","Head & neck","Cervix","Ovary","Colorectal","Stomach","Prostate","Blood","Lymphoma","Other"], "required": true },
+      { "key": "regimen", "label": "Regimen", "type": "text", "required": false }
+    ],
+    "stepFields": [
+      { "key": "cycle_no", "label": "Cycle No.", "type": "number", "min": 1, "max": 50, "required": false },
+      { "key": "delayed", "label": "Delayed", "type": "boolean", "required": false }
+    ]
+  },
+  {
+    "specialty": "Pediatrician",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Vaccination","Growth","Newborn","Asthma","Other"], "required": true }
+    ],
+    "stepFields": [
+      { "key": "vaccine_given", "label": "Vaccines Given", "type": "multiselect", "options": ["BCG","OPV","Hep B","DTaP / DTwP","IPV","Hib","Rotavirus","PCV","Influenza","MMR","Typhoid conjugate","Hep A","Varicella","Tdap","HPV"], "required": false },
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 0.3, "max": 100, "required": false },
+      { "key": "head_cm", "label": "Head Circumference", "type": "number", "unit": "cm", "min": 20, "max": 60, "required": false }
+    ]
+  },
+  {
+    "specialty": "Psychiatrist",
+    "planFields": [
+      { "key": "mode", "label": "Mode", "type": "select", "options": ["In clinic","Online","Mixed"], "required": false }
+    ],
+    "stepFields": []
+  },
+  {
+    "specialty": "Psychologist",
+    "planFields": [
+      { "key": "therapy_type", "label": "Therapy Type", "type": "select", "options": ["CBT","DBT","ACT","Supportive","Family","Play therapy","Assessment","Other"], "required": false },
+      { "key": "mode", "label": "Mode", "type": "select", "options": ["In clinic","Online","Mixed"], "required": true },
+      { "key": "session_minutes", "label": "Session Length (min)", "type": "select", "options": ["30","45","60","90"], "required": false }
+    ],
+    "stepFields": []
+  },
+  {
+    "specialty": "Pulmonologist",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["Asthma","COPD","TB","ILD","Sleep apnoea","Pneumonia","Other"], "required": true }
+    ],
+    "stepFields": [
+      { "key": "spo2", "label": "SpO2", "type": "number", "unit": "%", "min": 50, "max": 100, "required": false },
+      { "key": "peak_flow", "label": "Peak Flow", "type": "number", "unit": "L/min", "min": 50, "max": 900, "required": false },
+      { "key": "weight_kg", "label": "Weight", "type": "number", "unit": "kg", "min": 1, "max": 300, "required": false },
+      { "key": "mmrc", "label": "mMRC Breathlessness", "type": "select", "options": ["0","1","2","3","4"], "required": false }
+    ]
+  },
+  {
+    "specialty": "Rheumatologist",
+    "planFields": [
+      { "key": "condition", "label": "Condition", "type": "select", "options": ["RA","AS","PsA","Gout","SLE","Other"], "required": true }
+    ],
+    "stepFields": [
+      { "key": "das28", "label": "DAS28", "type": "number", "min": 0, "max": 10, "required": false },
+      { "key": "uric_acid", "label": "Uric Acid", "type": "number", "unit": "mg/dL", "min": 0, "max": 20, "required": false }
+    ]
+  },
+  {
+    "specialty": "Speech Therapist",
+    "planFields": [
+      { "key": "area", "label": "Main Area", "type": "select", "options": ["Articulation","Fluency","Language","Voice","Swallowing","Hearing"], "required": true },
+      { "key": "age_group", "label": "Age Group", "type": "select", "options": ["Child (0–5)","Child (6–12)","Teen","Adult","Older adult"], "required": false },
+      { "key": "mode", "label": "Mode", "type": "select", "options": ["In clinic","Online","Mixed"], "required": false },
+      { "key": "parent_involved", "label": "Parent / Carer Joins", "type": "boolean", "required": false }
+    ],
+    "stepFields": [
+      { "key": "goal_met", "label": "Goal Reached", "type": "select", "options": ["0–25%","25–50%","50–75%","75–100%"], "required": false },
+      { "key": "attended_by", "label": "Attended With", "type": "select", "options": ["Alone","Parent","Carer"], "required": false },
+      { "key": "step_note", "label": "Session Note", "type": "text", "required": false }
+    ]
+  }
+]

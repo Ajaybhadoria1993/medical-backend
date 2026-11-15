@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { convertToKebabCase } from './caseConverter';
-import { docsRegistry } from './docsRegistry';
+import { docsRegistry } from '../apiDocs';
 import logger from './logger';
 
 /**
@@ -38,7 +38,6 @@ function registerApiDocs(
         : '/' + doc.path
       : '';
     doc.path = `${apiEndpoint}${suffix}`;
-    doc.registeredAt = new Date().toISOString();
 
     // Validate schemas silently but log errors if critical
     ['params', 'query', 'requestSchema', 'responseSchema'].forEach(

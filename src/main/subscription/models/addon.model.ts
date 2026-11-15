@@ -1,4 +1,3 @@
-// src/main/subscription/models/addon.model.ts
 import {
   boolean,
   decimal,
@@ -13,25 +12,16 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import type { InferSelectModel } from 'drizzle-orm';
+import { PlanVersionModel } from './planVersion.model';
+import { SubscriptionPlanModel } from './subscription.model';
 
-/** Inferred type for AddOnModel select queries */
 export type AddOn = InferSelectModel<typeof AddOnModel>;
 
-/** Inferred type for ClinicAddOnModel select queries */
 export type ClinicAddOn = InferSelectModel<typeof ClinicAddOnModel>;
 
-/**
- * Add-On Master Data
- *
- * Defines available add-ons that clinics can purchase.
- * Each row represents one purchasable add-on.
- *
- * Feature Keys (used in code to calculate limits):
- * - additional_doctor    → adds doctor_accounts limit
- * - additional_staff     → adds staff_accounts limit
- * - additional_storage   → adds cloud_storage limit (in MB, 1024 MB per unit)
- * - additional_branch    → adds branch_count limit
- */
+export type PlanAddOnLimit = InferSelectModel<typeof PlanAddOnLimitsModel>;
+
+/** `feature_key` names the plan limit the add-on raises, e.g. additional_doctor → doctor_accounts. */
 export const AddOnModel = pgTable(
   'add_ons',
   {
@@ -40,26 +30,20 @@ export const AddOnModel = pgTable(
     name: varchar('name', { length: 150 }).notNull(),
     description: text('description'),
 
-    /** Unique key that links to plan_limits featureKey */
     featureKey: varchar('feature_key', { length: 100 }).notNull().unique(),
 
-    /** Value added per unit (e.g., 1 doctor, 1GB storage) */
+    /** Limit added per unit, e.g. 1 doctor or 1024 MB storage. */
     unitValue: integer('unit_value').default(1).notNull(),
 
-    /** Monthly price in rupees */
     monthlyPrice: decimal('monthly_price', { precision: 12, scale: 2 })
       .default('0.00')
       .notNull(),
 
-    /** Yearly price in rupees (typically 10% discount) */
     yearlyPrice: decimal('yearly_price', { precision: 12, scale: 2 })
       .default('0.00')
       .notNull(),
 
     currency: varchar('currency', { length: 8 }).default('INR').notNull(),
-
-    /** Optional maximum total cap constraint (Base + Add-ons) */
-    maxCap: integer('max_cap'),
 
     isActive: boolean('is_active').default(true).notNull(),
 
@@ -69,12 +53,41 @@ export const AddOnModel = pgTable(
   (table) => [uniqueIndex('add_on_feature_key_unique').on(table.featureKey)]
 );
 
-/**
- * Clinic Add-On Purchase Records
- *
- * Tracks which add-ons a clinic has purchased, their billing cycle,
- * and subscription status.
- */
+/** Which add-ons a plan allows and how many; no row = not allowed on that plan. */
+export const PlanAddOnLimitsModel = pgTable(
+  'plan_add_on_limits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    planId: uuid('plan_id')
+      .references(() => SubscriptionPlanModel.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    /** Limits belong to one version, so a new version can change them without touching clinics on the old one. */
+    planVersionId: uuid('plan_version_id')
+      .notNull()
+      .references(() => PlanVersionModel.id),
+
+    addOnId: uuid('add_on_id')
+      .references(() => AddOnModel.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    /** null = no cap; 0 = not allowed. */
+    maxCap: integer('max_cap'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (table) => [
+    index('plan_add_on_limits_plan_idx').on(table.planId),
+    index('plan_add_on_limits_addon_idx').on(table.addOnId),
+    uniqueIndex('plan_add_on_limits_version_addon_unique').on(
+      table.planVersionId,
+      table.addOnId
+    ),
+  ]
+);
+
 export const ClinicAddOnModel = pgTable(
   'clinic_add_ons',
   {
@@ -86,24 +99,20 @@ export const ClinicAddOnModel = pgTable(
       .references(() => AddOnModel.id, { onDelete: 'cascade' })
       .notNull(),
 
-    /** Number of units purchased */
     quantity: integer('quantity').default(1).notNull(),
 
-    /** Billing cycle: 'monthly' or 'yearly' */
     billingCycle: varchar('billing_cycle', { length: 20 }).notNull(),
 
     startsAt: timestamp('starts_at').defaultNow().notNull(),
 
-    /** Null means active until cancelled (for some billing cycles) */
+    /** null = active until cancelled. */
     expiresAt: timestamp('expires_at'),
 
-    /** Whether this add-on is currently active */
     isActive: boolean('is_active').default(true).notNull(),
 
-    /** Payment provider (razorpay, etc.) */
     provider: varchar('provider', { length: 80 }),
 
-    /** Provider's subscription/order ID */
+    /** Holds the Razorpay order id. */
     providerSubscriptionId: varchar('provider_subscription_id', {
       length: 200,
     }),
@@ -116,13 +125,16 @@ export const ClinicAddOnModel = pgTable(
       .default('0.00')
       .notNull(),
 
-    /** If true, add-on will NOT renew after expiresAt */
+    /** true = does not renew after expiresAt. */
     cancelAtPeriodEnd: boolean('cancel_at_period_end').default(false).notNull(),
-    /** When the user requested cancellation */
+    /** Units still usable now but removed at the next period boundary. */
+    scheduledReductionBy: integer('scheduled_reduction_by')
+      .default(0)
+      .notNull(),
+    reductionEffectiveAt: timestamp('reduction_effective_at'),
     cancelledAt: timestamp('cancelled_at'),
-    /** Optional reason from user */
     cancellationReason: varchar('cancellation_reason', { length: 255 }),
-    /** User IDs (doctors or staff) chosen by Admin to deactivate when this add-on expires */
+    /** Doctors or staff the Admin chose to deactivate when this add-on ends. */
     scheduledDeactivateUserIds: jsonb('scheduled_deactivate_user_ids')
       .$type<string[]>()
       .default([])

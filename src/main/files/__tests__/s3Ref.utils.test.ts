@@ -5,6 +5,10 @@ import {
   attachmentDisposition,
   parseS3Ref,
   safeDownloadName,
+  isExpiredS3Signature,
+  looksLikeStoredFile,
+  stripS3Signature,
+  stripS3SignaturesDeep,
   shouldRoundSigningTime,
   signingWindowStart,
   DOCUMENT_TTL_SECONDS,
@@ -147,5 +151,54 @@ describe('attachmentDisposition', () => {
     expect(attachmentDisposition("O'Neil.pdf")).toContain(
       "filename*=UTF-8''O%27Neil.pdf"
     );
+  });
+});
+
+// A form echoing a signed URL back must store the plain one, or it expires unseen.
+describe('stripS3Signature', () => {
+  const plain = 'https://b.s3.ap-south-1.amazonaws.com/staging/x/a.png';
+  const signed = `${plain}?X-Amz-Algorithm=AWS4&X-Amz-Expires=43200&X-Amz-Signature=abc`;
+
+  it('drops the signature from our S3 URLs', () => {
+    expect(stripS3Signature(signed)).toBe(plain);
+  });
+
+  it('leaves plain, foreign and non-URL values alone', () => {
+    expect(stripS3Signature(plain)).toBe(plain);
+    expect(stripS3Signature('https://x.com/a?X-Amz-Signature=1')).toBe(
+      'https://x.com/a?X-Amz-Signature=1'
+    );
+    expect(stripS3Signature('hello')).toBe('hello');
+  });
+
+  it('walks nested bodies', () => {
+    expect(
+      stripS3SignaturesDeep({ a: [signed], b: { c: signed }, n: 1 })
+    ).toEqual({ a: [plain], b: { c: plain }, n: 1 });
+  });
+});
+
+describe('isExpiredS3Signature / looksLikeStoredFile', () => {
+  const base =
+    'https://b.s3.ap-south-1.amazonaws.com/development/c/1/clinic_logos/a.png';
+  const signed = `${base}?X-Amz-Date=20261006T100000Z&X-Amz-Expires=43200&X-Amz-Signature=abc`;
+  const at = (iso: string) => Date.parse(iso);
+
+  it('is live inside X-Amz-Date + X-Amz-Expires and expired after it', () => {
+    expect(isExpiredS3Signature(signed, at('2026-10-06T21:59:59Z'))).toBe(
+      false
+    );
+    expect(isExpiredS3Signature(signed, at('2026-10-06T22:00:00Z'))).toBe(true);
+  });
+
+  it('treats a signature without a date as live, so it is never re-signed', () => {
+    expect(
+      isExpiredS3Signature(`${base}?X-Amz-Expires=300&X-Amz-Signature=abc`)
+    ).toBe(false);
+  });
+
+  it('signs an expired stored link again, but leaves a live one alone', () => {
+    expect(looksLikeStoredFile(signed, at('2026-10-07T00:00:00Z'))).toBe(true);
+    expect(looksLikeStoredFile(signed, at('2026-10-06T12:00:00Z'))).toBe(false);
   });
 });

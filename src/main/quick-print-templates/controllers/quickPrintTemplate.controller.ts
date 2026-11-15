@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../../../middlewear/errorHandler';
+import { sendOk } from '../../../utils/response.utils';
+import type {
+  FooterNotesDto,
+  TemplateUsageDto,
+} from '../schemas/quickPrintTemplate.schemas';
 import { QuickPrintTemplateService } from '../services/quickPrintTemplate.service';
 
 /**
@@ -12,24 +17,34 @@ export const getQuickPrintTemplateController = asyncHandler(
     const result =
       await QuickPrintTemplateService.getSelectedTemplate(doctorId);
 
-    res.status(200).json({
-      success: true,
-      data: result
+    const config = result?.elementConfig;
+
+    // A usage-only row holds no design, so it still reads as the default one.
+    return sendOk(
+      res,
+      'Quick print template fetched successfully',
+      result && !config?.usageOnly
         ? {
             selectedTemplate: result.selectedTemplate,
             fontFamily: result.fontFamily,
             accentColor: result.accentColor,
-            elementConfig: result.elementConfig,
+            elementConfig: {
+              ...result.elementConfig,
+              footerNotes: QuickPrintTemplateService.footerNotesOf(config),
+            },
             updatedAt: result.updatedAt,
           }
         : {
             selectedTemplate: 'compact-medicine-slip',
             fontFamily: 'Inter, sans-serif',
             accentColor: '#0A6C74',
-            elementConfig: null,
+            elementConfig: {
+              templateUsage: config?.templateUsage,
+              footerNotes: QuickPrintTemplateService.footerNotesOf(config),
+            },
             isDefault: true,
-          },
-    });
+          }
+    );
   }
 );
 
@@ -52,6 +67,27 @@ export const saveQuickPrintTemplateController = asyncHandler(
       message: 'Quick print template saved successfully',
       data: result,
     });
+  }
+);
+
+/** PATCH /api/v1/quick-print-templates/usage — which design share and print use. */
+export const setTemplateUsageController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { templateUsage } = req.validatedBody as TemplateUsageDto;
+    await QuickPrintTemplateService.setTemplateUsage(
+      req.user.id,
+      templateUsage
+    );
+    return sendOk(res, 'Template usage saved', { templateUsage });
+  }
+);
+
+/** PATCH /api/v1/quick-print-templates/footer-notes — lines printed above every prescription's footer. */
+export const setFooterNotesController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { footerNotes } = req.validatedBody as FooterNotesDto;
+    await QuickPrintTemplateService.setFooterNotes(req.user.id, footerNotes);
+    return sendOk(res, 'Footer notes saved', { footerNotes });
   }
 );
 

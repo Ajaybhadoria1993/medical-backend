@@ -1,22 +1,52 @@
 import {
   IFeeConfig,
+  IPatientFeeLine,
   IPatientPricingSummary,
+  ISplitBreakdown,
   ISplitEngineResult,
   TaxTreatment,
 } from '../interfaces/splitEngine.types';
 
+/** Run order when priorities tie: the gateway fee is charged on the subtotal of the fees before it. */
+const RUN_ORDER: Record<string, number> = {
+  CONVENIENCE_FEE: 1,
+  CLINIC_COMMISSION: 2,
+  GATEWAY_FEE: 3,
+  ROUTE_TRANSFER_FEE: 4,
+};
+/** Who keeps each fee; a new fee type is added here and in BREAKDOWN_KEY. */
+const RECEIVER: Record<string, 'platform' | 'gateway'> = {
+  CONVENIENCE_FEE: 'platform',
+  CLINIC_COMMISSION: 'platform',
+  GATEWAY_FEE: 'gateway',
+  ROUTE_TRANSFER_FEE: 'gateway',
+};
+const BREAKDOWN_KEY: Record<
+  string,
+  [keyof ISplitBreakdown, keyof ISplitBreakdown]
+> = {
+  CONVENIENCE_FEE: ['convenienceFee', 'gstOnConvenienceFee'],
+  CLINIC_COMMISSION: ['commission', 'gstOnCommission'],
+  GATEWAY_FEE: ['gatewayFee', 'gstOnGatewayFee'],
+  ROUTE_TRANSFER_FEE: ['routeTransferFee', 'gstOnRouteTransferFee'],
+};
+
+/** How a fee reads on the patient's bill; the commission is folded into "Platform Fee". */
+const PATIENT_LINE: Record<string, [IPatientFeeLine['type'], string]> = {
+  CONVENIENCE_FEE: ['CONVENIENCE_FEE', 'Convenience Fee'],
+  CLINIC_COMMISSION: ['PLATFORM_FEE', 'Platform Fee'],
+  GATEWAY_FEE: ['GATEWAY_FEE', 'Payment Gateway Fee'],
+  ROUTE_TRANSFER_FEE: ['GATEWAY_FEE', 'Payment Gateway Fee'],
+};
+
 export class DynamicSplitEngine {
-  /**
-   * Runs the dynamic fee engine using integer math (paise) to prevent floating-point inaccuracies.
-   * All inputs (servicePrice) are accepted in decimal Rupees and returned in Rupees.
-   */
+  /** The patient total and its split, in integer paise (no float drift); takes and returns rupees. */
   public static calculate(
     servicePriceRupees: number,
     configs: IFeeConfig[],
     taxTreatmentP: TaxTreatment = 'TAX_EXEMPT',
     gstRateP: number = 18
   ): ISplitEngineResult {
-    // 1. Convert base service price to integer Paise
     const P = Math.round(servicePriceRupees * 100);
 
     let baseClinicShare = P;
@@ -28,187 +58,111 @@ export class DynamicSplitEngine {
       baseClinicShare = P - gstOnP;
     }
 
-    let F = 0; // Platform Convenience Fee
-    let G1 = 0; // GST on Convenience Fee
-    let CC = 0; // Clinic Platform Commission
-    let G2 = 0; // GST on Commission
-    let RG = 0; // Payment Gateway Fee
-    let G3 = 0; // GST on Gateway Fee
-    let RT = 0; // Route Transfer Fee
-    let G4 = 0; // GST on Route Transfer Fee
+    // One config per fee type (the first given), enabled only, in run order.
+    const seen = new Set<string>();
+    const active = configs
+      .filter((c) => c.enabled && !seen.has(c.feeType) && seen.add(c.feeType))
+      .sort(
+        (a, b) =>
+          a.priority - b.priority ||
+          (RUN_ORDER[a.feeType] ?? 9) - (RUN_ORDER[b.feeType] ?? 9)
+      );
 
-    // Filter active configs and sort by execution priority
-    const activeConfigs = configs
-      .filter((c) => c.enabled)
-      .sort((a, b) => a.priority - b.priority);
-
-    const getBaseAmount = (
-      baseType: string,
-      currentSubtotal: number
-    ): number => {
-      switch (baseType) {
-        case 'CLINIC_SERVICE_PRICE':
-          return P;
-        case 'PRE_GATEWAY_SUBTOTAL':
-          return currentSubtotal;
-        case 'CLINIC_TRANSFER_AMOUNT':
-          return baseClinicShare;
-        default:
-          return P;
-      }
+    const breakdown: ISplitBreakdown = {
+      basePrice: P / 100,
+      gstOnPrice: gstOnP / 100,
+      convenienceFee: 0,
+      gstOnConvenienceFee: 0,
+      commission: 0,
+      gstOnCommission: 0,
+      gatewayFee: 0,
+      gstOnGatewayFee: 0,
+      routeTransferFee: 0,
+      gstOnRouteTransferFee: 0,
     };
+    let subtotal = P + gstOnP;
+    let fees = 0;
+    let feeGst = 0;
+    let platform = 0;
+    let gateway = 0;
+    // Paise per patient line, in run order; summed here so lines always match the totals.
+    const lines = new Map<
+      string,
+      { label: string; fee: number; gst: number }
+    >();
 
-    const calculateFeeComponent = (
-      config: IFeeConfig,
-      base: number
-    ): number => {
-      let fee = 0;
-      if (config.calculationMethod === 'PERCENTAGE') {
-        fee = Math.round(base * (config.rateOrAmount / 100));
-      } else if (config.calculationMethod === 'FIXED') {
-        fee = Math.round(config.rateOrAmount * 100); // fixed amount in Rupees -> paise
-      } else if (config.calculationMethod === 'CLAMPED_PERCENTAGE') {
-        const calculated = Math.round(base * (config.rateOrAmount / 100));
-        const min = config.minAmount !== undefined ? config.minAmount * 100 : 0;
-        const max =
-          config.maxAmount !== undefined ? config.maxAmount * 100 : Infinity;
-        fee = Math.min(Math.max(calculated, min), max);
-      }
-      return fee;
-    };
+    for (const c of active) {
+      const base =
+        c.calculationBase === 'PRE_GATEWAY_SUBTOTAL'
+          ? subtotal
+          : c.calculationBase === 'CLINIC_TRANSFER_AMOUNT'
+            ? baseClinicShare
+            : P;
+      const fee =
+        c.calculationMethod === 'PERCENTAGE'
+          ? Math.round(base * (c.rateOrAmount / 100))
+          : Math.round(c.rateOrAmount * 100);
+      const gst =
+        c.taxTreatment === 'TAX_EXCLUSIVE'
+          ? Math.round(fee * (c.taxRate / 100))
+          : 0;
 
-    // Step 2 & 3: Platform Convenience Fee (F) & GST (G1)
-    const convConfig = activeConfigs.find(
-      (c) => c.feeType === 'CONVENIENCE_FEE'
-    );
-    if (convConfig) {
-      const base = getBaseAmount(convConfig.calculationBase, P);
-      F = calculateFeeComponent(convConfig, base);
-      if (convConfig.taxTreatment === 'TAX_EXCLUSIVE') {
-        G1 = Math.round(F * (convConfig.taxRate / 100));
-      }
-    }
-
-    // Step 4 & 5: Clinic Platform Commission (CC) & GST (G2)
-    const commConfig = activeConfigs.find(
-      (c) => c.feeType === 'CLINIC_COMMISSION'
-    );
-    if (commConfig) {
-      const base = getBaseAmount(commConfig.calculationBase, P);
-      CC = calculateFeeComponent(commConfig, base);
-      if (commConfig.taxTreatment === 'TAX_EXCLUSIVE') {
-        G2 = Math.round(CC * (commConfig.taxRate / 100));
-      }
-    }
-
-    const subtotal = P + gstOnP + F + G1 + CC + G2;
-
-    // Step 7 & 8: Payment Gateway Fee (RG) & GST (G3)
-    const pgConfig = activeConfigs.find((c) => c.feeType === 'GATEWAY_FEE');
-    if (pgConfig) {
-      const base = getBaseAmount(pgConfig.calculationBase, subtotal);
-      RG = calculateFeeComponent(pgConfig, base);
-      if (pgConfig.taxTreatment === 'TAX_EXCLUSIVE') {
-        G3 = Math.round(RG * (pgConfig.taxRate / 100));
+      subtotal += fee + gst;
+      fees += fee;
+      feeGst += gst;
+      if ((RECEIVER[c.feeType] ?? 'platform') === 'gateway') gateway += fee;
+      else platform += fee;
+      const [lineType, label] = PATIENT_LINE[c.feeType] ?? [
+        'PLATFORM_FEE',
+        'Platform Fee',
+      ];
+      const line = lines.get(lineType) ?? { label, fee: 0, gst: 0 };
+      line.fee += fee;
+      line.gst += gst;
+      lines.set(lineType, line);
+      const key = BREAKDOWN_KEY[c.feeType];
+      if (key) {
+        breakdown[key[0]] = fee / 100;
+        breakdown[key[1]] = gst / 100;
       }
     }
 
-    // Step 9 & 10: Route Transfer Fee (RT) & GST (G4)
-    const routeConfig = activeConfigs.find(
-      (c) => c.feeType === 'ROUTE_TRANSFER_FEE'
-    );
-    if (routeConfig) {
-      const base = getBaseAmount(routeConfig.calculationBase, P);
-      RT = calculateFeeComponent(routeConfig, base);
-      if (routeConfig.taxTreatment === 'TAX_EXCLUSIVE') {
-        G4 = Math.round(RT * (routeConfig.taxRate / 100));
-      }
-    }
-
-    // Step 11: Calculate Final Patient Payable (TP)
-    const TP = P + gstOnP + F + G1 + CC + G2 + RG + G3 + RT + G4;
-
-    // Step 12: Calculate Party-wise Split Balances
-    const clinicAmount = P;
-    const platformAmount = F + CC;
-    const gatewayAmount = RG + RT;
-    const taxAmount = gstOnP + G1 + G2 + G3 + G4;
-
-    // Step 13: Strict Reconciliation Audit Check (Micro-Reconciliation)
-    const totalSplitSum =
-      clinicAmount + platformAmount + gatewayAmount + taxAmount;
-    if (TP !== totalSplitSum) {
+    const TP = subtotal;
+    const taxAmount = gstOnP + feeGst;
+    // Every paisa the patient pays must land with exactly one party.
+    if (TP !== P + platform + gateway + taxAmount) {
       throw new Error(
-        `Calculation Reconciliation Failure: Patient Payable (Paise: ${TP}) does not match cumulative split sums (Paise: ${totalSplitSum})`
+        `Calculation Reconciliation Failure: Patient Payable (Paise: ${TP}) does not match cumulative split sums (Paise: ${P + platform + gateway + taxAmount})`
       );
     }
 
-    // Step 14: Calculate Collective Patient Platform Fee & Collective GST
-    // Aggregates all components where fee_payer is PATIENT (or strategy is ADD_TO_PATIENT_TOTAL)
-    let collectivePlatformFee = 0;
-    let collectivePlatformGst = 0;
-
-    if (
-      convConfig &&
-      (convConfig.feePayer === 'PATIENT' ||
-        convConfig.deductionStrategy === 'ADD_TO_PATIENT_TOTAL')
-    ) {
-      collectivePlatformFee += F;
-      collectivePlatformGst += G1;
-    }
-    if (
-      commConfig &&
-      (commConfig.feePayer === 'PATIENT' ||
-        commConfig.deductionStrategy === 'ADD_TO_PATIENT_TOTAL')
-    ) {
-      collectivePlatformFee += CC;
-      collectivePlatformGst += G2;
-    }
-    if (
-      pgConfig &&
-      (pgConfig.feePayer === 'PATIENT' ||
-        pgConfig.deductionStrategy === 'ADD_TO_PATIENT_TOTAL')
-    ) {
-      collectivePlatformFee += RG;
-      collectivePlatformGst += G3;
-    }
-    if (
-      routeConfig &&
-      (routeConfig.feePayer === 'PATIENT' ||
-        routeConfig.deductionStrategy === 'ADD_TO_PATIENT_TOTAL')
-    ) {
-      collectivePlatformFee += RT;
-      collectivePlatformGst += G4;
-    }
-
+    // Every fee is paid by the patient on top of the price (Q10).
     const patientPricingSummary: IPatientPricingSummary = {
       consultationFee: P / 100,
       consultationGst: gstOnP / 100,
-      platformFee: collectivePlatformFee / 100,
-      platformFeeGst: collectivePlatformGst / 100,
-      gstRate: convConfig?.taxRate ?? 18,
+      platformFee: fees / 100,
+      platformFeeGst: feeGst / 100,
+      gstRate:
+        active.find((c) => c.feeType === 'CONVENIENCE_FEE')?.taxRate ?? 18,
       totalPayable: TP / 100,
       currency: 'INR',
+      fees: [...lines]
+        .filter(([, l]) => l.fee + l.gst > 0)
+        .map(([type, l]) => ({
+          type: type as IPatientFeeLine['type'],
+          label: l.label,
+          amount: l.fee / 100,
+          gst: l.gst / 100,
+        })),
     };
 
     return {
       patientTotal: TP / 100,
-      clinicAmount: clinicAmount / 100,
-      platformAmount: platformAmount / 100,
-      gatewayAmount: gatewayAmount / 100,
+      clinicAmount: P / 100,
+      platformAmount: platform / 100,
+      gatewayAmount: gateway / 100,
       taxAmount: taxAmount / 100,
-      breakdown: {
-        basePrice: P / 100,
-        gstOnPrice: gstOnP / 100,
-        convenienceFee: F / 100,
-        gstOnConvenienceFee: G1 / 100,
-        commission: CC / 100,
-        gstOnCommission: G2 / 100,
-        gatewayFee: RG / 100,
-        gstOnGatewayFee: G3 / 100,
-        routeTransferFee: RT / 100,
-        gstOnRouteTransferFee: G4 / 100,
-      },
+      breakdown,
       patientPricingSummary,
     };
   }

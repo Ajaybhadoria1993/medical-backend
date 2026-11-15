@@ -26,6 +26,13 @@ export const getReportsOverviewController = asyncHandler(
   }
 );
 
+export const getReportsComparisonRangeController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const data = ReportsOverviewService.comparisonRange(req.validatedQuery);
+    return sendOk(res, 'Comparison range fetched successfully', data);
+  }
+);
+
 /**
  * GET /api/v1/reports-overview/trend
  * Returns trend chart data for a specific type and period.

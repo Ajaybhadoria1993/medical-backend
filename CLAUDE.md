@@ -10,13 +10,15 @@ Stack: Drizzle ORM + PostgreSQL, Redis, Socket.io, Zod, JWT.
 
 ## Commands
 
-- `npm run dev` — kills port 5000, starts Redis via `docker/docker-compose.dev.yml` (skips silently if Docker isn't running), then runs the server with nodemon (`NODE_ENV=development`)
+- `npm run dev` — frees the dev port (`PORT` in `.env`, default 5000; `npm run kill:port`), starts Redis via `docker/docker-compose.dev.yml` (skips silently if Docker isn't running), then runs the server with nodemon (`NODE_ENV=development`)
 - `npm run dev:instance` — same as `dev` but skips the Docker Compose step (use when infra is already running)
 - `npm run start:dev` — run once via `tsx` without nodemon
 - `npm run build` — `tsc -p tsconfig.json`
 - `npm test` — Jest (`--forceExit --detectOpenHandles`); `npm run test:watch`; `npm run test:coverage`
   - Single file: `npx jest path/to/file.test.ts` — by name: `npx jest -t "test name"`
-- `npm run lint` / `npm run lint:fix`, `npm run format` (Prettier)
+- `npm run typecheck` — `tsc --noEmit` (fast check without emitting `dist/`); `npm run typecheck:watch`
+- `npm run lint` / `npm run lint:fix`, `npm run format` (Prettier). Husky pre-commit runs `secretlint` on all files and `eslint --fix` + `prettier` on staged `.ts`.
+- `npm run notifications:docs` / `notifications:parity` — regenerate notification docs / check catalog parity (see `docs/playbook/NOTIFICATION_REBUILD.md`)
 - Database (Drizzle ORM, three isolated migration paths keyed off `NODE_ENV`):
   - `npm run db:migrations:dev` / `:staging` / `:prod` — generate migrations (`dev` → `src/drizzle/migrations/dev`, gitignored/local-only; `staging` and `prod` → tracked, deployed via CI)
   - `npm run db:migrate:dev` / `:staging` / `:prod` — apply migrations
@@ -57,12 +59,14 @@ Test a compose file locally: `docker/docker-compose.{staging,prod}.yml` only hav
 **Cross-cutting infra** (wired in `app.ts`/`server.ts`):
 - Socket.io (`src/socket/socketManager.ts`) — every emit fans out across nodes through the **Redis adapter**. Kafka was removed 2026-08-30: seven of its eight publish sites duplicated an emit the adapter already delivered, and the eighth (chat) had no direct emit at all, so chat silently failed whenever the broker was down.
 - Redis (`src/configurations/redisConfig.ts`) — caching/session + Socket.io Redis adapter.
-- Cron jobs: `src/cron/jobs/`, registered from `src/cron/index.ts` (auto no-show, subscription renewal, …).
+- Cron jobs: one entry each in `src/cron/registry.ts` (scheduled by `src/cron/index.ts`); runs are recorded in `cron_runs` for the Super Admin System jobs tab.
+- BullMQ queues (Redis-backed) — `GET /api/health` returns `DEGRADED` when any queue job has exhausted its retries, so check it when notifications seem to vanish.
+- `src/adapters/` holds feature-specific adapters (`notifications`, `superadminAnalytics`); `src/utils/` is a flat grab-bag of shared helpers — check there before writing a new one.
 - HTML/email templates: `src/htmltamplates/` (the folder-name typo is existing/intentional — do not "fix").
 
 **Path alias**: `@/*` → `src/*` (`tsconfig.json`; mirrored in `jest.config.js` `moduleNameMapper`).
 
-**Feature docs**: `docs/` has per-feature write-ups (`APPOINTMENT_ENGINE_ARCHITECTURE.md`, `SUBSCRIPTION_SYSTEM.md`, `RAZORPAY_PAYMENT_FLOW.md`, `PATIENT_FLOW_API_REFERENCE.md`, …) — check there before re-deriving a subsystem.
+**Feature docs**: `docs/` has one folder per feature (`appointments/`, `subscription/`, `payments/`, `patient/`, `notifications/`, `realtime/`, `superadmin/`, `users-roles/`, …) — check there before re-deriving a subsystem.
 
 ## Backend Standards
 
@@ -71,9 +75,10 @@ structure, naming, routes/controllers/services, validation, response envelopes, 
 transactions, caching, auth and tenancy, realtime, logging, tests, and build workflow. Check every
 BE change against it, and finish with its §15 review checklist.
 
-Three rules worth repeating here, because they bite immediately:
+Four rules worth repeating here, because they bite immediately:
 - **Every tenant-scoped query filters by `req.clinicId`/`req.labId` taken from the token** — a
   missing filter leaks one clinic's patient data to another (§9).
 - **Migrations are generated and applied by the repo owner**, never by an agent — write the model
   change and stop (§7).
 - **Never run the full Jest suite locally** — it hangs the machine. Run one file (§12).
+- **Comments are one line, two at most, and say *why*.** No multi-line `/** */` essays, banners or history; shorten long ones in any file you touch. Every class/function/method has a `/** one line */` doc comment above it that says more than its name.

@@ -1,4 +1,5 @@
 import { Job, Queue, Worker } from 'bullmq';
+import { queueConnection } from '../../notifications/queues/queueConnection';
 import { eq, and, sql, inArray } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
@@ -39,37 +40,20 @@ class PrescriptionMedicineQueue {
       return;
     }
 
-    const connection = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-    };
-
-    this.queue = new Queue('prescription-medicines', { connection });
-    this.queue.on('error', (err) =>
-      logger.error('Prescription medicine queue error', err)
-    );
+    this.queue = new Queue('prescription-medicines', {
+      connection: queueConnection,
+    });
     this.startWorker();
   }
 
   private startWorker() {
-    const connection = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-    };
-
     const worker = new Worker(
       'prescription-medicines',
       async (job: Job<PrescriptionMedicineJobData>) => {
         await this.processPrescriptions(job.data);
       },
-      { connection }
+      { connection: queueConnection }
     );
-
-    worker.on('completed', (job) => {
-      logger.info(`✅ Prescription medicine sync job completed: ${job.id}`);
-    });
 
     worker.on('failed', (job, err) => {
       logger.error(`❌ Prescription medicine sync job failed: ${job?.id}`, err);
@@ -124,12 +108,7 @@ class PrescriptionMedicineQueue {
         .from(PharmacyAssignModel)
         .where(eq(PharmacyAssignModel.clinicId, appointment.clinicId));
 
-      if (assignedPharmacies.length === 0) {
-        logger.info(
-          `[PrescriptionSync] No assigned pharmacies found for clinicId: ${appointment.clinicId}`
-        );
-        return;
-      }
+      if (assignedPharmacies.length === 0) return;
 
       // 4. Fetch or create HSN record for 98041000
       let hsnRecord = await database
@@ -283,12 +262,6 @@ class PrescriptionMedicineQueue {
               tagId: tagRecord.id,
             }))
           );
-
-          for (const m of insertedMedicines) {
-            logger.info(
-              `[PrescriptionSync] Added medicine ${m.medicineName} to pharmacy ${pharmacyId} with tag ${tagStr}`
-            );
-          }
         });
       }
     } catch (error) {

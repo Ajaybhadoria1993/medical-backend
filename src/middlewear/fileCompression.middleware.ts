@@ -86,12 +86,7 @@ async function compressImage(
       });
     }
 
-    const compressedBuffer = await pipeline.toBuffer();
-    logger.info(
-      `Image compressed: ${(buffer.length / 1024 / 1024).toFixed(2)}MB -> ${(compressedBuffer.length / 1024 / 1024).toFixed(2)}MB`
-    );
-
-    return compressedBuffer;
+    return await pipeline.toBuffer();
   } catch (error) {
     logger.error('Image compression failed:', error);
     return buffer; // Return original if compression fails
@@ -107,13 +102,7 @@ async function compressPDF(buffer: Buffer): Promise<Buffer> {
 
     // Embed images with compression if available
     const compressedUint8Array = await pdfDoc.save();
-    const compressedBuffer = Buffer.from(compressedUint8Array);
-
-    logger.info(
-      `PDF size: ${(buffer.length / 1024 / 1024).toFixed(2)}MB -> ${(compressedBuffer.length / 1024 / 1024).toFixed(2)}MB`
-    );
-
-    return compressedBuffer;
+    return Buffer.from(compressedUint8Array);
   } catch (error) {
     logger.error('PDF compression failed:', error);
     return buffer; // Return original if compression fails

@@ -1,13 +1,13 @@
-// src/main/appointments/routes/v1/appointments.route.ts
 import express from 'express';
 
 import {
-  requireAuth,
-  requireAdmin,
-  requireClinic,
-  requireReceptionist,
+  CLINIC_STAFF_ROLES,
   enforceClinicAutoLogout,
+  requireAdmin,
+  requireAuth,
+  requireClinic,
   requireDoctor,
+  requireReceptionist,
   requireRole,
 } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
@@ -22,7 +22,6 @@ import {
   getAppointmentController,
   getAppointmentHistoryController,
   getAvailableSlotsForDateController,
-  getDcotorApppointmentController,
   getPatientApppointmentController,
   updateAppointmentController,
   markAsNoShowController,
@@ -46,9 +45,17 @@ import {
   getMedicalCertificateController,
   upsertMedicalCertificateController,
   addMultipleServicesController,
+  collectAppointmentPaymentController,
+  getAppointmentMoneyController,
+  refundAppointmentPaymentController,
   getMultipleServicesController,
   getRemainingServicesController,
   convertAppointmentToFreeController,
+  getMoveToTodayPreviewController,
+  moveToTodayController,
+  getLeaveMovePreviewController,
+  leaveMoveController,
+  leaveCancelController,
 } from '../../controllers/appointment.controller';
 import { requirePermission } from '../../../../middlewear/permission.middleware';
 import { PERMISSION_KEYS } from '../../../permissions/utils/permission.constants';
@@ -64,6 +71,7 @@ import { cancelAppointmentController } from '../../../cancellation-policy/contro
 import { requestCancellationSchema } from '../../../cancellation-policy/schemas/cancellationPolicy.schemas';
 import {
   appointmentIdSchema,
+  moneyMoveSchema,
   appointmentQuerySchema,
   clinicAppointmentDetailsQuerySchema,
   createAppointmentSchemas,
@@ -83,8 +91,22 @@ import {
   medicalCertificateSchema,
   addMultipleServicesSchema,
   sendManualPrescriptionNotificationSchema,
+  moveToTodaySchema,
+  leaveMovePreviewQuerySchema,
+  leaveMoveSchema,
+  leaveCancelSchema,
 } from '../../schemas/appointment.schemas';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
+import {
+  shareGalleryImageController,
+  getSharedImagesController,
+  unshareGalleryImageController,
+} from '../../controllers/galleryShare.controller';
+import {
+  createGalleryShareSchema,
+  galleryShareAppointmentParamsSchema,
+  galleryShareParamsSchema,
+} from '../../schemas/galleryShare.schemas';
 import {
   uploadConsentFile,
   uploadDoctorGallery,
@@ -159,12 +181,8 @@ import {
 
 const appointmentsRouter = express.Router();
 
-/**
- * @route POST /api/v1/appointments/
- * @desc Create a new appointment for a patient
- * @access Private (Admin, Clinic)
- */
-
+/** @route POST /api/v1/appointments/add-patient-gallery — upload a patient image
+ *  @access Doctor */
 appointmentsRouter.post(
   '/add-patient-gallery',
   requireAuth,
@@ -175,13 +193,20 @@ appointmentsRouter.post(
   createPatientGalleryController
 );
 
+/** @route GET /api/v1/appointments/get-patient-gallery — a patient's or appointment's images
+ *  @access Admin, Doctor, Receptionist (own clinic, staff scope) */
 appointmentsRouter.get(
   '/get-patient-gallery',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
+  requireClinic,
   validate(getPatientGallerySchema, 'query'),
+  requireAppointmentScope('appointmentId', 'query'),
   getPatientGalleryController
 );
 
+/** @route DELETE /api/v1/appointments/delete-patient-gallery/:id — delete one patient image
+ *  @access Doctor (service: uploader only) */
 appointmentsRouter.delete(
   '/delete-patient-gallery/:id',
   requireAuth,
@@ -189,6 +214,8 @@ appointmentsRouter.delete(
   deletePatientGalleryController
 );
 
+/** @route DELETE /api/v1/appointments/delete-patient-gallery-of-appointment/:appointmentId
+ *  @access Doctor (service: the appointment's own doctor) */
 appointmentsRouter.delete(
   '/delete-patient-gallery-of-appointment/:appointmentId',
   requireAuth,
@@ -196,6 +223,8 @@ appointmentsRouter.delete(
   deleteAppointmentGalleryController
 );
 
+/** @route POST /api/v1/appointments/add-doctor-gallery — upload a doctor gallery image
+ *  @access Doctor */
 appointmentsRouter.post(
   '/add-doctor-gallery',
   requireAuth,
@@ -205,6 +234,8 @@ appointmentsRouter.post(
   createDoctorGalleryController
 );
 
+/** @route GET /api/v1/appointments/get-doctor-gallery — the doctor's own gallery
+ *  @access Doctor */
 appointmentsRouter.get(
   '/get-doctor-gallery',
   requireAuth,
@@ -213,6 +244,8 @@ appointmentsRouter.get(
   getDoctorGalleryController
 );
 
+/** @route GET /api/v1/appointments/get-doctor-gallery-by-specialty — stock images by specialty
+ *  @access Any signed-in user */
 appointmentsRouter.get(
   '/get-doctor-gallery-by-specialty',
   requireAuth,
@@ -220,6 +253,8 @@ appointmentsRouter.get(
   getDoctorGalleryBySpecialtyController
 );
 
+/** @route DELETE /api/v1/appointments/delete-doctor-gallery/:id — delete one gallery image
+ *  @access Doctor */
 appointmentsRouter.delete(
   '/delete-doctor-gallery/:id',
   requireAuth,
@@ -227,19 +262,58 @@ appointmentsRouter.delete(
   deleteDoctorGalleryController
 );
 
+/** @route POST /api/v1/appointments/:appointmentId/shared-images — share a gallery image with the patient
+ *  @access Doctor (service: the appointment's own doctor) */
+appointmentsRouter.post(
+  '/:appointmentId/shared-images',
+  requireAuth,
+  requireDoctor,
+  requireClinic,
+  validate(galleryShareAppointmentParamsSchema, 'params'),
+  validate(createGalleryShareSchema, 'body'),
+  shareGalleryImageController
+);
+
+/** @route GET /api/v1/appointments/:appointmentId/shared-images — images shared on this appointment
+ *  @access Doctor (service: the appointment's own doctor) */
+appointmentsRouter.get(
+  '/:appointmentId/shared-images',
+  requireAuth,
+  requireDoctor,
+  requireClinic,
+  validate(galleryShareAppointmentParamsSchema, 'params'),
+  getSharedImagesController
+);
+
+/** @route DELETE /api/v1/appointments/:appointmentId/shared-images/:shareId — unshare an image
+ *  @access Doctor (service: the appointment's own doctor) */
+appointmentsRouter.delete(
+  '/:appointmentId/shared-images/:shareId',
+  requireAuth,
+  requireDoctor,
+  requireClinic,
+  validate(galleryShareParamsSchema, 'params'),
+  unshareGalleryImageController
+);
+
+/** @route GET /api/v1/appointments/payment-transactions — deprecated: use /clinic-finance/transactions; kept one release for older apps
+ *  @access Admin, Receptionist; Doctor (own payments only, filtered in the service) */
 appointmentsRouter.get(
   '/payment-transactions',
   requireAuth,
+  requireRole(['Admin', 'Super_Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(getAppointmentPaymentsSchema, 'query'),
   enforceDateLimit(FEATURE_KEYS.PAYMENT_HISTORY_MONTHS),
   getAppointmentPaymentsController
 );
 
+/** @route POST /api/v1/appointments — book an appointment
+ *  @access Admin, Doctor; Receptionist/Nurse with appointment:create, assigned doctors only */
 appointmentsRouter.post(
   '/',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(createAppointmentSchemas, 'body'),
@@ -253,26 +327,12 @@ appointmentsRouter.post(
   createAppointmentController
 );
 
-/**
- * @route POST /api/v1/appointments/custom
- * @desc Create a custom / override appointment — a booking deliberately made
- *       outside the doctor's configured availability: after clinic hours,
- *       during a break, on a day the clinic is closed, or at any future time
- *       the schedule does not offer.
- *
- *       A separate route rather than a flag on POST `/`, on purpose. The
- *       override marker is set here by the server, so a request body can never
- *       pick the validation path and turn the normal endpoint into an
- *       availability bypass. It also gives the extra permission somewhere to
- *       hang: booking is not the same right as booking outside the schedule.
- *
- *       Availability is not validated. Authorization and past-time still are.
- * @access Private (Admin, Doctor; Receptionist/Nurse with appointment:custom_slot)
- */
+/** @route POST /api/v1/appointments/custom — book outside the doctor's schedule (own route so no body flag can bypass it)
+ *  @access Admin, Doctor; Receptionist/Nurse with appointment:custom_slot */
 appointmentsRouter.post(
   '/custom',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(createCustomAppointmentSchema, 'body'),
@@ -285,15 +345,12 @@ appointmentsRouter.post(
   createCustomAppointmentController
 );
 
-/**
- * @route PUT /api/v1/appointments/:appointmentId
- * @desc Update an existing appointment details
- * @access Private (Admin, Clinic)
- */
+/** @route PUT /api/v1/appointments/:appointmentId — update an appointment
+ *  @access Admin, Doctor, Receptionist (staff scope; confirm/complete: own doctor) */
 appointmentsRouter.put(
   '/:appointmentId',
   requireAuth,
-  requireAdmin,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(updateAppointmentSchema, 'body'),
   validate(appointmentIdSchema, 'params'),
@@ -303,11 +360,8 @@ appointmentsRouter.put(
   updateAppointmentController
 );
 
-/**
- * @route POST /api/v1/appointments/:appointmentId/cancel
- * @desc Cancel appointment (Staff-initiated policy cancellation)
- * @access Private (Clinic)
- */
+/** @route POST /api/v1/appointments/:appointmentId/cancel — staff cancellation under the clinic policy
+ *  @access Clinic staff (staff scope) */
 appointmentsRouter.post(
   '/:appointmentId/cancel',
   requireAuth,
@@ -320,15 +374,21 @@ appointmentsRouter.post(
   cancelAppointmentController
 );
 
+/** @route POST /api/v1/appointments/update-doctor-manual-prescription/:appointmentId — upload a handwritten prescription
+ *  @access Doctor (the appointment's own doctor); scope runs before the upload */
 appointmentsRouter.post(
   '/update-doctor-manual-prescription/:appointmentId',
   requireAuth,
+  requireDoctor,
   requireClinic,
-  uploadDoctorManualPrescription.single('doctorManualPrescription'),
   validate(appointmentIdSchema, 'params'),
+  requireAppointmentScope('appointmentId', 'params'),
+  uploadDoctorManualPrescription.single('doctorManualPrescription'),
   upsertDoctorManualPrescriptionController
 );
 
+/** @route POST /api/v1/appointments/:appointmentId/send-manual-prescription-notification
+ *  @access Doctor (service: the appointment's own doctor) */
 appointmentsRouter.post(
   '/:appointmentId/send-manual-prescription-notification',
   requireAuth,
@@ -338,28 +398,21 @@ appointmentsRouter.post(
   sendManualPrescriptionLinkController
 );
 
+/** @route PUT /api/v1/appointments/consent/:appointmentId — upload the signed consent form
+ *  @access Admin, Doctor, Receptionist (staff scope); scope runs before the upload */
 appointmentsRouter.put(
   '/consent/:appointmentId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
+  validate(appointmentIdSchema, 'params'),
+  requireAppointmentScope('appointmentId', 'params'),
   uploadConsentFile.single('consentFile'),
   updateConsentFileController
 );
 
-/**
- * @route GET /api/v1/appointments/session-override/history
- * @desc The day's full override log — cleared rows included, newest first,
- *       with the row currently in effect flagged. Backs the delay settings
- *       page, where staff need to see what was changed and by whom rather
- *       than only what is live.
- * @access Private (Admin, Receptionist, Doctor)
- *
- * **Must stay above `GET /:appointmentId/history` below.** Express matches in
- * order, and that route's pattern fits this path perfectly — with
- * `appointmentId` bound to the literal "session-override", which then fails
- * UUID validation and returns 400. The one-segment `/session-override` routes
- * further down are safe from it; this two-segment one is not.
- */
+/** @route GET /api/v1/appointments/session-override/history — the day's full delay log
+ *  @access Admin, Receptionist, Doctor · must stay above /:appointmentId/history */
 appointmentsRouter.get(
   '/session-override/history',
   requireAuth,
@@ -369,23 +422,20 @@ appointmentsRouter.get(
   getSessionOverrideHistoryController
 );
 
-/**
- * @route GET /api/v1/appointments/:appointmentId/history
- * @desc Get activity history for a specific appointment
- * @access Private (Auth)
- */
+/** @route GET /api/v1/appointments/:appointmentId/history — the appointment's activity log
+ *  @access Admin, Doctor, Receptionist, Nurse (staff scope) */
 appointmentsRouter.get(
   '/:appointmentId/history',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist', 'Nurse']),
+  requireClinic,
   validate(appointmentIdSchema, 'params'),
+  requireAppointmentScope('appointmentId', 'params'),
   getAppointmentHistoryController
 );
 
-/**
- * @route GET /api/v1/appointments/all/clicnic
- * @desc Get all appointments associated with a specific clinic
- * @access Private (Receptionist, Clinic)
- */
+/** @route GET /api/v1/appointments/all/clicnic — the clinic's appointment list
+ *  @access Clinic staff; Receptionist with appointment:view */
 appointmentsRouter.get(
   '/all/clicnic',
   requireAuth,
@@ -398,11 +448,8 @@ appointmentsRouter.get(
   getAllClinicAppointmentController
 );
 
-/**
- * @route GET /api/v1/appointments/details/clinic
- * @desc Get whole-day appointment status totals for a clinic
- * @access Private (Receptionist, Clinic)
- */
+/** @route GET /api/v1/appointments/details/clinic — whole-day status totals for the clinic
+ *  @access Clinic staff; Receptionist with appointment:view */
 appointmentsRouter.get(
   '/details/clinic',
   requireAuth,
@@ -415,11 +462,8 @@ appointmentsRouter.get(
   getClinicAppointmentDetailsController
 );
 
-/**
- * @route GET /api/v1/appointments/all/user
- * @desc Get all appointments for the current user across clinics
- * @access Private (Admin, Clinic)
- */
+/** @route GET /api/v1/appointments/all/user — the signed-in user's own appointments
+ *  @access Any signed-in user with a clinic */
 appointmentsRouter.get(
   '/all/user',
   requireAuth,
@@ -430,26 +474,18 @@ appointmentsRouter.get(
   getAllUserAppointmentController
 );
 
-/**
- * @route GET /api/v1/appointments/queue-state
- * @desc Get real-time queue state (from Redis cache) for a doctor's daily queue
- * @query clinicId, doctorId, date (optional, defaults to today)
- * @access Private (Auth)
- */
+/** @route GET /api/v1/appointments/queue-state — a doctor's live queue (Redis)
+ *  @access Clinic members */
 appointmentsRouter.get(
   '/queue-state',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getQueueStateController
 );
 
-/**
- * @route GET /api/v1/appointments/reception/live-queue
- * @desc Clinic-wide live doctor queue board (status, waiting, next-in-queue,
- *       current running patient per doctor/admin). Real-time updates pushed
- *       via Socket.io "reception.liveQueue.updated" to the clinic room.
- * @access Private (Receptionist, Admin)
- */
+/** @route GET /api/v1/appointments/reception/live-queue — clinic-wide live queue board
+ *  @access Receptionist, Admin */
 appointmentsRouter.get(
   '/reception/live-queue',
   requireAuth,
@@ -459,17 +495,8 @@ appointmentsRouter.get(
   getReceptionLiveQueueController
 );
 
-/**
- * @route POST /api/v1/appointments/session-override
- * @desc Declare a delay on one or more doctors' day today. `running_late`
- *       announces it — the engine's projection moves and waiting patients are
- *       re-notified via the existing "running_late" push/socket event, but
- *       nothing is rewritten. `schedule_shift` moves the day instead: the
- *       remaining appointments and the bookable window slide forward, so the
- *       capacity behind the delay is not lost. `dryRun: true` previews a shift
- *       without writing. Either form clears with valueMinutes: 0.
- * @access Private (Admin, Receptionist — any clinic doctor; Doctor — self only)
- */
+/** @route POST /api/v1/appointments/session-override — announce a delay or shift the day (dryRun previews)
+ *  @access Admin, Receptionist (any doctor); Doctor (self only) */
 appointmentsRouter.post(
   '/session-override',
   requireAuth,
@@ -480,15 +507,8 @@ appointmentsRouter.post(
   announceSessionOverrideController
 );
 
-/**
- * @route GET /api/v1/appointments/session-override
- * @desc Today's active session overrides for the clinic, optionally narrowed
- *       to specific doctorIds.
- * @access Private (Admin, Receptionist, Doctor)
- *
- * Registered before "/:appointmentId" — Express matches in order, so the
- * parameterised route would otherwise swallow this path.
- */
+/** @route GET /api/v1/appointments/session-override — today's active delays
+ *  @access Admin, Receptionist, Doctor · must stay above /:appointmentId */
 appointmentsRouter.get(
   '/session-override',
   requireAuth,
@@ -498,10 +518,8 @@ appointmentsRouter.get(
   getSessionOverridesController
 );
 
-/**
- * @route POST /api/v1/appointments/doctor-arrival
- * @desc Record that a doctor has started their day, today.
- */
+/** @route POST /api/v1/appointments/doctor-arrival — record that a doctor started today
+ *  @access Admin, Receptionist, Doctor */
 appointmentsRouter.post(
   '/doctor-arrival',
   requireAuth,
@@ -512,10 +530,8 @@ appointmentsRouter.post(
   markDoctorArrivalController
 );
 
-/**
- * @route GET /api/v1/appointments/doctor-arrival
- * @desc Today's arrived doctors for the clinic. Must stay above "/:appointmentId".
- */
+/** @route GET /api/v1/appointments/doctor-arrival — today's arrived doctors
+ *  @access Admin, Receptionist, Doctor · must stay above /:appointmentId */
 appointmentsRouter.get(
   '/doctor-arrival',
   requireAuth,
@@ -525,10 +541,8 @@ appointmentsRouter.get(
   getDoctorArrivalController
 );
 
-/**
- * @route POST /api/v1/appointments/slot-config
- * @desc Customize one shift's slot count/duration (or token count) for a current/future date.
- */
+/** @route POST /api/v1/appointments/slot-config — customise one shift's slots for a date
+ *  @access Admin, Receptionist, Doctor */
 appointmentsRouter.post(
   '/slot-config',
   requireAuth,
@@ -539,10 +553,8 @@ appointmentsRouter.post(
   setSlotConfigController
 );
 
-/**
- * @route GET /api/v1/appointments/slot-config
- * @desc Current slot setup for a doctor's session(s) on a date. Must stay above "/:appointmentId".
- */
+/** @route GET /api/v1/appointments/slot-config — a doctor's slot setup for a date
+ *  @access Admin, Receptionist, Doctor · must stay above /:appointmentId */
 appointmentsRouter.get(
   '/slot-config',
   requireAuth,
@@ -552,10 +564,8 @@ appointmentsRouter.get(
   getSlotConfigController
 );
 
-/**
- * @route GET /api/v1/appointments/missed-slot-options
- * @desc What can be done with a slot whose time has passed — shift it (and where to), or record it at its original time. Must stay above "/:appointmentId".
- */
+/** @route GET /api/v1/appointments/missed-slot-options — what can be done with a passed slot
+ *  @access Admin, Receptionist, Doctor · must stay above /:appointmentId */
 appointmentsRouter.get(
   '/missed-slot-options',
   requireAuth,
@@ -565,10 +575,8 @@ appointmentsRouter.get(
   getMissedSlotOptionsController
 );
 
-/**
- * @route GET /api/v1/appointments/available-slots
- * @desc Custom-slot-aware bookable slots for a date. Must stay above "/:appointmentId".
- */
+/** @route GET /api/v1/appointments/available-slots — bookable slots for a date
+ *  @access Admin, Receptionist, Doctor · must stay above /:appointmentId */
 appointmentsRouter.get(
   '/available-slots',
   requireAuth,
@@ -578,10 +586,8 @@ appointmentsRouter.get(
   getAvailableSlotsController
 );
 
-/**
- * @route POST /api/v1/appointments/extra-slots
- * @desc Add (or clear) extra bookable slots after one session's real end time, for a walk-in surge.
- */
+/** @route POST /api/v1/appointments/extra-slots — add or clear slots after a session ends
+ *  @access Admin, Receptionist, Doctor */
 appointmentsRouter.post(
   '/extra-slots',
   requireAuth,
@@ -592,10 +598,8 @@ appointmentsRouter.post(
   setExtraSlotsController
 );
 
-/**
- * @route GET /api/v1/appointments/extra-slots
- * @desc Current extra-slot setup for a doctor's session(s) on a date. Must stay above "/:appointmentId".
- */
+/** @route GET /api/v1/appointments/extra-slots — a doctor's extra-slot setup for a date
+ *  @access Admin, Receptionist, Doctor · must stay above /:appointmentId */
 appointmentsRouter.get(
   '/extra-slots',
   requireAuth,
@@ -605,10 +609,8 @@ appointmentsRouter.get(
   getExtraSlotsController
 );
 
-/**
- * @route POST /api/v1/appointments/missed-slot/dismiss
- * @desc Marks a past, never-booked grid slot as handled (shifted elsewhere or acknowledged) so `available-slots` stops offering it. Must stay above "/:appointmentId".
- */
+/** @route POST /api/v1/appointments/missed-slot/dismiss — mark a passed, unbooked slot as handled
+ *  @access Admin, Receptionist, Doctor */
 appointmentsRouter.post(
   '/missed-slot/dismiss',
   requireAuth,
@@ -619,11 +621,8 @@ appointmentsRouter.post(
   dismissMissedSlotController
 );
 
-/**
- * @route GET /api/v1/appointments/:appointmentId/details
- * @desc Staff appointment page payload — only the fields that screen reads
- * @access Private (Receptionist, Clinic)
- */
+/** @route GET /api/v1/appointments/:appointmentId/details — the staff appointment page payload
+ *  @access Clinic staff (service: clinic and staff scope) */
 appointmentsRouter.get(
   '/:appointmentId/details',
   requireAuth,
@@ -633,11 +632,8 @@ appointmentsRouter.get(
   getAppointmentDetailsController
 );
 
-/**
- * @route GET /api/v1/appointments/:appointmentId
- * @desc Get detailed information about a specific appointment by ID
- * @access Private (Receptionist, Clinic)
- */
+/** @route GET /api/v1/appointments/:appointmentId — one appointment in full
+ *  @access Clinic staff (service: clinic and staff scope) */
 appointmentsRouter.get(
   '/:appointmentId',
   requireAuth,
@@ -647,6 +643,8 @@ appointmentsRouter.get(
   getAppointmentController
 );
 
+/** @route GET /api/v1/appointments/patient-last-details/:patientId — the patient's latest clinical summary
+ *  @access Doctor (service: patient must belong to the clinic) */
 appointmentsRouter.get(
   '/patient-last-details/:patientId',
   requireAuth,
@@ -656,11 +654,8 @@ appointmentsRouter.get(
   getLastPatientReportCardController
 );
 
-/**
- * @route GET /api/v1/appointments/patient/:patientId
- * @desc Get all appointments for a specific patient
- * @access Private (Receptionist, Clinic)
- */
+/** @route GET /api/v1/appointments/patient/:patientId — a patient with one of their appointments
+ *  @access Clinic staff (service: own clinic, staff scope) */
 appointmentsRouter.get(
   '/patient/:patientId',
   requireAuth,
@@ -671,25 +666,8 @@ appointmentsRouter.get(
   getPatientApppointmentController
 );
 
-/**
- * @route GET /api/v1/appointments/doctor/:doctorId
- * @desc Get all appointments for a specific doctor
- * @access Private (Receptionist, Clinic)
- */
-appointmentsRouter.get(
-  '/doctor/:doctorId',
-  requireAuth,
-  requireReceptionist,
-  requireClinic,
-  validate(doctorIdSchema, 'params'),
-  getDcotorApppointmentController
-);
-
-/**
- * @route GET /api/v1/appointments/doctor/available/slot-date-clinic/:doctorId
- * @desc Get available time slots for a doctor on a specific date at a clinic
- * @access Private (Receptionist, Clinic)
- */
+/** @route GET /api/v1/appointments/doctor/available/slot-date-clinic/:doctorId — a doctor's free slots on a date
+ *  @access Clinic staff */
 appointmentsRouter.get(
   '/doctor/available/slot-date-clinic/:doctorId',
   requireAuth,
@@ -700,94 +678,94 @@ appointmentsRouter.get(
   getAvailableSlotsForDateController
 );
 
-/**
- * @route POST /api/v1/appointments/:appointmentId/no-show
- * @desc Mark an appointment as No Show
- * @access Private (Doctor, Receptionist, Clinic)
- */
+/** @route POST /api/v1/appointments/:appointmentId/no-show — mark the patient as not attended
+ *  @access Admin, Doctor, Receptionist (staff scope) */
 appointmentsRouter.post(
   '/:appointmentId/no-show',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(appointmentIdSchema, 'params'),
   validate(markNoShowSchema, 'body'),
+  requireAppointmentScope('appointmentId', 'params'),
   markAsNoShowController
 );
 
-/**
- * @route POST /api/v1/appointments/no-show/policy
- * @desc Set or update No Show policy for a clinic
- * @access Private (Admin; Receptionist with queue:manage)
- */
+/** @route POST /api/v1/appointments/no-show/policy — set the clinic's no-show policy
+ *  @access Admin; Receptionist with queue:manage */
 appointmentsRouter.post(
   '/no-show/policy',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(createNoShowPolicySchema, 'body'),
   requirePermission(PERMISSION_KEYS.QUEUE_MANAGE, ['Receptionist']),
   setNoShowPolicyController
 );
 
-/**
- * @route GET /api/v1/appointments/no-show/policy
- * @desc Get No Show policy for a clinic
- * @access Private (Admin, Clinic, Receptionist)
- */
+/** @route GET /api/v1/appointments/no-show/policy — the clinic's no-show policy
+ *  @access Clinic members */
 appointmentsRouter.get(
   '/no-show/policy',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getNoShowPolicyController
 );
 
-/**
- * @route GET /api/v1/appointments/no-show/history/patient/:patientId
- * @desc Get No Show history for a patient
- * @access Private (Doctor, Receptionist, Clinic)
- */
+/** @route GET /api/v1/appointments/no-show/history/patient/:patientId — a patient's no-show record
+ *  @access Admin, Doctor, Receptionist */
 appointmentsRouter.get(
   '/no-show/history/patient/:patientId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(patientIdSchema, 'params'),
   getPatientNoShowHistoryController
 );
 
-/**
- * @route GET /api/v1/appointments/no-show/analytics/clinic
- * @desc Get No Show analytics for a clinic
- * @access Private (Admin, Clinic)
- */
+/** @route GET /api/v1/appointments/no-show/analytics/clinic — the clinic's no-show analytics
+ *  @access Clinic members */
 appointmentsRouter.get(
   '/no-show/analytics/clinic',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(clinicNoShowQuerySchema, 'query'),
   getClinicNoShowAnalyticsController
 );
 
+/** @route GET /api/v1/appointments/medical-certificate/:appointmentId — the visit's medical certificate
+ *  @access Admin, Doctor, Receptionist (staff scope) */
 appointmentsRouter.get(
   '/medical-certificate/:appointmentId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(appointmentIdSchema, 'params'),
+  requireAppointmentScope('appointmentId', 'params'),
   getMedicalCertificateController
 );
 
+/** @route POST /api/v1/appointments/medical-certificate/:appointmentId — create or update the certificate
+ *  @access Admin, Doctor, Receptionist (staff scope) */
 appointmentsRouter.post(
   '/medical-certificate/:appointmentId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(appointmentIdSchema, 'params'),
   validate(medicalCertificateSchema, 'body'),
+  requireAppointmentScope('appointmentId', 'params'),
   upsertMedicalCertificateController
 );
 
+/** @route POST /api/v1/appointments/multiple-service/:appointmentId — add services to the visit
+ *  @access Admin, Doctor, Receptionist (staff scope; money needs payment:manage) */
 appointmentsRouter.post(
   '/multiple-service/:appointmentId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(appointmentIdSchema, 'params'),
   validate(addMultipleServicesSchema, 'body'),
@@ -796,38 +774,76 @@ appointmentsRouter.post(
   addMultipleServicesController
 );
 
+/** @route POST /api/v1/appointments/:appointmentId/payments — record money received at the desk (part or full)
+ *  @access Admin; Doctor, Receptionist with payment:manage (staff scope) */
+appointmentsRouter.post(
+  '/:appointmentId/payments',
+  requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
+  requireClinic,
+  validate(appointmentIdSchema, 'params'),
+  validate(moneyMoveSchema, 'body'),
+  requireAppointmentScope('appointmentId', 'params'),
+  requirePermission(PERMISSION_KEYS.PAYMENT_MANAGE, ['Doctor', 'Receptionist']),
+  collectAppointmentPaymentController
+);
+
+/** @route GET /api/v1/appointments/:appointmentId/payments — the visit's balance and money entries
+ *  @access Admin, Doctor, Receptionist (staff scope) */
+appointmentsRouter.get(
+  '/:appointmentId/payments',
+  requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
+  requireClinic,
+  validate(appointmentIdSchema, 'params'),
+  requireAppointmentScope('appointmentId', 'params'),
+  getAppointmentMoneyController
+);
+
+/** @route POST /api/v1/appointments/:appointmentId/refunds — give money back (part or full)
+ *  @access Admin; Doctor, Receptionist with payment:manage (staff scope) */
+appointmentsRouter.post(
+  '/:appointmentId/refunds',
+  requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
+  requireClinic,
+  validate(appointmentIdSchema, 'params'),
+  validate(moneyMoveSchema, 'body'),
+  requireAppointmentScope('appointmentId', 'params'),
+  requirePermission(PERMISSION_KEYS.PAYMENT_MANAGE, ['Doctor', 'Receptionist']),
+  refundAppointmentPaymentController
+);
+
+/** @route GET /api/v1/appointments/multiple-service/:appointmentId — the visit's extra services
+ *  @access Admin, Doctor, Receptionist (staff scope) */
 appointmentsRouter.get(
   '/multiple-service/:appointmentId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(appointmentIdSchema, 'params'),
   requireAppointmentScope('appointmentId', 'params'),
   getMultipleServicesController
 );
 
+/** @route GET /api/v1/appointments/get-remaining-service/:appointmentId — services not yet added
+ *  @access Admin, Doctor, Receptionist (staff scope) */
 appointmentsRouter.get(
   '/get-remaining-service/:appointmentId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(appointmentIdSchema, 'params'),
   requireAppointmentScope('appointmentId', 'params'),
   getRemainingServicesController
 );
 
-/**
- * @route POST /api/v1/appointments/convert-appointment-to-free/:appointmentId
- * @desc Add a "Free Consultation" service (price 0, INR, 1-day duration) as
- *       an additional service on the appointment, reusing an existing
- *       "Free Consultation" service for the appointment's doctor/clinic if
- *       one already exists (no-op if it's already attached to this
- *       appointment). Requires the appointment's payment to already be
- *       Refunded, and is not allowed once the appointment is
- *       Cancelled/Completed.
- * @access Private (Clinic)
- */
+/** @route POST /api/v1/appointments/convert-appointment-to-free/:appointmentId — add a ₹0 consultation (payment must be refunded)
+ *  @access Admin, Doctor, Receptionist (staff scope; money needs payment:manage) */
 appointmentsRouter.post(
   '/convert-appointment-to-free/:appointmentId',
   requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
   requireClinic,
   validate(appointmentIdSchema, 'params'),
   requireAppointmentScope('appointmentId', 'params'),
@@ -835,11 +851,72 @@ appointmentsRouter.post(
   convertAppointmentToFreeController
 );
 
+/** @route GET /api/v1/appointments/:appointmentId/move-to-today/preview — can it move, suggested token/time, today's free slots
+ *  @access Admin, Doctor, Receptionist (staff scope) */
+appointmentsRouter.get(
+  '/:appointmentId/move-to-today/preview',
+  requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
+  requireClinic,
+  validate(appointmentIdSchema, 'params'),
+  requireAppointmentScope('appointmentId', 'params'),
+  getMoveToTodayPreviewController
+);
+
+/** @route POST /api/v1/appointments/:appointmentId/move-to-today — move a past or future visit to today
+ *  @access Admin, Doctor, Receptionist (staff scope); off-schedule time needs appointment:custom_slot */
+appointmentsRouter.post(
+  '/:appointmentId/move-to-today',
+  requireAuth,
+  requireRole(['Admin', 'Doctor', 'Receptionist']),
+  requireClinic,
+  enforceClinicAutoLogout,
+  validate(appointmentIdSchema, 'params'),
+  validate(moveToTodaySchema, 'body'),
+  requireAppointmentScope('appointmentId', 'params'),
+  moveToTodayController
+);
+
+/** @route GET /api/v1/appointments/leave-move/preview?dates= — your visits still booked on leave days
+ *  @access Doctor, or Admin with doctor access (own appointments only) */
+appointmentsRouter.get(
+  '/leave-move/preview',
+  requireAuth,
+  requireRole(['Doctor']),
+  requireClinic,
+  validate(leaveMovePreviewQuerySchema, 'query'),
+  getLeaveMovePreviewController
+);
+
+/** @route POST /api/v1/appointments/leave-move — move those visits to one date, never blocked
+ *  @access Doctor, or Admin with doctor access (own appointments only) */
+appointmentsRouter.post(
+  '/leave-move',
+  requireAuth,
+  requireRole(['Doctor']),
+  requireClinic,
+  enforceClinicAutoLogout,
+  validate(leaveMoveSchema, 'body'),
+  leaveMoveController
+);
+
+/** @route POST /api/v1/appointments/leave-cancel — cancel those visits instead; refund per clinic policy
+ *  @access Doctor, or Admin with doctor access (own appointments only) */
+appointmentsRouter.post(
+  '/leave-cancel',
+  requireAuth,
+  requireRole(['Doctor']),
+  requireClinic,
+  enforceClinicAutoLogout,
+  validate(leaveCancelSchema, 'body'),
+  leaveCancelController
+);
+
 export default appointmentsRouter;
 
 docsRegistry.addEndpoint({
   method: 'post',
-  path: '/api/v1/appointments', // full path as it would appear in the app
+  path: '/api/v1/appointments',
   description: 'Create a appointments for a patient',
   requestSchema: createAppointmentSchemas,
   tags: ['appointments', 'Petient'],
@@ -859,7 +936,7 @@ docsRegistry.addEndpoint({
 
 docsRegistry.addEndpoint({
   method: 'put',
-  path: '/api/v1/appointments/:appointmentId', // full path as it would appear in the app
+  path: '/api/v1/appointments/:appointmentId',
   description: 'update a appointments for a patient',
   requestSchema: updateAppointmentSchema,
   params: appointmentIdSchema,
@@ -884,7 +961,7 @@ docsRegistry.addEndpoint({
 
 docsRegistry.addEndpoint({
   method: 'get',
-  path: '/api/v1/appointments/all/clicnic', // full path as it would appear in the app
+  path: '/api/v1/appointments/all/clicnic',
   description: 'Get all patient appointments by clinic',
   query: appointmentQuerySchema,
   tags: ['appointments', 'Clinic'],
@@ -898,14 +975,14 @@ docsRegistry.addEndpoint({
 });
 docsRegistry.addEndpoint({
   method: 'get',
-  path: '/api/v1/appointments/all/user', // full path as it would appear in the app
+  path: '/api/v1/appointments/all/user',
   description: 'Get all patient appointments by user',
   query: appointmentQuerySchema,
   tags: ['appointments', 'user'],
 });
 docsRegistry.addEndpoint({
   method: 'get',
-  path: '/api/v1/appointments/:appointmentId', // full path as it would appear in the app
+  path: '/api/v1/appointments/:appointmentId',
   description: 'get appointment by id',
   params: appointmentIdSchema,
   tags: ['appointments', 'Petient'],
@@ -919,14 +996,14 @@ docsRegistry.addEndpoint({
 });
 docsRegistry.addEndpoint({
   method: 'get',
-  path: '/api/v1/appointments/patient/:patientId', // full path as it would appear in the app
+  path: '/api/v1/appointments/patient/:patientId',
   description: 'get  patientId  appointment by id',
   params: patientIdSchema,
   tags: ['appointments', 'Petient'],
 });
 docsRegistry.addEndpoint({
   method: 'get',
-  path: '/api/v1/appointments/doctor/:doctorId', // full path as it would appear in the app
+  path: '/api/v1/appointments/doctor/:doctorId',
   description: 'get doctorId appointment by id',
   params: doctorIdSchema,
   tags: ['appointments', 'Petient'],
@@ -934,7 +1011,7 @@ docsRegistry.addEndpoint({
 
 docsRegistry.addEndpoint({
   method: 'get',
-  path: '/api/v1/appointments/doctor/available/slot-date-clinic/:doctorId', // full path as it would appear in the app
+  path: '/api/v1/appointments/doctor/available/slot-date-clinic/:doctorId',
   description: 'get avlble slot for a date',
   params: getAvailableSlotsForParamsSchemas,
   query: getAvailableSlotsForDateSchemas,
@@ -1172,4 +1249,34 @@ docsRegistry.addEndpoint({
   query: getSessionOverrideHistoryQuerySchema,
   responseSchema: getSessionOverrideHistoryResponseSchema,
   tags: ['appointments', 'SessionOverride'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'post',
+  path: '/api/v1/appointments/:appointmentId/shared-images',
+  description:
+    'Share a My Uploads image (galleryImageId) or a Suggested image ' +
+    "(suggestedImageUrl) with this appointment's patient. 404 if the " +
+    'appointment or image is not theirs, ' +
+    '409 if already shared. Access: Doctor.',
+  params: galleryShareAppointmentParamsSchema,
+  requestSchema: createGalleryShareSchema,
+  tags: ['appointments', 'GalleryShare'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/appointments/:appointmentId/shared-images',
+  description:
+    'Images the doctor has shared on this appointment, newest first. Access: Doctor.',
+  params: galleryShareAppointmentParamsSchema,
+  tags: ['appointments', 'GalleryShare'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'delete',
+  path: '/api/v1/appointments/:appointmentId/shared-images/:shareId',
+  description: 'Unshare an image; the patient stops seeing it. Access: Doctor.',
+  params: galleryShareParamsSchema,
+  tags: ['appointments', 'GalleryShare'],
 });

@@ -1,12 +1,5 @@
-/**
- * Port wiring.
- *
- * Implementations are registered once at boot from outside the module, so
- * nothing here has a compile-time dependency on another feature. Reading a port
- * before it is registered is a programming error, not a runtime condition, so
- * it throws rather than degrading quietly — a notification that silently
- * resolves to no recipients is far harder to notice than a failed boot.
- */
+/** Ports are registered once at boot from outside, so nothing here depends on another feature at compile time.
+ *  Reading one before registration throws: silently having no recipients is harder to notice than a failed boot. */
 
 import type { DirectoryPort } from './directory.port';
 import type { EmitPort } from './emit.port';
@@ -18,8 +11,25 @@ export type {
   AppointmentContext,
 } from './directory.port';
 
+export type {
+  AttachmentPort,
+  EmailAttachmentRef,
+  ResolvedAttachment,
+} from './attachment.port';
+import type { AttachmentPort } from './attachment.port';
+
 let directory: DirectoryPort | null = null;
 let emitter: EmitPort | null = null;
+let attachments: AttachmentPort | null = null;
+
+export function registerAttachmentPort(impl: AttachmentPort): void {
+  attachments = impl;
+}
+
+/** Optional: an email still goes out without its file when no provider is registered. */
+export function getAttachmentPort(): AttachmentPort | null {
+  return attachments;
+}
 
 export function registerDirectoryPort(impl: DirectoryPort): void {
   directory = impl;

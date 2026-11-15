@@ -6,9 +6,9 @@ import {
   pgEnum,
   text,
   integer,
+  numeric,
   varchar,
   jsonb,
-  uniqueIndex,
   index,
   boolean,
 } from 'drizzle-orm/pg-core';
@@ -17,18 +17,17 @@ import { TestCatalogModel } from './testCatalog.model';
 import { UserModel } from '../../users/models/user.model';
 import { ClinicModel } from '../../clinic/models/clinic.model';
 import { LabsModel } from '../../lab/models/lab.model';
+import {
+  LabUpdatedTestModel,
+  LabUpdatedTestPackageModel,
+} from '../../lab/models/labUpdated.model';
 
 // Rename enum
 export const testReportStatusEnum = pgEnum('test_report_status', [
   'Initiated',
   'InProgress',
+  'Collected',
   'Completed',
-]);
-
-export const paymentStatusEnum = pgEnum('payment_status', [
-  'pending',
-  'paid',
-  'failed',
 ]);
 
 // Backs AppointmentTestService.generateUniqueTestId's nextval() call
@@ -57,7 +56,6 @@ export const LabOrderModel = pgTable(
   'lab_orders',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    uniqueTestId: varchar('unique_test_id', { length: 20 }),
 
     appointmentId: uuid('appointment_id').references(
       () => AppointmentModel.id,
@@ -66,15 +64,24 @@ export const LabOrderModel = pgTable(
       }
     ),
 
-    testId: uuid('test_id')
-      .references(() => TestCatalogModel.id, { onDelete: 'cascade' })
-      .notNull(),
+    testId: uuid('test_id').references(() => TestCatalogModel.id, {
+      onDelete: 'cascade',
+    }),
+
+    labUpdatedTestId: uuid('lab_updated_test_id').references(
+      () => LabUpdatedTestModel.id,
+      { onDelete: 'set null' }
+    ),
+
+    labUpdatedTestPackageId: uuid('lab_updated_test_package_id').references(
+      () => LabUpdatedTestPackageModel.id,
+      { onDelete: 'set null' }
+    ),
 
     isIndependent: boolean('is_independent').default(false).notNull(),
 
-    isExternalLabReport: boolean('is_external_lab_report')
-      .default(false)
-      .notNull(),
+    // One id per patient visit, so tests added later join the same order group.
+    labOrderGroupId: uuid('lab_order_group_id'),
 
     independentPatientId: uuid('independent_patient_id').references(
       () => IndependentPatientModel.id
@@ -84,22 +91,23 @@ export const LabOrderModel = pgTable(
 
     doctorId: uuid('doctor_id').references(() => UserModel.id),
 
-    clinicId: uuid('clinic_id').references(() => ClinicModel.id),
+    referringDoctorName: varchar('referring_doctor_name', { length: 255 }),
 
-    labAssistantId: uuid('lab_assistant_id').references(() => UserModel.id),
+    clinicId: uuid('clinic_id').references(() => ClinicModel.id),
 
     // Use the renamed enum
     reportStatus: testReportStatusEnum('test_report_status')
       .default('Initiated')
       .notNull(),
 
-    paymentStatus: paymentStatusEnum('payment_status')
-      .default('pending')
-      .notNull(),
-
-    price: integer('price').default(0),
-
     reportPdf: text('report_pdf'),
+
+    discountPercent: numeric('discount_percent', {
+      precision: 5,
+      scale: 2,
+    })
+      .default('0')
+      .notNull(),
 
     workflowStatus: varchar('workflow_status', { length: 50 })
       .default('INITIATED')
@@ -107,43 +115,31 @@ export const LabOrderModel = pgTable(
     sampleStatus: varchar('sample_status', { length: 50 }).default(
       'NOT_STARTED'
     ),
+    sampleCode: varchar('sample_code', { length: 30 }),
     onHoldAt: timestamp('on_hold_at'),
-    rejectedAt: timestamp('rejected_at'),
-    rejectionReason: text('rejection_reason'),
-    paymentCollectedAt: timestamp('payment_collected_at'),
-    paymentCollectedBy: uuid('payment_collected_by').references(
-      () => UserModel.id
-    ),
-    sampleCollectedAt: timestamp('sample_collected_at'),
-    sampleReceivedAt: timestamp('sample_received_at'),
-    processingStartedAt: timestamp('processing_started_at'),
-    testingStartedAt: timestamp('testing_started_at'),
-    qualityCheckedAt: timestamp('quality_checked_at'),
-    expectedReportReadyAt: timestamp('expected_report_ready_at'),
-    readyForReportAt: timestamp('ready_for_report_at'),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow(),
   },
   (table) => ({
-    uniqueTestIdUnique: uniqueIndex('lab_orders_unique_test_id_unique').on(
-      table.uniqueTestId
-    ),
     appointmentIdIdx: index('idx_lab_orders_appointment_id').on(
       table.appointmentId
     ),
     testIdIdx: index('idx_lab_orders_test_id').on(table.testId),
+    labUpdatedTestIdIdx: index('idx_lab_orders_lab_updated_test_id').on(
+      table.labUpdatedTestId
+    ),
+    labUpdatedTestPackageIdIdx: index(
+      'idx_lab_orders_lab_updated_test_package_id'
+    ).on(table.labUpdatedTestPackageId),
+    labOrderGroupIdIdx: index('idx_lab_orders_lab_order_group_id').on(
+      table.labOrderGroupId
+    ),
     patientIdIdx: index('idx_lab_orders_patient_id').on(table.patientId),
     doctorIdIdx: index('idx_lab_orders_doctor_id').on(table.doctorId),
     clinicIdIdx: index('idx_lab_orders_clinic_id').on(table.clinicId),
-    labAssistantIdIdx: index('idx_lab_orders_lab_assistant_id').on(
-      table.labAssistantId
-    ),
     reportStatusIdx: index('idx_lab_orders_report_status').on(
       table.reportStatus
-    ),
-    paymentStatusIdx: index('idx_lab_orders_payment_status').on(
-      table.paymentStatus
     ),
     workflowStatusIdx: index('idx_lab_orders_workflow_status').on(
       table.workflowStatus
@@ -151,9 +147,6 @@ export const LabOrderModel = pgTable(
     sampleStatusIdx: index('idx_lab_orders_sample_status').on(
       table.sampleStatus
     ),
-    labAssistantCreatedAtIdx: index(
-      'idx_lab_orders_lab_assistant_created_at'
-    ).on(table.labAssistantId, table.createdAt),
     clinicReportStatusIdx: index('idx_lab_orders_clinic_report_status').on(
       table.clinicId,
       table.reportStatus

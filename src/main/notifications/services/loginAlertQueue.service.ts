@@ -1,5 +1,6 @@
 // src/services/loginAlertQueue.service.ts
 import { Job, Queue, Worker } from 'bullmq';
+import { queueConnection } from '../queues/queueConnection';
 import { eq } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { ClinicModel } from '../../clinic/models/clinic.model';
@@ -41,30 +42,17 @@ class LoginAlertQueue {
       return;
     }
 
-    const connection = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-    };
-
-    this.queue = new Queue('login-alerts', { connection });
-    this.queue.on('error', (err) => logger.error('Login alert queue error', err));
+    this.queue = new Queue('login-alerts', { connection: queueConnection });
     this.startWorker();
   }
 
   private startWorker() {
-    const connection = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-    };
-
     const worker = new Worker(
       'login-alerts',
       async (job: Job<LoginAlertJobData>) => {
         await this.processLoginAlert(job.data);
       },
-      { connection }
+      { connection: queueConnection }
     );
 
     worker.on('completed', () => {});
@@ -133,7 +121,7 @@ class LoginAlertQueue {
       country,
     });
 
-    const subject = `Infinity Medisetu - Login Alert at ${clinic.clinicName}`;
+    const subject = `MediArogya - Login Alert at ${clinic.clinicName}`;
     await sendEmail(data.userEmail, subject, html);
   }
 

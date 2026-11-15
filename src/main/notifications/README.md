@@ -39,7 +39,7 @@ To add a notification: write a registry entry, call `notify()` from the feature.
 ## Commands
 
 ```
-npm run notifications:docs     # regenerate docs/NOTIFICATION_EVENTS.md from the registry
+npm run notifications:docs     # regenerate docs/notifications/NOTIFICATION_EVENTS.md from the registry
 npm run notifications:parity   # prove the registry still matches saved preferences
 ```
 

@@ -1,7 +1,7 @@
 import { and, eq, gte, lt, ne } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
-import { AppointmentService } from '../../appointments/services/appointment.service';
+import { AppointmentSlotsService } from '../../appointments/services/appointmentSlots.service';
 import { hhmmToMinutes } from '../../../utils/time.util';
 import { resolveAppointmentDuration } from '../utils/helpers';
 import { ScheduleShiftService, toHHMM } from './scheduleShift.service';
@@ -12,7 +12,7 @@ import { MissedSlotDismissalService } from './missedSlotDismissal.service';
 const utcMidnight = (dateStr: string): Date => new Date(`${dateStr}T00:00:00Z`);
 
 type AvailableSlotsResult = Awaited<
-  ReturnType<typeof AppointmentService.getAvailableSlotsForDate>
+  ReturnType<typeof AppointmentSlotsService.getAvailableSlotsForDate>
 >;
 type SlotEntry = AvailableSlotsResult['slots'][number];
 
@@ -29,6 +29,8 @@ export type EnrichedSlotEntry = SlotEntry & {
 export interface EnrichedAvailableSlotsResult {
   slots: EnrichedSlotEntry[];
   shifts?: string[];
+  /** The weekday is open but has no token count saved; screens ask to set it. */
+  tokensNotSet?: boolean;
 }
 
 /** Minutes-of-day parsed out of a Slot's `YYYY-MM-DDTHH:mm:00` string. */
@@ -54,7 +56,7 @@ export class AvailableSlotsService {
     doctorId: string,
     date: string
   ): Promise<EnrichedAvailableSlotsResult> {
-    const base = await AppointmentService.getAvailableSlotsForDate(
+    const base = await AppointmentSlotsService.getAvailableSlotsForDate(
       clinicId,
       { date, onlyOccupied: false, occupyMode: 'partial' },
       { doctorId }
@@ -147,7 +149,7 @@ export class AvailableSlotsService {
       return (a.isExtra ? 0 : 1) - (b.isExtra ? 0 : 1);
     });
 
-    return { slots, shifts: base.shifts };
+    return { slots, shifts: base.shifts, tokensNotSet: base.tokensNotSet };
   }
 
   /** Every non-cancelled appointment for this doctor/date, fetched once and reused. */
@@ -204,8 +206,8 @@ export class AvailableSlotsService {
     extra: Partial<EnrichedSlotEntry> = {}
   ): EnrichedSlotEntry {
     return {
-      start: AppointmentService.minutesToIso(dateStr, window.start),
-      end: AppointmentService.minutesToIso(dateStr, window.end),
+      start: AppointmentSlotsService.minutesToIso(dateStr, window.start),
+      end: AppointmentSlotsService.minutesToIso(dateStr, window.end),
       clinicAvailabilityId: '',
       source: 'appointment',
       status:
@@ -293,8 +295,8 @@ export class AvailableSlotsService {
             isExtra: true,
           })
         : {
-            start: AppointmentService.minutesToIso(dateStr, cellStart),
-            end: AppointmentService.minutesToIso(dateStr, cellEnd),
+            start: AppointmentSlotsService.minutesToIso(dateStr, cellStart),
+            end: AppointmentSlotsService.minutesToIso(dateStr, cellEnd),
             clinicAvailabilityId: '',
             source: 'availability',
             status: 'available',
@@ -363,8 +365,8 @@ export class AvailableSlotsService {
 
       // A real booking keeps its identity; only a fresh placeholder is marked customized.
       const entry: EnrichedSlotEntry = overlapping ?? {
-        start: AppointmentService.minutesToIso(dateStr, cellStart),
-        end: AppointmentService.minutesToIso(dateStr, cellEnd),
+        start: AppointmentSlotsService.minutesToIso(dateStr, cellStart),
+        end: AppointmentSlotsService.minutesToIso(dateStr, cellEnd),
         clinicAvailabilityId:
           insideBooked[0]?.clinicAvailabilityId ??
           outside[0]?.clinicAvailabilityId ??
@@ -426,8 +428,8 @@ export class AvailableSlotsService {
     ].sort((a, b) => a.tokenNo - b.tokenNo);
 
     return {
-      start: AppointmentService.minutesToIso(dateStr, segment.start),
-      end: AppointmentService.minutesToIso(dateStr, segment.end),
+      start: AppointmentSlotsService.minutesToIso(dateStr, segment.start),
+      end: AppointmentSlotsService.minutesToIso(dateStr, segment.end),
       clinicAvailabilityId: existing?.clinicAvailabilityId ?? '',
       source: 'availability',
       status: 'available',

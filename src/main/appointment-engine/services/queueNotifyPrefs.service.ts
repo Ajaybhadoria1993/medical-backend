@@ -284,7 +284,6 @@ async function sendQueueNotification(
     channels: ['push'],
     title: content.title,
     body: content.body,
-    // Push custom data comes from `metadata`, not `data` (see push.provider.ts).
     metadata: {
       appointmentId: content.appointmentId,
       patientsAhead: content.patientsAhead,

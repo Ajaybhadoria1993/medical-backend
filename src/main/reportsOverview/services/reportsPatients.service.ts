@@ -9,64 +9,51 @@ import {
   ReportsPatientsTrendQueryDto,
 } from '../schemas/reportsPatients.schemas';
 import logger from '../../../utils/logger';
+import {
+  asOfEnd,
+  buildComparisonRange,
+  calcChange,
+  DateRange,
+  firstVisitJoin,
+  wholeRangeValues,
+} from '../utils/reportsPeriod.utils';
+import {
+  calendarDay,
+  generateDateSlots,
+  mapDataToSlots,
+  padSlots,
+  rangeDays,
+  resolveTruncUnit,
+  scopeFilter,
+  serviceJoin,
+  slotMeta,
+  spanLabel,
+} from '../utils/reportsTrend.utils';
 
-const CACHE_TTL = 120; // 2 minutes
-const CACHE_TTL_TREND = 120; // 2 minutes
+const CACHE_TTL = 120; // 2 min
+const CACHE_TTL_TREND = 120; // 2 min
 
-interface DateRange {
-  start: string;
-  end: string;
-}
+/** Fewer new patients than this and a weekday "pattern" is noise, so no insight is shown. */
+const MIN_INSIGHT_SAMPLE = 5;
+/** A patient with no appointment in this many days (as of the range end) is inactive. */
+const INACTIVE_DAYS = 90;
 
-function buildComparisonRange(query: ReportsPatientsQueryDto): {
-  primary: DateRange;
-  comparison: DateRange;
-} {
-  const primary: DateRange = {
-    start: query.startDate + ' 00:00:00',
-    end: query.endDate + ' 23:59:59',
-  };
+type AnyPatientsQuery = ReportsPatientsQueryDto | ReportsPatientsTrendQueryDto;
 
-  let comparison: DateRange;
-  if (query.compareStartDate && query.compareEndDate) {
-    comparison = {
-      start: query.compareStartDate + ' 00:00:00',
-      end: query.compareEndDate + ' 23:59:59',
-    };
-  } else {
-    const startMs = new Date(query.startDate).getTime();
-    const endMs = new Date(query.endDate).getTime();
-    const durationMs = endMs - startMs;
-    const compEnd = new Date(startMs - 1);
-    const compStart = new Date(startMs - durationMs - 86400000);
-    comparison = {
-      start: compStart.toISOString().split('T')[0] + ' 00:00:00',
-      end: compEnd.toISOString().split('T')[0] + ' 23:59:59',
-    };
-  }
-
-  return { primary, comparison };
-}
-
-function calcChange(
-  current: number,
-  previous: number
-): { change: number; changeType: string } {
-  if (previous === 0) {
-    return {
-      change: 0,
-      // Nothing to compare against: "new" rather than a misleading 100% rise.
-      changeType: current > 0 ? 'new' : 'neutral',
-    };
-  }
-  const change = parseFloat(
-    (((current - previous) / previous) * 100).toFixed(1)
-  );
-  return {
-    change: Math.abs(change),
-    changeType: change > 0 ? 'increase' : change < 0 ? 'decrease' : 'neutral',
-  };
-}
+// 'YYYY-MM-DD' day maths in UTC, so the server's own zone never shifts a day.
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+const utcDay = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00Z`);
+const addDays = (s: string, n: number) => {
+  const d = utcDay(s);
+  d.setUTCDate(d.getUTCDate() + n);
+  return ymd(d);
+};
+const ymdOf = (y: number, m0: number, d: number) =>
+  ymd(new Date(Date.UTC(y, m0, d)));
+const lastDayOf = (y: number, m0: number) =>
+  new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
+const pct = (n: number, of: number) =>
+  of ? parseFloat(((n / of) * 100).toFixed(1)) : 0;
 
 function buildCacheKey(
   clinicId: string,
@@ -95,103 +82,11 @@ function buildTrendCacheKey(
     query.period,
     query.startDate,
     query.endDate,
+    query.compareStartDate || 'auto',
+    query.compareEndDate || 'auto',
     query.department || 'all',
     query.doctorId || 'all',
   ].join(':');
-}
-
-/** Generate all daily slots for a date range */
-function generateDailySlots(
-  start: string,
-  end: string
-): { date: Date; label: string }[] {
-  const slots: { date: Date; label: string }[] = [];
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const durationDays = Math.ceil(
-    (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  const current = new Date(startDate);
-
-  while (current <= endDate) {
-    const label =
-      durationDays <= 7
-        ? current.toLocaleDateString('en-US', { weekday: 'short' })
-        : current.toLocaleDateString('en-US', {
-            day: '2-digit',
-            month: 'short',
-          });
-    slots.push({ date: new Date(current), label });
-    current.setDate(current.getDate() + 1);
-  }
-  return slots;
-}
-
-function generateSlots(
-  start: string,
-  end: string,
-  period: string
-): { date: Date; label: string }[] {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const durationDays = Math.ceil(
-    (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  if (period === 'monthly' || (period === 'auto' && durationDays > 30)) {
-    const slots: { date: Date; label: string }[] = [];
-    const current = new Date(startDate);
-    const dayOfWeek = current.getDay();
-    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    current.setDate(current.getDate() + diff);
-    let weekNum = 1;
-    while (current <= endDate) {
-      slots.push({ date: new Date(current), label: `Week ${weekNum}` });
-      current.setDate(current.getDate() + 7);
-      weekNum++;
-    }
-    return slots;
-  }
-  return generateDailySlots(start, end);
-}
-
-function getISOWeek(date: Date): number {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  return (
-    1 +
-    Math.round(
-      ((d.getTime() - week1.getTime()) / 86400000 -
-        3 +
-        ((week1.getDay() + 6) % 7)) /
-        7
-    )
-  );
-}
-
-function mapDataToSlots(
-  dbRows: any[],
-  slots: { date: Date; label: string }[],
-  truncUnit: string
-): number[] {
-  const dataMap = new Map<string, number>();
-  for (const row of dbRows) {
-    const d = new Date(row.dt);
-    const key =
-      truncUnit === 'week'
-        ? `${d.getFullYear()}-W${getISOWeek(d)}`
-        : `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    dataMap.set(key, Number(row.cnt));
-  }
-  return slots.map((slot) => {
-    const key =
-      truncUnit === 'week'
-        ? `${slot.date.getFullYear()}-W${getISOWeek(slot.date)}`
-        : `${slot.date.getFullYear()}-${slot.date.getMonth()}-${slot.date.getDate()}`;
-    return dataMap.get(key) || 0;
-  });
 }
 
 export class ReportsPatientsService {
@@ -204,14 +99,14 @@ export class ReportsPatientsService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info(`[ReportsPatients] Cache HIT: ${cacheKey}`);
         return JSON.parse(cached);
       }
     } catch (err) {
       logger.warn('[ReportsPatients] Redis read error', err);
     }
 
-    const { primary, comparison } = buildComparisonRange(query);
+    const ranges = buildComparisonRange(query);
+    const { primary, comparison } = ranges;
 
     const [
       metrics,
@@ -224,7 +119,9 @@ export class ReportsPatientsService {
       lastVisitRecency,
       growthSummary,
     ] = await Promise.all([
-      this.getMetrics(clinicId, primary, comparison, query),
+      wholeRangeValues(ranges, (current) =>
+        this.getMetrics(clinicId, current, comparison, query)
+      ),
       this.getPatientTrend(clinicId, primary, comparison, query, 'auto'),
       this.getAgeDistribution(clinicId, primary, query),
       this.getGenderDistribution(clinicId, primary, query),
@@ -232,7 +129,7 @@ export class ReportsPatientsService {
       this.getNewVsReturning(clinicId, primary, query, 'auto'),
       this.getVisitFrequency(clinicId, primary, query),
       this.getLastVisitRecency(clinicId, primary, query),
-      this.getGrowthSummary(clinicId, query),
+      this.getGrowthSummary(clinicId, primary, query),
     ]);
 
     const result = {
@@ -245,6 +142,11 @@ export class ReportsPatientsService {
       visitFrequency,
       lastVisitRecency,
       growthSummary,
+      // "As of" figures (active, inactive, recency) stop here: the range end, or today if sooner.
+      asOf: spanLabel(
+        calendarDay(asOfEnd(primary)),
+        calendarDay(asOfEnd(primary))
+      ),
     };
 
     try {
@@ -265,7 +167,6 @@ export class ReportsPatientsService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info(`[ReportsPatients] Trend Cache HIT: ${cacheKey}`);
         return JSON.parse(cached);
       }
     } catch (err) {
@@ -273,24 +174,16 @@ export class ReportsPatientsService {
     }
 
     const { primary, comparison } = buildComparisonRange(query);
-    let result;
-
-    if (query.type === 'patients') {
-      result = await this.getPatientTrend(
-        clinicId,
-        primary,
-        comparison,
-        query,
-        query.period
-      );
-    } else {
-      result = await this.getNewVsReturning(
-        clinicId,
-        primary,
-        query,
-        query.period
-      );
-    }
+    const result =
+      query.type === 'patients'
+        ? await this.getPatientTrend(
+            clinicId,
+            primary,
+            comparison,
+            query,
+            query.period
+          )
+        : await this.getNewVsReturning(clinicId, primary, query, query.period);
 
     try {
       await redisClient.setex(
@@ -313,154 +206,85 @@ export class ReportsPatientsService {
     comparison: DateRange,
     query: ReportsPatientsQueryDto
   ) {
-    const doctorFilter = query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``;
+    const join = serviceJoin(query);
+    const scope = scopeFilter(query);
 
-    // Current period
-    const curData: any[] = await database.execute(sql`
-      SELECT
-        COUNT(DISTINCT ${AppointmentModel.patientId}) as total_patients,
-        COUNT(DISTINCT CASE
-          WHEN ${AppointmentModel.createdAt} >= ${primary.start}
-          THEN ${AppointmentModel.patientId}
-        END) as new_patients
-      FROM ${AppointmentModel}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        ${doctorFilter}
-    `);
-
-    const prevData: any[] = await database.execute(sql`
-      SELECT
-        COUNT(DISTINCT ${AppointmentModel.patientId}) as total_patients,
-        COUNT(DISTINCT CASE
-          WHEN ${AppointmentModel.createdAt} >= ${comparison.start}
-          THEN ${AppointmentModel.patientId}
-        END) as new_patients
-      FROM ${AppointmentModel}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${comparison.start} AND ${comparison.end}
-        ${doctorFilter}
-    `);
-
-    // Active patients (visited in last 90 days from end date)
-    const endDate = new Date(primary.end);
-    const ninetyDaysAgo = new Date(endDate);
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    const ninetyDaysAgoStr =
-      ninetyDaysAgo.toISOString().split('T')[0] + ' 00:00:00';
-
-    const activeData: any[] = await database.execute(sql`
-      SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-      FROM ${AppointmentModel}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} >= ${ninetyDaysAgoStr}
-        ${doctorFilter}
-    `);
-
-    // Inactive patients (no visit in last 90 days)
-    const inactiveData: any[] = await database.execute(sql`
-      SELECT COUNT(DISTINCT sub.pid) as cnt FROM (
-        SELECT ${AppointmentModel.patientId} as pid,
-          MAX(${AppointmentModel.appointmentDate}) as last_visit
+    // Totals count every status, as the Dashboard does; new = first visit at the clinic.
+    const countsFor = (range: DateRange) =>
+      database.execute(sql`
+        SELECT
+          COUNT(DISTINCT ${AppointmentModel.patientId}) as total_patients,
+          COUNT(DISTINCT CASE WHEN fv.first_visit >= ${range.start} THEN ${AppointmentModel.patientId} END) as new_patients,
+          COUNT(${AppointmentModel.id}) as appointments
         FROM ${AppointmentModel}
+        ${join}
+        ${firstVisitJoin(clinicId, query.doctorId)}
         WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          ${doctorFilter}
-        GROUP BY ${AppointmentModel.patientId}
-        HAVING MAX(${AppointmentModel.appointmentDate}) < ${ninetyDaysAgoStr}
-      ) sub
-    `);
+          AND ${AppointmentModel.appointmentDate} BETWEEN ${range.start} AND ${range.end}
+          ${scope}
+      `) as Promise<any[]>;
 
-    // Previous active/inactive for comparison
-    const prevEndDate = new Date(comparison.end);
-    const prevNinetyDaysAgo = new Date(prevEndDate);
-    prevNinetyDaysAgo.setDate(prevNinetyDaysAgo.getDate() - 90);
-    const prevNinetyStr =
-      prevNinetyDaysAgo.toISOString().split('T')[0] + ' 00:00:00';
-
-    const prevActiveData: any[] = await database.execute(sql`
-      SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-      FROM ${AppointmentModel}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} >= ${prevNinetyStr}
-        AND ${AppointmentModel.appointmentDate} <= ${comparison.end}
-        ${doctorFilter}
-    `);
-
-    const prevInactiveData: any[] = await database.execute(sql`
-      SELECT COUNT(DISTINCT sub.pid) as cnt FROM (
-        SELECT ${AppointmentModel.patientId} as pid,
-          MAX(${AppointmentModel.appointmentDate}) as last_visit
+    // Active = an appointment in the 90 days up to the as-of day (future bookings don't count).
+    const activeAsOf = (asOf: string) =>
+      database.execute(sql`
+        SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
         FROM ${AppointmentModel}
+        ${join}
         WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} <= ${comparison.end}
-          ${doctorFilter}
-        GROUP BY ${AppointmentModel.patientId}
-        HAVING MAX(${AppointmentModel.appointmentDate}) < ${prevNinetyStr}
-      ) sub
-    `);
+          AND ${AppointmentModel.appointmentDate} BETWEEN ${addDays(asOf, -INACTIVE_DAYS) + ' 00:00:00'} AND ${asOf + ' 23:59:59'}
+          ${scope}
+      `) as Promise<any[]>;
 
-    // Avg visits per patient
-    const avgVisits: any[] = await database.execute(sql`
-      SELECT
-        COALESCE(AVG(visit_count), 0) as avg_visits
-      FROM (
-        SELECT ${AppointmentModel.patientId}, COUNT(*) as visit_count
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-          ${doctorFilter}
-        GROUP BY ${AppointmentModel.patientId}
-      ) sub
-    `);
+    // Inactive = seen before, but no appointment in the 90 days up to the as-of day.
+    const inactiveAsOf = (asOf: string) =>
+      database.execute(sql`
+        SELECT COUNT(*) as cnt FROM (
+          SELECT ${AppointmentModel.patientId}
+          FROM ${AppointmentModel}
+          ${join}
+          WHERE ${AppointmentModel.clinicId} = ${clinicId}
+            AND ${AppointmentModel.appointmentDate} <= ${asOf + ' 23:59:59'}
+            ${scope}
+          GROUP BY ${AppointmentModel.patientId}
+          HAVING MAX(${AppointmentModel.appointmentDate}) < ${addDays(asOf, -INACTIVE_DAYS) + ' 00:00:00'}
+        ) sub
+      `) as Promise<any[]>;
 
-    const prevAvgVisits: any[] = await database.execute(sql`
-      SELECT
-        COALESCE(AVG(visit_count), 0) as avg_visits
-      FROM (
-        SELECT ${AppointmentModel.patientId}, COUNT(*) as visit_count
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${comparison.start} AND ${comparison.end}
-          ${doctorFilter}
-        GROUP BY ${AppointmentModel.patientId}
-      ) sub
-    `);
+    const asOf = asOfEnd(primary).slice(0, 10);
+    const prevAsOf = comparison.end.slice(0, 10);
+    const [cur, prev, active, prevActive, inactive, prevInactive] =
+      await Promise.all([
+        countsFor(primary),
+        countsFor(comparison),
+        activeAsOf(asOf),
+        activeAsOf(prevAsOf),
+        inactiveAsOf(asOf),
+        inactiveAsOf(prevAsOf),
+      ]);
 
-    const cur = curData[0] || {};
-    const prev = prevData[0] || {};
-    const curTotal = Number(cur.total_patients || 0);
-    const prevTotal = Number(prev.total_patients || 0);
-    const curNew = Number(cur.new_patients || 0);
-    const prevNew = Number(prev.new_patients || 0);
-    const curReturning = curTotal - curNew;
-    const prevReturning = prevTotal - prevNew;
-    const curActive = Number(activeData[0]?.cnt || 0);
-    const prevActive = Number(prevActiveData[0]?.cnt || 0);
-    const curInactive = Number(inactiveData[0]?.cnt || 0);
-    const prevInactive = Number(prevInactiveData[0]?.cnt || 0);
-    const curAvg = parseFloat(Number(avgVisits[0]?.avg_visits || 0).toFixed(1));
-    const prevAvg = parseFloat(
-      Number(prevAvgVisits[0]?.avg_visits || 0).toFixed(1)
-    );
+    const n = (rows: any[], key: string) => Number(rows[0]?.[key] || 0);
+    const curTotal = n(cur, 'total_patients');
+    const prevTotal = n(prev, 'total_patients');
+    const curNew = n(cur, 'new_patients');
+    const prevNew = n(prev, 'new_patients');
+    const curAvg = curTotal
+      ? parseFloat((n(cur, 'appointments') / curTotal).toFixed(1))
+      : 0;
+    const prevAvg = prevTotal
+      ? parseFloat((n(prev, 'appointments') / prevTotal).toFixed(1))
+      : 0;
+    const metric = (value: number, previous: number) => ({
+      value,
+      ...calcChange(value, previous),
+    });
 
     return {
-      totalPatients: { value: curTotal, ...calcChange(curTotal, prevTotal) },
-      newPatients: { value: curNew, ...calcChange(curNew, prevNew) },
-      returningPatients: {
-        value: curReturning,
-        ...calcChange(curReturning, prevReturning),
-      },
-      activePatients: {
-        value: curActive,
-        ...calcChange(curActive, prevActive),
-      },
-      inactivePatients: {
-        value: curInactive,
-        ...calcChange(curInactive, prevInactive),
-      },
-      avgVisitsPerPatient: { value: curAvg, ...calcChange(curAvg, prevAvg) },
+      totalPatients: metric(curTotal, prevTotal),
+      newPatients: metric(curNew, prevNew),
+      returningPatients: metric(curTotal - curNew, prevTotal - prevNew),
+      activePatients: metric(n(active, 'cnt'), n(prevActive, 'cnt')),
+      inactivePatients: metric(n(inactive, 'cnt'), n(prevInactive, 'cnt')),
+      avgVisitsPerPatient: metric(curAvg, prevAvg),
     };
   }
 
@@ -470,189 +294,152 @@ export class ReportsPatientsService {
     clinicId: string,
     primary: DateRange,
     comparison: DateRange,
-    query: ReportsPatientsQueryDto | ReportsPatientsTrendQueryDto,
+    query: AnyPatientsQuery,
     period: string
   ) {
-    const durationDays = Math.ceil(
-      (new Date(primary.end).getTime() - new Date(primary.start).getTime()) /
-        (1000 * 60 * 60 * 24)
+    const days = rangeDays(primary);
+    const truncUnit = resolveTruncUnit(period, days);
+    const primarySlots = generateDateSlots(
+      primary.start,
+      primary.end,
+      truncUnit,
+      days
     );
-    const truncUnit =
-      period === 'monthly' || (period === 'auto' && durationDays > 30)
-        ? 'week'
-        : 'day';
-    const primarySlots = generateSlots(primary.start, primary.end, period);
-    const comparisonSlots = generateSlots(
-      comparison.start,
-      comparison.end,
-      period
+    const comparisonSlots = padSlots(
+      primarySlots,
+      generateDateSlots(comparison.start, comparison.end, truncUnit, days)
     );
-    while (comparisonSlots.length < primarySlots.length) {
-      comparisonSlots.push(
-        comparisonSlots[comparisonSlots.length - 1] || primarySlots[0]
-      );
-    }
 
-    const doctorFilter = (query as any).doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${(query as any).doctorId}`
-      : sql``;
+    const bucketsFor = (range: DateRange) =>
+      database.execute(sql`
+        SELECT
+          date_trunc(${sql.raw(`'${truncUnit}'`)}, ${AppointmentModel.appointmentDate}) as dt,
+          COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
+        FROM ${AppointmentModel}
+        ${serviceJoin(query)}
+        WHERE ${AppointmentModel.clinicId} = ${clinicId}
+          AND ${AppointmentModel.appointmentDate} BETWEEN ${range.start} AND ${range.end}
+          ${scopeFilter(query)}
+        GROUP BY dt
+      `) as Promise<any[]>;
 
-    const currentData: any[] = await database.execute(sql`
-      SELECT
-        date_trunc(${sql.raw(`'${truncUnit}'`)}, ${AppointmentModel.appointmentDate}) as dt,
-        COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-      FROM ${AppointmentModel}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        ${doctorFilter}
-      GROUP BY dt
-      ORDER BY dt
-    `);
-
-    const prevDataRows: any[] = await database.execute(sql`
-      SELECT
-        date_trunc(${sql.raw(`'${truncUnit}'`)}, ${AppointmentModel.appointmentDate}) as dt,
-        COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-      FROM ${AppointmentModel}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${comparison.start} AND ${comparison.end}
-        ${doctorFilter}
-      GROUP BY dt
-      ORDER BY dt
-    `);
-
+    const [current, previous] = await Promise.all([
+      bucketsFor(primary),
+      bucketsFor(comparison),
+    ]);
     return {
-      labels: primarySlots.map((s) => s.label),
-      currentPeriod: mapDataToSlots(currentData, primarySlots, truncUnit),
-      previousPeriod: mapDataToSlots(prevDataRows, comparisonSlots, truncUnit),
+      ...slotMeta(primarySlots, comparisonSlots, primary, comparison),
+      currentPeriod: mapDataToSlots(current, primarySlots, truncUnit),
+      previousPeriod: mapDataToSlots(previous, comparisonSlots, truncUnit),
     };
   }
 
-  // ─── AGE DISTRIBUTION ────────────────────────────────────────────────────────
+  // ─── AGE / GENDER / CITY (patients seen in the range) ───────────────────────
 
   private static async getAgeDistribution(
     clinicId: string,
     primary: DateRange,
     query: ReportsPatientsQueryDto
   ) {
-    const doctorFilter = query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``;
-
-    const result: any[] = await database.execute(sql`
+    // "Not Recorded" stays in, so the slices add up to Total Patients.
+    const rows: any[] = await database.execute(sql`
       SELECT
         CASE
-          WHEN ${UserProfileModel.age} IS NULL THEN 'Unknown'
-          WHEN ${UserProfileModel.age} BETWEEN 0 AND 18 THEN '0 - 18 Years'
-          WHEN ${UserProfileModel.age} BETWEEN 19 AND 30 THEN '19 - 30 Years'
-          WHEN ${UserProfileModel.age} BETWEEN 31 AND 45 THEN '31 - 45 Years'
-          WHEN ${UserProfileModel.age} BETWEEN 46 AND 60 THEN '46 - 60 Years'
+          WHEN ${UserProfileModel.age} IS NULL THEN 'Not Recorded'
+          WHEN ${UserProfileModel.age} <= 18 THEN '0–18 Years'
+          WHEN ${UserProfileModel.age} <= 30 THEN '19–30 Years'
+          WHEN ${UserProfileModel.age} <= 45 THEN '31–45 Years'
+          WHEN ${UserProfileModel.age} <= 60 THEN '46–60 Years'
           ELSE '60+ Years'
         END as age_group,
         CASE
           WHEN ${UserProfileModel.age} IS NULL THEN 6
-          WHEN ${UserProfileModel.age} BETWEEN 0 AND 18 THEN 1
-          WHEN ${UserProfileModel.age} BETWEEN 19 AND 30 THEN 2
-          WHEN ${UserProfileModel.age} BETWEEN 31 AND 45 THEN 3
-          WHEN ${UserProfileModel.age} BETWEEN 46 AND 60 THEN 4
+          WHEN ${UserProfileModel.age} <= 18 THEN 1
+          WHEN ${UserProfileModel.age} <= 30 THEN 2
+          WHEN ${UserProfileModel.age} <= 45 THEN 3
+          WHEN ${UserProfileModel.age} <= 60 THEN 4
           ELSE 5
         END as sort_order,
         COUNT(DISTINCT ${AppointmentModel.patientId}) as patients
       FROM ${AppointmentModel}
-      INNER JOIN ${UserProfileModel} ON ${UserProfileModel.userId} = ${AppointmentModel.patientId}
+      ${serviceJoin(query)}
+      LEFT JOIN ${UserProfileModel} ON ${UserProfileModel.userId} = ${AppointmentModel.patientId}
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        ${doctorFilter}
+        ${scopeFilter(query)}
       GROUP BY age_group, sort_order
       ORDER BY sort_order
     `);
-
-    const total = result.reduce((sum, r) => sum + Number(r.patients), 0) || 1;
-    return result
-      .filter((r) => r.age_group !== 'Unknown')
-      .map((r) => ({
-        label: r.age_group,
-        value: Number(r.patients),
-        percentage: parseFloat(((Number(r.patients) / total) * 100).toFixed(1)),
-      }));
+    const total = rows.reduce((sum, r) => sum + Number(r.patients), 0);
+    return rows.map((r) => ({
+      label: r.age_group,
+      value: Number(r.patients),
+      percentage: pct(Number(r.patients), total),
+    }));
   }
-
-  // ─── GENDER DISTRIBUTION ─────────────────────────────────────────────────────
 
   private static async getGenderDistribution(
     clinicId: string,
     primary: DateRange,
     query: ReportsPatientsQueryDto
   ) {
-    const doctorFilter = query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``;
-
-    const result: any[] = await database.execute(sql`
+    // Spellings merged ("male"/"Male"); a blank gender is "Not Recorded", never "Other".
+    const rows: any[] = await database.execute(sql`
       SELECT
-        COALESCE(${UserProfileModel.gender}, 'Other') as gender,
+        COALESCE(INITCAP(NULLIF(TRIM(${UserProfileModel.gender}), '')), 'Not Recorded') as gender,
         COUNT(DISTINCT ${AppointmentModel.patientId}) as patients
       FROM ${AppointmentModel}
-      INNER JOIN ${UserProfileModel} ON ${UserProfileModel.userId} = ${AppointmentModel.patientId}
+      ${serviceJoin(query)}
+      LEFT JOIN ${UserProfileModel} ON ${UserProfileModel.userId} = ${AppointmentModel.patientId}
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        ${doctorFilter}
-      GROUP BY gender
+        ${scopeFilter(query)}
+      GROUP BY 1
       ORDER BY patients DESC
     `);
-
-    const total = result.reduce((sum, r) => sum + Number(r.patients), 0) || 1;
-    return result.map((r) => ({
+    const total = rows.reduce((sum, r) => sum + Number(r.patients), 0);
+    return rows.map((r) => ({
       label: r.gender,
       value: Number(r.patients),
-      percentage: parseFloat(((Number(r.patients) / total) * 100).toFixed(1)),
+      percentage: pct(Number(r.patients), total),
     }));
   }
-
-  // ─── TOP CITIES ──────────────────────────────────────────────────────────────
 
   private static async getTopCities(
     clinicId: string,
     primary: DateRange,
     query: ReportsPatientsQueryDto
   ) {
-    const doctorFilter = query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``;
-
-    const result: any[] = await database.execute(sql`
+    const rows: any[] = await database.execute(sql`
       SELECT
-        COALESCE(${UserProfileModel.city}, 'Unknown') as city,
+        COALESCE(INITCAP(NULLIF(TRIM(${UserProfileModel.city}), '')), 'Not Recorded') as city,
         COUNT(DISTINCT ${AppointmentModel.patientId}) as patients
       FROM ${AppointmentModel}
-      INNER JOIN ${UserProfileModel} ON ${UserProfileModel.userId} = ${AppointmentModel.patientId}
+      ${serviceJoin(query)}
+      LEFT JOIN ${UserProfileModel} ON ${UserProfileModel.userId} = ${AppointmentModel.patientId}
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        ${doctorFilter}
-      GROUP BY city
+        ${scopeFilter(query)}
+      GROUP BY 1
       ORDER BY patients DESC
     `);
-
-    const total = result.reduce((sum, r) => sum + Number(r.patients), 0) || 1;
-    const top4 = result.slice(0, 4);
-    const others = result.slice(4);
-    const otherCount = others.reduce((sum, r) => sum + Number(r.patients), 0);
-
-    const cities = top4.map((r) => ({
+    const total = rows.reduce((sum, r) => sum + Number(r.patients), 0);
+    const top = rows.slice(0, 4).map((r) => ({
       city: r.city,
       patients: Number(r.patients),
-      percentage: parseFloat(((Number(r.patients) / total) * 100).toFixed(1)),
+      percentage: pct(Number(r.patients), total),
     }));
-
+    const otherCount = rows
+      .slice(4)
+      .reduce((sum, r) => sum + Number(r.patients), 0);
     if (otherCount > 0) {
-      cities.push({
-        city: 'Other',
+      top.push({
+        city: 'Other Cities',
         patients: otherCount,
-        percentage: parseFloat(((otherCount / total) * 100).toFixed(1)),
+        percentage: pct(otherCount, total),
       });
     }
-
-    return cities;
+    return top;
   }
 
   // ─── NEW VS RETURNING ────────────────────────────────────────────────────────
@@ -660,323 +447,294 @@ export class ReportsPatientsService {
   private static async getNewVsReturning(
     clinicId: string,
     primary: DateRange,
-    query: ReportsPatientsQueryDto | ReportsPatientsTrendQueryDto,
+    query: AnyPatientsQuery,
     period: string
   ) {
-    const durationDays = Math.ceil(
-      (new Date(primary.end).getTime() - new Date(primary.start).getTime()) /
-        (1000 * 60 * 60 * 24)
+    const days = rangeDays(primary);
+    const truncUnit = resolveTruncUnit(period, days);
+    const slots = generateDateSlots(
+      primary.start,
+      primary.end,
+      truncUnit,
+      days
     );
-    const truncUnit =
-      period === 'monthly' || (period === 'auto' && durationDays > 30)
-        ? 'week'
-        : 'day';
-    const slots = generateSlots(primary.start, primary.end, period);
 
-    const doctorFilter = (query as any).doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${(query as any).doctorId}`
-      : sql``;
-
-    // New patients per slot (first appointment in this clinic was within primary range)
-    const newData: any[] = await database.execute(sql`
+    // Same rule as the New Patients card: new = first visit at the clinic falls in the range.
+    const rows: any[] = await database.execute(sql`
       SELECT
         date_trunc(${sql.raw(`'${truncUnit}'`)}, ${AppointmentModel.appointmentDate}) as dt,
-        COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
+        COUNT(DISTINCT ${AppointmentModel.patientId}) FILTER (WHERE fv.first_visit >= ${primary.start}) as new_cnt,
+        COUNT(DISTINCT ${AppointmentModel.patientId}) FILTER (WHERE fv.first_visit < ${primary.start}) as returning_cnt
       FROM ${AppointmentModel}
+      ${serviceJoin(query)}
+      ${firstVisitJoin(clinicId, query.doctorId)}
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        AND ${AppointmentModel.patientId} IN (
-          SELECT ${AppointmentModel.patientId}
-          FROM ${AppointmentModel}
-          WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          GROUP BY ${AppointmentModel.patientId}
-          HAVING MIN(${AppointmentModel.appointmentDate}) >= ${primary.start}
-        )
-        ${doctorFilter}
+        ${scopeFilter(query)}
       GROUP BY dt
-      ORDER BY dt
     `);
-
-    // Returning patients per slot
-    const returningData: any[] = await database.execute(sql`
-      SELECT
-        date_trunc(${sql.raw(`'${truncUnit}'`)}, ${AppointmentModel.appointmentDate}) as dt,
-        COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-      FROM ${AppointmentModel}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        AND ${AppointmentModel.patientId} IN (
-          SELECT ${AppointmentModel.patientId}
-          FROM ${AppointmentModel}
-          WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          GROUP BY ${AppointmentModel.patientId}
-          HAVING MIN(${AppointmentModel.appointmentDate}) < ${primary.start}
-        )
-        ${doctorFilter}
-      GROUP BY dt
-      ORDER BY dt
-    `);
-
-    const newMapped = mapDataToSlots(newData, slots, truncUnit);
-    const returningMapped = mapDataToSlots(returningData, slots, truncUnit);
 
     return {
       labels: slots.map((s) => s.label),
-      currentPeriod: newMapped,
-      previousPeriod: returningMapped,
+      details: slots.map((s) => s.detail),
+      newPatients: mapDataToSlots(
+        rows.map((r) => ({ dt: r.dt, cnt: r.new_cnt })),
+        slots,
+        truncUnit
+      ),
+      returningPatients: mapDataToSlots(
+        rows.map((r) => ({ dt: r.dt, cnt: r.returning_cnt })),
+        slots,
+        truncUnit
+      ),
     };
   }
 
-  // ─── VISIT FREQUENCY ─────────────────────────────────────────────────────────
+  // ─── HOW OFTEN PATIENTS BOOKED ───────────────────────────────────────────────
+
+  /** Every bucket, zeros included, so a missing row never reads as a gap. */
+  private static fixedBuckets(labels: string[], rows: any[]) {
+    const counts = labels.map((_, i) =>
+      Number(rows.find((r) => Number(r.bucket) === i)?.patients || 0)
+    );
+    const total = counts.reduce((sum, c) => sum + c, 0);
+    return labels.map((label, i) => ({
+      label,
+      patients: counts[i],
+      percentage: pct(counts[i], total),
+    }));
+  }
 
   private static async getVisitFrequency(
     clinicId: string,
     primary: DateRange,
     query: ReportsPatientsQueryDto
   ) {
-    const doctorFilter = query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``;
-
-    const result: any[] = await database.execute(sql`
+    // Every status counts, like the totals, so these are bookings, not attended visits.
+    const rows: any[] = await database.execute(sql`
       SELECT
-        CASE
-          WHEN visit_count = 1 THEN '1 Visit'
-          WHEN visit_count BETWEEN 2 AND 3 THEN '2 - 3 Visits'
-          WHEN visit_count BETWEEN 4 AND 6 THEN '4 - 6 Visits'
-          ELSE '7+ Visits'
-        END as frequency,
-        CASE
-          WHEN visit_count = 1 THEN 1
-          WHEN visit_count BETWEEN 2 AND 3 THEN 2
-          WHEN visit_count BETWEEN 4 AND 6 THEN 3
-          ELSE 4
-        END as sort_order,
+        CASE WHEN visit_count = 1 THEN 0 WHEN visit_count <= 3 THEN 1 WHEN visit_count <= 6 THEN 2 ELSE 3 END as bucket,
         COUNT(*) as patients
       FROM (
         SELECT ${AppointmentModel.patientId}, COUNT(*) as visit_count
         FROM ${AppointmentModel}
+        ${serviceJoin(query)}
         WHERE ${AppointmentModel.clinicId} = ${clinicId}
           AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-          ${doctorFilter}
+          ${scopeFilter(query)}
         GROUP BY ${AppointmentModel.patientId}
       ) sub
-      GROUP BY frequency, sort_order
-      ORDER BY sort_order
+      GROUP BY bucket
     `);
-
-    const total = result.reduce((sum, r) => sum + Number(r.patients), 0) || 1;
-    return result.map((r) => ({
-      frequency: r.frequency,
-      patients: Number(r.patients),
-      percentage: parseFloat(((Number(r.patients) / total) * 100).toFixed(1)),
+    return this.fixedBuckets(
+      ['Once', '2–3 times', '4–6 times', '7+ times'],
+      rows
+    ).map((b) => ({
+      frequency: b.label,
+      patients: b.patients,
+      percentage: b.percentage,
     }));
   }
 
-  // ─── LAST VISIT RECENCY ──────────────────────────────────────────────────────
+  // ─── WHEN PATIENTS LAST CAME ─────────────────────────────────────────────────
 
   private static async getLastVisitRecency(
     clinicId: string,
     primary: DateRange,
     query: ReportsPatientsQueryDto
   ) {
-    const doctorFilter = query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``;
-
-    const endDateStr = primary.end.split(' ')[0];
-
-    const result: any[] = await database.execute(sql`
+    // Every patient the clinic has seen, as of the range end (or today); future bookings ignored.
+    // Over 90 days matches the Inactive card.
+    const asOf = asOfEnd(primary).slice(0, 10);
+    const gap = sql`(${asOf}::date - last_visit::date)`;
+    const rows: any[] = await database.execute(sql`
       SELECT
-        CASE
-          WHEN (${sql.raw(`'${endDateStr}'::date`)} - last_visit::date) <= 30 THEN 'Within 30 Days'
-          WHEN (${sql.raw(`'${endDateStr}'::date`)} - last_visit::date) BETWEEN 31 AND 90 THEN '31 - 90 Days'
-          WHEN (${sql.raw(`'${endDateStr}'::date`)} - last_visit::date) BETWEEN 91 AND 180 THEN '91 - 180 Days'
-          ELSE '180+ Days'
-        END as last_visit_group,
-        CASE
-          WHEN (${sql.raw(`'${endDateStr}'::date`)} - last_visit::date) <= 30 THEN 1
-          WHEN (${sql.raw(`'${endDateStr}'::date`)} - last_visit::date) BETWEEN 31 AND 90 THEN 2
-          WHEN (${sql.raw(`'${endDateStr}'::date`)} - last_visit::date) BETWEEN 91 AND 180 THEN 3
-          ELSE 4
-        END as sort_order,
+        CASE WHEN ${gap} <= 30 THEN 0 WHEN ${gap} <= 90 THEN 1 WHEN ${gap} <= 180 THEN 2 ELSE 3 END as bucket,
         COUNT(*) as patients
       FROM (
-        SELECT ${AppointmentModel.patientId},
-          MAX(${AppointmentModel.appointmentDate}) as last_visit
+        SELECT ${AppointmentModel.patientId}, MAX(${AppointmentModel.appointmentDate}) as last_visit
         FROM ${AppointmentModel}
+        ${serviceJoin(query)}
         WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          ${doctorFilter}
+          AND ${AppointmentModel.appointmentDate} <= ${asOf + ' 23:59:59'}
+          ${scopeFilter(query)}
         GROUP BY ${AppointmentModel.patientId}
       ) sub
-      GROUP BY last_visit_group, sort_order
-      ORDER BY sort_order
+      GROUP BY bucket
     `);
-
-    const total = result.reduce((sum, r) => sum + Number(r.patients), 0) || 1;
-    return result.map((r) => ({
-      lastVisit: r.last_visit_group,
-      patients: Number(r.patients),
-      percentage: parseFloat(((Number(r.patients) / total) * 100).toFixed(1)),
+    return this.fixedBuckets(
+      [
+        'In the last 30 days',
+        '31–90 days ago',
+        '91–180 days ago (Inactive)',
+        'Over 180 days ago (Inactive)',
+      ],
+      rows
+    ).map((b) => ({
+      lastVisit: b.label,
+      patients: b.patients,
+      percentage: b.percentage,
     }));
   }
-
   // ─── GROWTH SUMMARY ──────────────────────────────────────────────────────────
 
+  /** Unique patients for the week, month and year the filter ends in, each against the same
+   *  days of the unit before, so every % matches the two figures shown beside it. */
   private static async getGrowthSummary(
     clinicId: string,
+    primary: DateRange,
     query: ReportsPatientsQueryDto
   ) {
-    const doctorFilter = query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``;
+    const join = serviceJoin(query);
+    const scope = scopeFilter(query);
+    const end = query.endDate;
+    const [y, m, d] = end.split('-').map(Number);
+    const m0 = m - 1;
 
-    const now = new Date(query.endDate);
-
-    // This week (Mon-Sun)
-    const dayOfWeek = now.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const thisWeekStart = new Date(now);
-    thisWeekStart.setDate(now.getDate() + mondayOffset);
-    const thisWeekStartStr =
-      thisWeekStart.toISOString().split('T')[0] + ' 00:00:00';
-    const thisWeekEndStr = query.endDate + ' 23:59:59';
-
-    // Last week
-    const lastWeekEnd = new Date(thisWeekStart);
-    lastWeekEnd.setDate(lastWeekEnd.getDate() - 1);
-    const lastWeekStart = new Date(lastWeekEnd);
-    lastWeekStart.setDate(lastWeekStart.getDate() - 6);
-    const lastWeekStartStr =
-      lastWeekStart.toISOString().split('T')[0] + ' 00:00:00';
-    const lastWeekEndStr =
-      lastWeekEnd.toISOString().split('T')[0] + ' 23:59:59';
-
-    // This month
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonthStartStr =
-      thisMonthStart.toISOString().split('T')[0] + ' 00:00:00';
-
-    // Last month
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthStartStr =
-      lastMonthStart.toISOString().split('T')[0] + ' 00:00:00';
-    const lastMonthEndStr =
-      lastMonthEnd.toISOString().split('T')[0] + ' 23:59:59';
-
-    // This year
-    const thisYearStartStr = `${now.getFullYear()}-01-01 00:00:00`;
-
-    // Last year
-    const lastYearStartStr = `${now.getFullYear() - 1}-01-01 00:00:00`;
-    const lastYearEndStr = `${now.getFullYear() - 1}-12-31 23:59:59`;
-
-    const [thisWeek, lastWeek, thisMonth, lastMonth, thisYear, lastYear] =
-      await Promise.all([
-        database.execute(sql`
+    const uniquePatients = async (from: string, to: string) => {
+      const rows: any[] = await database.execute(sql`
         SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
         FROM ${AppointmentModel}
+        ${join}
         WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${thisWeekStartStr} AND ${thisWeekEndStr}
-          ${doctorFilter}
-      `),
-        database.execute(sql`
-        SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${lastWeekStartStr} AND ${lastWeekEndStr}
-          ${doctorFilter}
-      `),
-        database.execute(sql`
-        SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${thisMonthStartStr} AND ${thisWeekEndStr}
-          ${doctorFilter}
-      `),
-        database.execute(sql`
-        SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${lastMonthStartStr} AND ${lastMonthEndStr}
-          ${doctorFilter}
-      `),
-        database.execute(sql`
-        SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${thisYearStartStr} AND ${thisWeekEndStr}
-          ${doctorFilter}
-      `),
-        database.execute(sql`
-        SELECT COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${lastYearStartStr} AND ${lastYearEndStr}
-          ${doctorFilter}
-      `),
-      ]);
-
-    const thisWeekVal = Number((thisWeek as any[])[0]?.cnt || 0);
-    const lastWeekVal = Number((lastWeek as any[])[0]?.cnt || 0);
-    const thisMonthVal = Number((thisMonth as any[])[0]?.cnt || 0);
-    const lastMonthVal = Number((lastMonth as any[])[0]?.cnt || 0);
-    const thisYearVal = Number((thisYear as any[])[0]?.cnt || 0);
-    const lastYearVal = Number((lastYear as any[])[0]?.cnt || 0);
-
-    const yearlyGrowth = calcChange(thisYearVal, lastYearVal);
-
-    // Generate insight based on new patient patterns
-    let insight = 'Patient growth is steady across the week.';
-    try {
-      const dayPattern: any[] = await database.execute(sql`
-        SELECT
-          TO_CHAR(${AppointmentModel.appointmentDate}, 'Dy') as day_name,
-          COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
-        FROM ${AppointmentModel}
-        WHERE ${AppointmentModel.clinicId} = ${clinicId}
-          AND ${AppointmentModel.appointmentDate} BETWEEN ${query.startDate + ' 00:00:00'} AND ${query.endDate + ' 23:59:59'}
-          AND ${AppointmentModel.patientId} IN (
-            SELECT ${AppointmentModel.patientId}
-            FROM ${AppointmentModel}
-            WHERE ${AppointmentModel.clinicId} = ${clinicId}
-            GROUP BY ${AppointmentModel.patientId}
-            HAVING MIN(${AppointmentModel.appointmentDate}) >= ${query.startDate + ' 00:00:00'}
-          )
-          ${doctorFilter}
-        GROUP BY day_name
-        ORDER BY cnt DESC
-        LIMIT 2
+          AND ${AppointmentModel.appointmentDate} BETWEEN ${from + ' 00:00:00'} AND ${to + ' 23:59:59'}
+          ${scope}
       `);
+      return Number(rows[0]?.cnt || 0);
+    };
+    const span = (from: string, to: string) =>
+      spanLabel(calendarDay(from), calendarDay(to));
+    const tile = async (
+      label: string,
+      previousLabel: string,
+      from: string,
+      prevFrom: string,
+      prevTo: string
+    ) => {
+      const [value, previousValue] = await Promise.all([
+        uniquePatients(from, end),
+        uniquePatients(prevFrom, prevTo),
+      ]);
+      return {
+        label,
+        range: span(from, end),
+        value,
+        previousLabel,
+        previousRange: span(prevFrom, prevTo),
+        previousValue,
+        ...calcChange(value, previousValue),
+      };
+    };
 
-      if (dayPattern.length >= 2) {
-        insight = `New patient growth is higher on ${dayPattern[0].day_name.trim()}s and ${dayPattern[1].day_name.trim()}s.`;
-      } else if (dayPattern.length === 1) {
-        insight = `New patient growth is highest on ${dayPattern[0].day_name.trim()}s.`;
-      }
-    } catch (err) {
-      logger.warn('[ReportsPatients] Error generating insight', err);
-    }
+    // Week (Monday-aligned), month and year, each cut at the filter's end day.
+    const dow = utcDay(end).getUTCDay();
+    const weekStart = addDays(end, dow === 0 ? -6 : 1 - dow);
+    const weekDaysIn = Math.round(
+      (utcDay(end).getTime() - utcDay(weekStart).getTime()) / 86400000
+    );
+    const prevWeekStart = addDays(weekStart, -7);
+    const prevMonthY = m0 === 0 ? y - 1 : y;
+    const prevMonth0 = m0 === 0 ? 11 : m0 - 1;
+
+    const [week, month, year] = await Promise.all([
+      tile(
+        'Week',
+        'Week Before',
+        weekStart,
+        prevWeekStart,
+        addDays(prevWeekStart, weekDaysIn)
+      ),
+      tile(
+        'Month',
+        'Month Before',
+        ymdOf(y, m0, 1),
+        ymdOf(prevMonthY, prevMonth0, 1),
+        ymdOf(
+          prevMonthY,
+          prevMonth0,
+          Math.min(d, lastDayOf(prevMonthY, prevMonth0))
+        )
+      ),
+      tile(
+        'Year',
+        'Year Before',
+        ymdOf(y, 0, 1),
+        ymdOf(y - 1, 0, 1),
+        ymdOf(y - 1, m0, Math.min(d, lastDayOf(y - 1, m0)))
+      ),
+    ]);
+
+    // Real unique patients per month for the 12 months ending in the filter's month.
+    const monthsFrom = ymdOf(y, m0 - 11, 1) + ' 00:00:00';
+    const monthsTo = ymdOf(y, m0, lastDayOf(y, m0)) + ' 23:59:59';
+    const monthSlots = generateDateSlots(monthsFrom, monthsTo, 'month', 365);
+    const monthRows: any[] = await database.execute(sql`
+      SELECT
+        date_trunc('month', ${AppointmentModel.appointmentDate}) as dt,
+        COUNT(DISTINCT ${AppointmentModel.patientId}) as cnt
+      FROM ${AppointmentModel}
+      ${join}
+      WHERE ${AppointmentModel.clinicId} = ${clinicId}
+        AND ${AppointmentModel.appointmentDate} BETWEEN ${monthsFrom} AND ${monthsTo}
+        ${scope}
+      GROUP BY dt
+    `);
+    const monthValues = mapDataToSlots(monthRows, monthSlots, 'month');
 
     return {
-      thisWeek: {
-        value: thisWeekVal,
-        change: calcChange(thisWeekVal, lastWeekVal).change,
-      },
-      lastWeek: { value: lastWeekVal },
-      thisMonth: {
-        value: thisMonthVal,
-        change: calcChange(thisMonthVal, lastMonthVal).change,
-      },
-      lastMonth: { value: lastMonthVal },
-      thisYear: { value: thisYearVal, change: yearlyGrowth.change },
-      lastYear: { value: lastYearVal },
-      yearlyGrowth: {
-        value: yearlyGrowth.change,
-        label: 'Patient growth this year',
-      },
-      insight,
+      tiles: [week, month, year],
+      monthly: monthSlots.map((s, i) => ({
+        label: s.label,
+        value: monthValues[i],
+      })),
+      insight: await this.getNewPatientInsight(clinicId, primary, query),
     };
+  }
+
+  /** The weekday most new patients first came, with its share; null below the sample or on a tie. */
+  private static async getNewPatientInsight(
+    clinicId: string,
+    primary: DateRange,
+    query: ReportsPatientsQueryDto
+  ): Promise<string | null> {
+    try {
+      const rows: any[] = await database.execute(sql`
+        SELECT
+          EXTRACT(ISODOW FROM fv.first_visit)::int as dow,
+          TO_CHAR(MIN(fv.first_visit), 'FMDay') as day_name,
+          MIN(fv.first_visit)::date::text as first_day,
+          COUNT(DISTINCT fv.first_visit::date)::int as days,
+          COUNT(DISTINCT ${AppointmentModel.patientId})::int as cnt
+        FROM ${AppointmentModel}
+        ${serviceJoin(query)}
+        ${firstVisitJoin(clinicId, query.doctorId)}
+        WHERE ${AppointmentModel.clinicId} = ${clinicId}
+          AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
+          AND fv.first_visit BETWEEN ${primary.start} AND ${primary.end}
+          ${scopeFilter(query)}
+        GROUP BY dow
+        ORDER BY cnt DESC
+      `);
+      const total = rows.reduce((sum, r) => sum + r.cnt, 0);
+      const [top, second] = rows;
+      if (
+        !top ||
+        total < MIN_INSIGHT_SAMPLE ||
+        (second && second.cnt === top.cnt)
+      )
+        return null;
+      const when =
+        top.days > 1
+          ? `${top.day_name}s`
+          : calendarDay(top.first_day).toLocaleDateString('en-IN', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            });
+      return `Most new patients first came on ${when} (${top.cnt} of ${total}).`;
+    } catch (err) {
+      logger.warn('[ReportsPatients] Error generating insight', err);
+      return null;
+    }
   }
 }

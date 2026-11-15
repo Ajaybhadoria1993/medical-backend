@@ -22,7 +22,7 @@ import logger from '../../../utils/logger';
 
 const MFA_PENDING_PREFIX = 'mfa:pending';
 const MFA_PENDING_TTL_SECONDS = 600; // 10 minutes
-const MFA_ISSUER = 'Infinity Medisetu';
+const MFA_ISSUER = 'MediArogya';
 const MFA_DISABLE_RATE_PREFIX = 'mfa:disable_rate';
 const MFA_DISABLE_RATE_MAX_ATTEMPTS = 5;
 const MFA_DISABLE_RATE_WINDOW_SECONDS = 900; // 15 minutes

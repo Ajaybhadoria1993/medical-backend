@@ -1,3 +1,4 @@
+import { brandLogoHtml } from './brandLogo';
 export const subscriptionInvoiceTemplate = `
 <!DOCTYPE html>
 <html>
@@ -115,6 +116,49 @@ export const subscriptionInvoiceTemplate = `
     text-transform: uppercase;
     letter-spacing: 1px;
   }
+  .transaction-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 18px;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .transaction-meta > div { flex: 1; }
+  .transaction-meta > div:last-child { text-align: right; }
+  /* Gateway IDs are case-sensitive; the page-wide uppercase would make
+     pay_Tu5cDWBmWnt4L8 print as PAY_TU5CDWBMWNT4L8, which cannot be searched. */
+  .ref-id { text-transform: none; letter-spacing: 0; word-break: break-all; }
+  .item-name { font-weight: bold; }
+  .item-description {
+    display: block;
+    margin-top: 4px;
+    font-size: 9px;
+    line-height: 1.35;
+    text-transform: none;
+    letter-spacing: 0.5px;
+  }
+  .number { text-align: right; white-space: nowrap; }
+  .proration { color: #333; }
+  .proration-days {
+    display: block;
+    margin-top: 3px;
+    font-size: 8px;
+    line-height: 1.2;
+    white-space: normal;
+  }
+  .summary-label { text-align: right; font-size: 12px; }
+  .summary-value { text-align: right; white-space: nowrap; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: max-content max-content;
+    justify-content: end;
+    align-items: baseline;
+    column-gap: 16px;
+    row-gap: 4px;
+    line-height: 1.4;
+    font-size: 12px;
+  }
   .grand-total td {
     font-size: 15px;
     font-weight: bold;
@@ -148,7 +192,7 @@ export const subscriptionInvoiceTemplate = `
 <div class="invoice-container">
   <div class="header">
     <div class="logo">
-      <img src="https://infninity-medisatu.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png" alt="Infinity MediSetu">
+      ${brandLogoHtml(30)}
     </div>
     <div class="invoice-title">
       <p><strong>Invoice No:</strong> {{invoiceNumber}}</p>
@@ -156,14 +200,14 @@ export const subscriptionInvoiceTemplate = `
     </div>
   </div>
   <div class="company-details">
-    <strong>Infinity Medisetu</strong><br>
+    <strong>MediArogya</strong><br>
     <strong>GSTIN: </strong>23AAFCI1029R1ZF
   </div>
   <div class="info-grid">
     <div class="info-box">
       <div class="section-title">Clinic Details</div>
       <div class="info-row"><span class="info-label">Name:</span> <span class="info-value">{{clinicName}}</span></div>
-      <div class="info-row"><span class="info-label">Address:</span> <span class="info-value">{{clinicAddress}}</span></div>
+      <div class="info-row"><span class="info-label">Address:</span> <span class="info-value">{{this.clinicAddress}}</span></div>
       <div class="info-row"><span class="info-label">City/State:</span> <span class="info-value">{{clinicCity}}, {{clinicState}} - {{zipCode}}</span></div>
       <div class="info-row"><span class="info-label">Phone:</span> <span class="info-value">{{clinicPhone}}</span></div>
     </div>
@@ -174,39 +218,59 @@ export const subscriptionInvoiceTemplate = `
       <div class="info-row"><span class="info-label">Phone:</span> <span class="info-value">{{adminMobile}}</span></div>
     </div>
   </div>
+  <div class="transaction-meta">
+    <div><strong>Transaction Date/Time:</strong> {{createdAt}}</div>
+    <div><strong>Transaction ID:</strong> <span class="ref-id">{{transactionId}}</span></div>
+  </div>
   <table>
     <thead>
       <tr>
-        <th>Plan</th>
-        <th>Start Date</th>
-        <th>End Date</th>
-        <th>Transaction Date/Time</th>
-        <th>Transaction ID</th>
-        <th>Amount</th>
+        <th style="width: 28%;">Item</th>
+        <th style="width: 22%;">Billing Period</th>
+        <th style="width: 8%; text-align: center;">Qty</th>
+        <th style="width: 14%; text-align: right;">Rate<br><span style="font-size: 8px;">(Incl. GST)</span></th>
+        <th style="width: 14%; text-align: right;">Prorated<br>Deduction</th>
+        <th style="width: 14%; text-align: right;">Net Amount</th>
       </tr>
     </thead>
     <tbody>
+      {{#each lineItems}}
       <tr>
-        <td><strong>{{planName}}</strong><br><span style="font-size: 10px; text-transform: lowercase;">({{planDescription}})</span></td>
-        <td>{{startsAt}}</td>
-        <td>{{expiresAt}}</td>
-        <td>{{createdAt}}</td>
-        <td>{{transactionId}}</td>
-        <td>{{subtotal}}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="font-size:12px; text-align:right; line-height: 20px;">
-          <p>CGST (9%)</p>
-          <p>SGST (9%)</p>
+        <td>
+          <span class="item-name">{{name}}</span>
+          <span class="item-description">{{description}}</span>
         </td>
-        <td style="line-height: 20px; white-space: nowrap;">
-          <p>+ {{cgst}}</p>
-          <p>+ {{sgst}}</p>
+        <td>{{startDate}}<br>TO {{endDate}}</td>
+        <td style="text-align: center;">{{quantity}}</td>
+        <td class="number">{{rate}}</td>
+        <td class="number proration">
+          {{proratedDeduction}}
+          {{#if proratedDays}}<span class="proration-days">{{proratedDays}}</span>{{/if}}
+        </td>
+        <td class="number"><strong>{{netAmount}}</strong></td>
+      </tr>
+      {{/each}}
+      <tr>
+        <td colspan="6">
+          <div class="summary-grid">
+          {{#if couponDiscount}}
+            <span class="summary-label">Subtotal</span>
+            <span class="summary-value">{{invoiceSubtotal}}</span>
+            <span class="summary-label">Coupon Discount</span>
+            <span class="summary-value">{{couponDiscount}}</span>
+          {{/if}}
+            <span class="summary-label">{{#if couponDiscount}}Taxable Value (After Discount){{else}}Taxable Value{{/if}}</span>
+            <span class="summary-value">{{subtotal}}</span>
+            <span class="summary-label">CGST (9%)</span>
+            <span class="summary-value">+ {{cgst}}</span>
+            <span class="summary-label">SGST (9%)</span>
+            <span class="summary-value">+ {{sgst}}</span>
+          </div>
         </td>
       </tr>
       <tr class="grand-total">
         <td colspan="5" style="text-align:right; font-weight:bold;">Grand Total</td>
-        <td style="font-weight:bold;">{{grandTotal}}</td>
+        <td class="summary-value" style="font-weight:bold;">{{grandTotal}}</td>
       </tr>
       <tr>
         <td colspan="6" style="border-top: none;">

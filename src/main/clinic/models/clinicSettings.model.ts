@@ -32,7 +32,8 @@ export const ClinicSettingsModel = pgTable('clinic_settings', {
 
   smsEnabled: boolean('sms_enabled').default(false).notNull(),
 
-  whatsappEnabled: boolean('whatsapp_enabled').default(false).notNull(),
+  /** On by default: free messages and credits cap the cost (credits module). */
+  whatsappEnabled: boolean('whatsapp_enabled').default(true).notNull(),
 
   loginAlertsEnabled: boolean('login_alerts_enabled').default(false).notNull(),
 

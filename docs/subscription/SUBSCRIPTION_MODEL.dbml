@@ -1,0 +1,430 @@
+// Subscription module — data model (plan §4). Paste into https://dbdiagram.io
+// Every account-owned table has owner_type (clinic | lab | pharmacy) + owner_id: labs and pharmacies
+// will be split from clinics and can have their own plans. owner_id is a plain uuid, no FK
+// (BACKEND_STANDARDS §1 rule 5); every query filters by the owner from the token.
+// All times are timestamptz. Money that is charged or billed (payments, invoices, mandate limit) is
+// bigint paise, like the money module (money_entries.amount_paise); catalog prices Super Admin
+// enters (plans, add-ons, coupons) stay decimal(12,2) rupees and are turned into paise when priced.
+// No ON DELETE CASCADE on money tables (payments, invoices, mandates): rows are never deleted.
+
+Project subscription {
+  database_type: 'PostgreSQL'
+  Note: 'Medisetu subscription rebuild — production model, 2026-11-03'
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────
+Enum subscription_owner_type {
+  clinic
+  lab
+  pharmacy
+}
+Enum subscription_plan_kind {
+  free
+  paid
+}
+Enum feature_type {
+  numeric
+  boolean
+}
+Enum subscription_billing_cycle {
+  monthly
+  yearly
+  none
+}
+Enum subscription_status {
+  trialing
+  active
+  past_due
+  cancelled
+  expired
+  replaced
+}
+Enum subscription_add_on_status {
+  active
+  cancelled
+}
+Enum payment_kind {
+  plan_purchase
+  plan_change
+  addon_purchase
+  renewal
+  mandate_setup
+  manual_adjustment
+}
+Enum payment_status {
+  created
+  pending
+  captured
+  failed
+  abandoned
+  refunded
+}
+Enum invoice_status {
+  issued
+  void
+}
+Enum mandate_method {
+  card
+  upi
+  emandate
+}
+Enum mandate_status {
+  pending
+  active
+  paused
+  cancelled
+  failed
+}
+Enum webhook_event_status {
+  received
+  processing
+  processed
+  failed
+}
+Enum discount_type {
+  percentage
+  fixed
+}
+Enum coupon_status {
+  active
+  inactive
+}
+Enum applies_to {
+  all
+  plans
+  addons
+}
+
+// ─── Catalog ─────────────────────────────────────────────────────────
+Table subscription_plans {
+  id uuid [pk, default: `gen_random_uuid()`]
+  slug varchar(80) [unique, not null]
+  name varchar(150) [not null]
+  description varchar(255)
+  owner_type subscription_owner_type [not null, default: 'clinic', note: 'which kind of account can buy this plan']
+  kind subscription_plan_kind [not null]
+  currency varchar(8) [not null, default: 'INR']
+  is_active boolean [not null, default: true, note: 'false = hidden from new buyers, never deleted']
+  is_trial_plan boolean [not null, default: false, note: 'partial unique: one per owner_type']
+  trial_days int [note: 'check: > 0 when set']
+  is_default_fallback boolean [not null, default: false, note: 'partial unique: one per owner_type']
+  is_most_popular boolean [not null, default: false]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table plan_versions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  plan_id uuid [not null, ref: > subscription_plans.id]
+  version_no int [not null]
+  monthly_price decimal(12,2) [note: 'null = not sold monthly; check: >= 0']
+  yearly_price decimal(12,2) [note: 'null = not sold yearly; set directly, not derived from monthly; check: >= 0']
+  effective_from timestamptz [not null, note: 'new buyers and renewals use it from this date']
+  created_by uuid
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (plan_id, version_no) [unique]
+    (plan_id, effective_from) [unique, note: 'finds the version in effect']
+  }
+  Note: 'Never edited once in use. A plan change = a new version. Check: a paid plan has at least one of monthly_price / yearly_price.'
+}
+
+Table plan_features {
+  id uuid [pk, default: `gen_random_uuid()`]
+  plan_version_id uuid [not null, ref: > plan_versions.id]
+  feature_key varchar(100) [not null]
+  display_name varchar(150)
+  description varchar(255)
+  "type" feature_type [not null, default: 'numeric', note: 'existing column, now an enum']
+  limit_value int [note: 'check: >= 0 when set']
+  is_unlimited boolean [not null, default: false]
+  enabled boolean [not null, default: true]
+  sort_order int [not null, default: 0]
+  is_marketing_feature boolean [not null, default: false]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (plan_version_id, feature_key) [unique]
+  }
+}
+
+Table add_ons {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null]
+  description text
+  feature_key varchar(100) [unique, not null]
+  unit_value int [not null, default: 1, note: 'check: > 0']
+  monthly_price decimal(12,2) [note: 'null = not sold monthly; a change applies to new purchases and the next renewal']
+  yearly_price decimal(12,2) [note: 'null = not sold yearly; independent of monthly']
+  currency varchar(8) [not null, default: 'INR']
+  is_active boolean [not null, default: true, note: 'false = hidden, never deleted']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table plan_add_on_limits {
+  id uuid [pk, default: `gen_random_uuid()`]
+  plan_version_id uuid [not null, ref: > plan_versions.id]
+  add_on_id uuid [not null, ref: > add_ons.id]
+  max_cap int [note: 'null = no cap; check: >= 0']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (plan_version_id, add_on_id) [unique]
+  }
+}
+
+Table coupons {
+  id serial [pk, note: 'kept serial: existing rows and references']
+  code varchar(50) [unique, not null, note: 'stored upper case']
+  description text
+  discount_type discount_type [not null]
+  discount_value decimal(12,2) [not null, note: 'check: percentage 1–100, fixed > 0']
+  max_discount_amount decimal(12,2)
+  applies_to applies_to [not null, default: 'all']
+  applicable_plan_ids jsonb [note: 'empty = all plans']
+  applicable_addon_ids jsonb [note: 'empty = all add-ons']
+  max_uses int [note: 'null = unlimited']
+  max_uses_per_clinic int [not null, default: 1, note: 'existing column name; counts per owner']
+  min_order_value decimal(12,2)
+  first_time_only boolean [not null, default: false]
+  starts_at timestamptz [not null]
+  expires_at timestamptz [not null, note: 'expired = worked out from this date; check: > starts_at']
+  status coupon_status [not null, default: 'active']
+  current_uses int [not null, default: 0, note: 'raised only with WHERE current_uses < max_uses']
+  created_by uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+// ─── Clinic subscription ─────────────────────────────────────────────
+Table subscriptions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  owner_type subscription_owner_type [not null]
+  owner_id uuid [not null, note: 'clinic / lab / pharmacy id; no FK']
+  plan_version_id uuid [not null, ref: > plan_versions.id, note: 'version for the current period; the plan comes from it']
+  status subscription_status [not null]
+  billing_cycle subscription_billing_cycle [not null]
+  current_period_start timestamptz [not null]
+  current_period_end timestamptz [note: 'null for free; calendar month/year; check: > start']
+  billing_anchor_day int [note: 'day of month renewals land on (1–31); short months use their last day; check: 1–31']
+  is_trial boolean [not null, default: false, note: 'trial once per owner; a trial row has billing_cycle none']
+  cancel_at_period_end boolean [not null, default: false]
+  cancelled_at timestamptz
+  cancellation_reason varchar(255)
+  scheduled_plan_id uuid [ref: > subscription_plans.id]
+  scheduled_billing_cycle subscription_billing_cycle
+  scheduled_change_at timestamptz
+  scheduled_staff_change jsonb [note: 'staff to keep and those told they lose access; cleared when the change applies or is undone']
+  ended_at timestamptz [note: 'set when cancelled, replaced or expired']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (owner_type, owner_id)
+    (owner_type, owner_id, status) [note: 'partial unique: one row per owner in trialing/active/past_due']
+    (status, current_period_end) [note: 'renewal, expiry and reminder crons']
+    scheduled_change_at [note: 'partial: where scheduled_change_at is not null']
+  }
+  Note: 'No price, payment or AutoPay columns. Renewals extend the same row. The plan version must have the same owner_type.'
+}
+
+Table subscription_add_ons {
+  id uuid [pk, default: `gen_random_uuid()`]
+  owner_type subscription_owner_type [not null]
+  owner_id uuid [not null, note: 'clinic / lab / pharmacy id; no FK']
+  subscription_id uuid [not null, ref: > subscriptions.id]
+  add_on_id uuid [not null, ref: > add_ons.id]
+  quantity int [not null, default: 1, note: 'check: > 0']
+  status subscription_add_on_status [not null, default: 'active']
+  scheduled_quantity int [note: 'quantity from the next period; check: >= 0']
+  scheduled_deactivate_user_ids jsonb [not null, default: '[]']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (subscription_id, add_on_id) [note: 'partial unique where status = active']
+    (owner_type, owner_id)
+  }
+  Note: 'Follows the subscription period — no own expiry.'
+}
+
+// ─── Money ───────────────────────────────────────────────────────────
+Table subscription_payments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  owner_type subscription_owner_type [not null]
+  owner_id uuid [not null, note: 'clinic / lab / pharmacy id; no FK']
+  subscription_id uuid [ref: > subscriptions.id, note: 'set on capture for a new plan']
+  kind payment_kind [not null]
+  status payment_status [not null, default: 'created']
+  amount_paise bigint [not null, note: 'amount actually charged, in paise; check: >= 0']
+  discount_paise bigint [not null, default: 0, note: 'check: >= 0']
+  currency varchar(8) [not null, default: 'INR']
+  coupon_id int [ref: > coupons.id, note: 'a captured payment with a coupon = one coupon use']
+  lines jsonb [not null, note: 'what was bought (Zod-validated, has a schema version)']
+  period_start timestamptz
+  period_end timestamptz
+  provider varchar(20) [note: 'razorpay; empty for ₹0 and manual_adjustment rows']
+  provider_order_id varchar(255) [unique]
+  provider_payment_id varchar(255) [unique, note: 'partial unique where not null']
+  payment_method varchar(20) [note: 'card / upi / netbanking / wallet — shown in billing history; no card, UPI ID or bank details are ever stored']
+  mandate_id uuid [ref: > subscription_mandates.id]
+  idempotency_key varchar(64) [note: 'one per checkout attempt, sent by the FE (X1)']
+  needs_refund boolean [not null, default: false, note: 'captured but a duplicate, not applied (X8)']
+  attempt_count int [not null, default: 0]
+  next_attempt_at timestamptz
+  failure_reason varchar(255)
+  reason varchar(255) [note: 'required for manual_adjustment (e.g. bank outage, +7 days)']
+  done_by uuid [note: 'Super Admin who made a manual_adjustment']
+  paid_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (owner_type, owner_id, created_at)
+    subscription_id
+    (status, next_attempt_at) [note: 'renewal retry cron']
+    (coupon_id, owner_type, owner_id) [note: 'coupon limits']
+    (owner_type, owner_id, idempotency_key) [unique, note: 'same key = same order (X1)']
+    (owner_type, owner_id) [note: 'partial unique: one open checkout per owner, status created/pending, purchase kinds (X2)']
+    (subscription_id, period_start) [note: 'partial unique where kind = renewal and the row is not abandoned, failed, refunded or awaiting refund: one renewal charge per period (X6)']
+  }
+  Note: 'Created before the Razorpay order — our DB is the source of truth. Never deleted. Only sale kinds (plan_purchase, plan_change, addon_purchase, renewal) get an invoice.'
+}
+
+Table subscription_invoices {
+  id uuid [pk, default: `gen_random_uuid()`]
+  payment_id uuid [unique, not null, ref: - subscription_payments.id]
+  owner_type subscription_owner_type [not null]
+  owner_id uuid [not null, note: 'clinic / lab / pharmacy id; no FK']
+  invoice_number varchar(40) [unique, not null, note: 'from subscription_invoice_sequences (D7)']
+  financial_year varchar(7) [not null, note: 'e.g. 2026-27']
+  status invoice_status [not null, default: 'issued', note: 'never edited; refunds get a credit note later']
+  issue_date date [not null]
+  seller jsonb [not null, note: 'snapshot: our legal name, address, GSTIN']
+  bill_to jsonb [not null, note: 'snapshot: owner name, address, state, GSTIN']
+  place_of_supply varchar(2) [not null, note: 'owner state code: CGST+SGST if 23, else IGST']
+  sac_code varchar(10) [not null]
+  currency varchar(8) [not null, default: 'INR']
+  taxable_paise bigint [not null]
+  cgst_paise bigint [not null, default: 0]
+  sgst_paise bigint [not null, default: 0]
+  igst_paise bigint [not null, default: 0]
+  total_paise bigint [not null, note: 'check: = taxable + cgst + sgst + igst']
+  pdf_key varchar(255)
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (owner_type, owner_id, issue_date)
+  }
+  Note: 'Issued once on capture, never rebuilt, never deleted.'
+}
+
+Table subscription_invoice_sequences {
+  financial_year varchar(7) [pk, note: 'e.g. 2026-27']
+  last_number int [not null, default: 0]
+  updated_at timestamptz [not null, default: `now()`]
+  Note: 'Row-locked counter in the payment transaction: consecutive numbers with no gaps (a Postgres sequence can skip).'
+}
+
+// ─── AutoPay ─────────────────────────────────────────────────────────
+Table subscription_mandates {
+  id uuid [pk, default: `gen_random_uuid()`]
+  owner_type subscription_owner_type [not null]
+  owner_id uuid [not null, note: 'clinic / lab / pharmacy id; no FK']
+  provider varchar(20) [not null, default: 'razorpay']
+  provider_customer_id varchar(255) [not null]
+  provider_token_id varchar(255) [unique]
+  method mandate_method [not null]
+  max_amount_paise bigint [not null, note: 'cap the owner approved, in paise (Razorpay token max_amount is paise too); check: > 0']
+  token_expires_at timestamptz [note: 'mandate end date from Razorpay']
+  status mandate_status [not null, default: 'pending']
+  authorized_at timestamptz
+  cancelled_at timestamptz
+  failure_reason varchar(255)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (owner_type, owner_id, status) [note: 'partial unique: one active per owner']
+  }
+  Note: 'AutoPay is ON when the owner has an active mandate. Never deleted.'
+}
+
+Table subscription_webhook_events {
+  id uuid [pk, default: `gen_random_uuid()`]
+  provider varchar(20) [not null, default: 'razorpay']
+  event_id varchar(255) [unique, not null, note: 'x-razorpay-event-id']
+  event_type varchar(100) [not null]
+  payload jsonb [note: 'kept 90 days after processed, then cleared (holds customer email/phone)']
+  status webhook_event_status [not null, default: 'received']
+  attempts int [not null, default: 0]
+  next_attempt_at timestamptz
+  error text
+  received_at timestamptz [not null, default: `now()`]
+  processed_at timestamptz
+  indexes {
+    (status, next_attempt_at) [note: 'worker picks with FOR UPDATE SKIP LOCKED']
+  }
+}
+
+// ─── Timeline and usage ──────────────────────────────────────────────
+Table subscription_activity {
+  id uuid [pk, default: `gen_random_uuid()`]
+  owner_type subscription_owner_type [not null]
+  owner_id uuid [not null, note: 'clinic / lab / pharmacy id; no FK']
+  "type" varchar(64) [not null]
+  title varchar(200) [not null]
+  description text
+  amount decimal(12,2)
+  currency varchar(8) [not null, default: 'INR']
+  actor_user_id uuid
+  metadata jsonb [note: 'IDs only (payment_id, plan_version_id) — no copied amounts or Razorpay data']
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (owner_type, owner_id, created_at)
+  }
+  Note: 'Timeline shown on screen only — never a source of money or invoices.'
+}
+
+Table clinic_usage {
+  id uuid [pk, default: `gen_random_uuid()`]
+  owner_type subscription_owner_type [not null]
+  owner_id uuid [not null, note: 'clinic / lab / pharmacy id; no FK']
+  feature_key varchar(100) [not null]
+  usage_count int [not null, default: 0]
+  period_start timestamptz [not null]
+  period_end timestamptz [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  indexes {
+    (owner_type, owner_id, feature_key, period_start) [unique]
+  }
+  Note: 'Used for storage usage.'
+}
+
+// ─── Groups (colour boxes in the diagram) ────────────────────────────
+TableGroup catalog {
+  subscription_plans
+  plan_versions
+  plan_features
+  add_ons
+  plan_add_on_limits
+  coupons
+}
+
+TableGroup clinic_subscription {
+  subscriptions
+  subscription_add_ons
+}
+
+TableGroup money {
+  subscription_payments
+  subscription_invoices
+  subscription_invoice_sequences
+}
+
+TableGroup autopay_and_events {
+  subscription_mandates
+  subscription_webhook_events
+}
+
+TableGroup timeline_and_usage {
+  subscription_activity
+  clinic_usage
+}

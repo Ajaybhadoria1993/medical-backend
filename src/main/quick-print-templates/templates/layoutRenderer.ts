@@ -1,3 +1,6 @@
+import { FOOTER_NOTES_HTML } from '../../../htmltamplates/footerNotes';
+import { TREATMENT_PLAN_HTML } from '../../../htmltamplates/treatmentPlan';
+import { SPECIALTY_SECTIONS_HTML } from '../../../htmltamplates/specialtySections';
 /** Builds the Handlebars template for a Quick Print designer layout; it receives the same `pdfData` as the canned templates.
  * `flow` (default) stacks the rows with no gaps; `exact` prints every block at its saved millimetre coordinates. */
 
@@ -25,6 +28,95 @@ export type LayoutBlock = {
   position: { x: number; y: number; width: number; height: number };
 };
 
+/** ℞ as an SVG (same path as the report_card templates): the PDF renderer's fonts have no U+211E glyph and print a box. */
+const rxGlyph = (size: number) =>
+  `<svg viewBox="0 0 384 512" style="height:${size}px;width:auto;display:block" fill="currentColor"><path d="M301.26 352l78.06-78.06c6.25-6.25 6.25-16.38 0-22.63l-22.63-22.63c-6.25-6.25-16.38-6.25-22.63 0L256 306.74l-83.96-83.96C219.31 216.8 256 176.89 256 128c0-53.02-42.98-96-96-96H16C7.16 32 0 39.16 0 48v256c0 8.84 7.16 16 16 16h32c8.84 0 16-7.16 16-16v-80h18.75l128 128-78.06 78.06c-6.25 6.25-6.25 16.38 0 22.63l22.63 22.63c6.25 6.25 16.38 6.25 22.63 0L256 397.25l78.06 78.06c6.25 6.25 16.38 6.25 22.63 0l22.63-22.63c6.25-6.25 6.25-16.38 0-22.63L301.26 352zM64 96h96c17.64 0 32 14.36 32 32s-14.36 32-32 32H64V96z"/></svg>`;
+
+/** Printed when a doctor has not saved a Quick Print design; must match the designer's DEFAULT_BLOCKS.
+ * The clinic header is off: most clinics print on a letterhead pad. */
+export const DEFAULT_QUICK_PRINT_LAYOUT: LayoutBlock[] = [
+  {
+    id: 'clinicHeader',
+    visible: false,
+    position: { x: 12, y: 12, width: 186, height: 16 },
+  },
+  {
+    id: 'patientInfo',
+    visible: true,
+    position: { x: 12, y: 38, width: 132, height: 12 },
+  },
+  {
+    id: 'visitDate',
+    visible: true,
+    position: { x: 150, y: 38, width: 48, height: 12 },
+  },
+  {
+    id: 'chiefComplaints',
+    visible: true,
+    position: { x: 12, y: 52, width: 186, height: 8 },
+  },
+  {
+    id: 'vitals',
+    visible: true,
+    position: { x: 12, y: 62, width: 186, height: 8 },
+  },
+  {
+    id: 'allergies',
+    visible: true,
+    position: { x: 12, y: 72, width: 186, height: 8 },
+  },
+  {
+    id: 'habits',
+    visible: true,
+    position: { x: 12, y: 82, width: 186, height: 8 },
+  },
+  {
+    id: 'preDiagnosis',
+    visible: true,
+    position: { x: 12, y: 92, width: 186, height: 8 },
+  },
+  {
+    id: 'diagnosis',
+    visible: true,
+    position: { x: 12, y: 102, width: 186, height: 8 },
+  },
+  {
+    id: 'rxSymbol',
+    visible: true,
+    position: { x: 12, y: 112, width: 15, height: 8 },
+  },
+  {
+    id: 'medicineTable',
+    visible: true,
+    position: { x: 12, y: 122, width: 186, height: 90 },
+  },
+  {
+    id: 'tests',
+    visible: true,
+    position: { x: 12, y: 216, width: 186, height: 12 },
+  },
+  {
+    id: 'clinicalNotes',
+    visible: true,
+    position: { x: 12, y: 230, width: 186, height: 12 },
+  },
+  {
+    id: 'advice',
+    visible: true,
+    position: { x: 12, y: 244, width: 186, height: 12 },
+  },
+  {
+    id: 'followUp',
+    visible: true,
+    position: { x: 12, y: 257, width: 110, height: 10 },
+  },
+  {
+    id: 'doctorSignature',
+    visible: true,
+    position: { x: 130, y: 257, width: 68, height: 20 },
+  },
+];
+
 /** Shape needed to estimate how tall the medicine table will actually render. */
 export type MedicineRowMetrics = {
   hasComposition: boolean;
@@ -42,6 +134,10 @@ export type BuildLayoutOptions = {
   layoutMode?: LayoutMode;
   /** `modern` (default), or `original` — the look Quick Print had before the redesign. */
   design?: QuickPrintDesign;
+  /** Blank space kept at the foot of every sheet, for a pre-printed pad's footer. */
+  bottomMarginMm?: number;
+  /** Text size multiplier for every section's content (1 = as designed). */
+  textScale?: number;
   medicineRows?: MedicineRowMetrics[];
   /** Switched-off blocks this visit has data for — they print anyway (see `applyDataDrivenBlocks`). */
   filledBlockIds?: string[];
@@ -97,10 +193,13 @@ const PAGE_SIZES: Record<string, { width: number; height: number }> = {
 
 /** Space between flow rows in mm — must match `FLOW_ROW_GAP_MM` in the frontend designer. */
 const FLOW_ROW_GAP_MM = 3;
+const MAX_BOTTOM_MARGIN_MM = 80;
+const MIN_TEXT_SCALE = 0.8;
+const MAX_TEXT_SCALE = 1.3;
 
 /** Printed right after the content rather than pinned to the page bottom, so no gap opens above it. */
 const poweredBy = (style: string) =>
-  `<div class="qp-footer" style="${style}">Powered by Infinity Medisetu | www.infinitymedisetu.com</div>`;
+  `<div class="qp-footer" style="${style}">${FOOTER_NOTES_HTML}Powered by MediArogya | www.infinitymedisetu.com</div>`;
 
 // Row-height estimates in mm, used only by exact mode to push blocks below an overflowing table.
 const TABLE_HEADER_MM = 6;
@@ -245,22 +344,26 @@ function getBlockMarkup(
       return `{{#if symptoms.length}}<div style="font-size:11px"><b>C/O:</b> {{#each symptoms}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}</div>{{/if}}`;
 
     case 'vitals':
-      return `{{#if vitalsMoreThanOne}}<div style="font-size:11px"><b>Vitals:</b>{{#if vitals.bpSys}}{{#if vitals.bpDia}} BP: {{vitals.bpSys}}/{{vitals.bpDia}} mmHg{{/if}}{{/if}}{{#if vitals.fbs}} &middot; FBS: {{vitals.fbs}} mg/dL{{/if}}{{#if vitals.ppbs}} &middot; PPBS: {{vitals.ppbs}} mg/dL{{/if}}{{#if vitals.rbs}} &middot; RBS: {{vitals.rbs}} mg/dL{{/if}}{{#if vitals.pulse}} &middot; Pulse: {{vitals.pulse}}/min{{/if}}{{#if vitals.spo2}} &middot; SpO2: {{vitals.spo2}}%{{/if}}{{#if vitals.temperatureC}} &middot; Temp: {{vitals.temperatureC}}&deg;C{{/if}}{{#if vitals.heightCm}} &middot; Ht: {{vitals.heightCm}} cm{{/if}}{{#if vitals.weightKg}} &middot; Wt: {{vitals.weightKg}} kg{{/if}}{{#if vitals.bmi}} &middot; BMI: {{vitals.bmi}}{{/if}}</div>{{/if}}`;
+      return `{{#if vitalsMoreThanOne}}<div style="font-size:11px"><b>Vitals:</b>{{#if vitals.bpSys}}{{#if vitals.bpDia}} BP: {{vitals.bpSys}}/{{vitals.bpDia}} mmHg{{/if}}{{/if}}{{#if vitals.fbs}} &middot; FBS: {{vitals.fbs}} mg/dL{{/if}}{{#if vitals.ppbs}} &middot; PPBS: {{vitals.ppbs}} mg/dL{{/if}}{{#if vitals.rbs}} &middot; RBS: {{vitals.rbs}} mg/dL{{/if}}{{#if vitals.pulse}} &middot; Pulse: {{vitals.pulse}}/min{{/if}}{{#if vitals.spo2}} &middot; SpO2: {{vitals.spo2}}%{{/if}}{{#if vitals.respiratoryRate}} &middot; RR: {{vitals.respiratoryRate}}/min{{/if}}{{#if vitals.temperatureC}} &middot; Temp: {{vitals.temperatureC}}&deg;C{{/if}}{{#if vitals.heightCm}} &middot; Ht: {{vitals.heightCm}} cm{{/if}}{{#if vitals.weightKg}} &middot; Wt: {{vitals.weightKg}} kg{{/if}}{{#if vitals.bmi}} &middot; BMI: {{vitals.bmi}}{{/if}}</div>{{/if}}`;
 
     case 'allergies':
       return `{{#if allergies}}<div style="font-size:11px;color:#b91c1c"><b>Allergies:</b> {{allergies}}</div>{{/if}}`;
 
     case 'preDiagnosis':
-      return `{{#if preDiagnosis}}<div style="font-size:11px"><b>Pre-Diagnosis:</b> {{preDiagnosis}}</div>{{/if}}`;
+      return `{{#if preDiagnosis}}<div style="font-size:11px"><b>Chief Complaints:</b> {{preDiagnosis}}</div>{{/if}}`;
 
     case 'diagnosis':
       return `{{#if diagnosis}}<div style="font-size:11px"><b>Diagnosis:</b> {{diagnosis}}</div>{{/if}}`;
 
     case 'rxSymbol':
-      return `<div style="font-size:18px;font-weight:bold">&#8478;</div>`;
+      return `{{#if prescriptions.length}}<div>${rxGlyph(18)}</div>{{/if}}`;
 
     case 'medicineTable':
-      return buildMedicineTable(tableStyle, shows);
+      return (
+        buildMedicineTable(tableStyle, shows) +
+        TREATMENT_PLAN_HTML +
+        SPECIALTY_SECTIONS_HTML
+      );
 
     case 'tests':
       return `{{#if hasTests}}<div style="font-size:11px"><b>Tests / Investigations:</b> {{testNames}}</div>{{/if}}`;
@@ -342,22 +445,26 @@ function getOriginalBlockMarkup(
       return `{{#if symptoms.length}}<div style="font-size:10px"><b>C/O:</b> {{#each symptoms}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}</div>{{/if}}`;
 
     case 'vitals':
-      return `{{#if vitalsMoreThanOne}}<div style="font-size:10px"><b>Vitals:</b>{{#if vitals.bpSys}}{{#if vitals.bpDia}} BP: {{vitals.bpSys}}/{{vitals.bpDia}} mmHg{{/if}}{{/if}}{{#if vitals.fbs}} &middot; FBS: {{vitals.fbs}} mg/dL{{/if}}{{#if vitals.ppbs}} &middot; PPBS: {{vitals.ppbs}} mg/dL{{/if}}{{#if vitals.rbs}} &middot; RBS: {{vitals.rbs}} mg/dL{{/if}}{{#if vitals.pulse}} &middot; Pulse: {{vitals.pulse}}/min{{/if}}{{#if vitals.spo2}} &middot; SpO2: {{vitals.spo2}}%{{/if}}{{#if vitals.temperatureC}} &middot; Temp: {{vitals.temperatureC}}&deg;C{{/if}}{{#if vitals.heightCm}} &middot; Ht: {{vitals.heightCm}} cm{{/if}}{{#if vitals.weightKg}} &middot; Wt: {{vitals.weightKg}} kg{{/if}}{{#if vitals.bmi}} &middot; BMI: {{vitals.bmi}}{{/if}}</div>{{/if}}`;
+      return `{{#if vitalsMoreThanOne}}<div style="font-size:10px"><b>Vitals:</b>{{#if vitals.bpSys}}{{#if vitals.bpDia}} BP: {{vitals.bpSys}}/{{vitals.bpDia}} mmHg{{/if}}{{/if}}{{#if vitals.fbs}} &middot; FBS: {{vitals.fbs}} mg/dL{{/if}}{{#if vitals.ppbs}} &middot; PPBS: {{vitals.ppbs}} mg/dL{{/if}}{{#if vitals.rbs}} &middot; RBS: {{vitals.rbs}} mg/dL{{/if}}{{#if vitals.pulse}} &middot; Pulse: {{vitals.pulse}}/min{{/if}}{{#if vitals.spo2}} &middot; SpO2: {{vitals.spo2}}%{{/if}}{{#if vitals.respiratoryRate}} &middot; RR: {{vitals.respiratoryRate}}/min{{/if}}{{#if vitals.temperatureC}} &middot; Temp: {{vitals.temperatureC}}&deg;C{{/if}}{{#if vitals.heightCm}} &middot; Ht: {{vitals.heightCm}} cm{{/if}}{{#if vitals.weightKg}} &middot; Wt: {{vitals.weightKg}} kg{{/if}}{{#if vitals.bmi}} &middot; BMI: {{vitals.bmi}}{{/if}}</div>{{/if}}`;
 
     case 'allergies':
       return `{{#if allergies}}<div style="font-size:10px;color:#b91c1c"><b>Allergies:</b> {{allergies}}</div>{{/if}}`;
 
     case 'preDiagnosis':
-      return `{{#if preDiagnosis}}<div style="font-size:10px"><b>Pre-Diagnosis:</b> {{preDiagnosis}}</div>{{/if}}`;
+      return `{{#if preDiagnosis}}<div style="font-size:10px"><b>Chief Complaints:</b> {{preDiagnosis}}</div>{{/if}}`;
 
     case 'diagnosis':
       return `{{#if diagnosis}}<div style="font-size:11px;font-style:italic">Diagnosis: {{diagnosis}}</div>{{/if}}`;
 
     case 'rxSymbol':
-      return `<div style="font-size:16px">&#8478;</div>`;
+      return `{{#if prescriptions.length}}<div>${rxGlyph(16)}</div>{{/if}}`;
 
     case 'medicineTable':
-      return buildOriginalMedicineTable(tableStyle, shows);
+      return (
+        buildOriginalMedicineTable(tableStyle, shows) +
+        TREATMENT_PLAN_HTML +
+        SPECIALTY_SECTIONS_HTML
+      );
 
     case 'tests':
       return `{{#if hasTests}}<div style="font-size:10px"><b>Tests / Investigations:</b> {{testNames}}</div>{{/if}}`;
@@ -565,9 +672,11 @@ export function buildQuickPrintLayoutTemplate(
   const {
     blockLayout,
     pageSize,
-    tableStyle = 'classic',
+    tableStyle = 'bordered',
     layoutMode = 'flow',
-    design = 'modern',
+    design = 'original',
+    bottomMarginMm = 0,
+    textScale = 1,
     medicineRows = [],
     filledBlockIds = [],
     hiddenBlockIds = [],
@@ -579,8 +688,17 @@ export function buildQuickPrintLayoutTemplate(
   const hidden = new Set(hiddenBlockIds);
   const hiddenFields = new Set(hiddenSections);
   const shows: Shows = (sectionKey) => !hiddenFields.has(sectionKey);
+  // Blocks added after the doctor last saved are missing from their layout; add them switched off,
+  // so they still print when this visit fills them in.
+  const saved = new Set(blockLayout.map((block) => block?.id));
+  const fullLayout = [
+    ...blockLayout,
+    ...DEFAULT_QUICK_PRINT_LAYOUT.filter((block) => !saved.has(block.id)).map(
+      (block) => ({ ...block, visible: false })
+    ),
+  ];
   const visibleBlocks = applyDataDrivenBlocks(
-    blockLayout,
+    fullLayout,
     filledBlockIds
   ).filter(
     (block) => block?.visible && block?.position && !hidden.has(block.id)
@@ -591,6 +709,10 @@ export function buildQuickPrintLayoutTemplate(
 
   let content: string;
   let documentHeight = page.height;
+  const bottom = Math.min(Math.max(bottomMarginMm, 0), MAX_BOTTOM_MARGIN_MM);
+  const scale = Math.min(Math.max(textScale, MIN_TEXT_SCALE), MAX_TEXT_SCALE);
+  // Later sheets of a flowing list also skip the letterhead space the first sheet starts below.
+  let continuationTop = 0;
 
   if (layoutMode === 'exact') {
     const exact = renderExact(
@@ -605,6 +727,9 @@ export function buildQuickPrintLayoutTemplate(
     documentHeight = Math.max(page.height, exact.contentBottom + 15);
   } else {
     content = renderFlow(visibleBlocks, tableStyle, design, shows);
+    continuationTop = Math.min(
+      ...visibleBlocks.map((block) => block.position.y)
+    );
   }
 
   return `<!DOCTYPE html>
@@ -613,12 +738,13 @@ export function buildQuickPrintLayoutTemplate(
 <meta charset="UTF-8">
 {{{i18n.head}}}
 <style>
-  @page { size: ${page.width}mm ${page.height}mm; margin: 0; }
+  @page { size: ${page.width}mm ${page.height}mm; margin: ${continuationTop}mm 0 ${bottom}mm 0; }
+  @page :first { margin-top: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: Inter, Arial, sans-serif;
     width: ${page.width}mm;
-    min-height: ${documentHeight}mm;
+    min-height: ${documentHeight - bottom}mm;
     position: relative;
     /* Paper is white even where the viewer (a dark-themed preview frame) is not. */
     background: #fff;
@@ -632,6 +758,8 @@ export function buildQuickPrintLayoutTemplate(
   .qp-row { display: flex; align-items: flex-start; margin-bottom: ${FLOW_ROW_GAP_MM}mm; }
   .qp-row:not(:has(.qp-cell > *)) { display: none; }
   .qp-cell { flex: 0 0 auto; }
+  /* Chromium zoom scales the text inside a section while its width on the page stays fixed. */
+  .qp-cell > *, .qp-block > * { zoom: ${scale}; }
   .qp-table tr { break-inside: avoid; }
   ${getTableStyleCss(tableStyle).stripeRule}
   .qp-footer { text-align: center; font-size: 8px; color: #999; }

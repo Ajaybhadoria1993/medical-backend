@@ -10,6 +10,7 @@ import { buildActiveAppointmentFilter } from '../../appointments/services/appoin
 import { ClinicModel } from '../../clinic/models/clinic.model';
 import { ReportCardModel } from '../../reports/models/reports.model';
 import { LabOrderModel } from '../../test/models/labOrder.model';
+import { labOrderPaymentColumns } from '../../lab/utils/labOrderPayment';
 import { TestCatalogModel } from '../../test/models/testCatalog.model';
 import { UserModel } from '../../users/models/user.model';
 import { PatientFamilyLinksModel } from '../models/patientFamilyLinks.model';
@@ -224,7 +225,7 @@ export class PatientRecentActivityService {
         id: LabOrderModel.id,
         appointmentId: LabOrderModel.appointmentId,
         reportStatus: LabOrderModel.reportStatus,
-        paymentStatus: LabOrderModel.paymentStatus,
+        paymentStatus: labOrderPaymentColumns.paymentStatus,
         createdAt: LabOrderModel.createdAt,
         updatedAt: LabOrderModel.updatedAt,
         testName: TestCatalogModel.name,

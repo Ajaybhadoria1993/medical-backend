@@ -23,14 +23,17 @@ import {
   updateMedicineController,
 } from '../../controllers/medicine.controller';
 import { uploadMedicineImport } from '../../../../configurations/s3/pharmacy.storage';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const medicineRouter = express.Router();
 
 medicineRouter.post(
   '/add-medicine',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createMedicineSchema, 'body'),
   addMedicineController
 );
@@ -38,7 +41,7 @@ medicineRouter.post(
 medicineRouter.get(
   '/get-all-medicines',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getMedicinesQuerySchema, 'query'),
   getMedicinesController
 );
@@ -46,7 +49,7 @@ medicineRouter.get(
 medicineRouter.put(
   '/update-medicine/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(updateMedicineParamsSchema, 'params'),
   validate(updateMedicineSchema, 'body'),
   updateMedicineController
@@ -55,14 +58,14 @@ medicineRouter.put(
 medicineRouter.get(
   '/get-hsn',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getHsnController
 );
 
 medicineRouter.get(
   '/get-medicine-categories',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getMedicineCategoriesQuerySchema, 'query'),
   getMedicineCategoriesController
 );
@@ -77,7 +80,7 @@ medicineRouter.get(
 medicineRouter.get(
   '/get-medicine-brands',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getMedicineBrandsQuerySchema, 'query'),
   getMedicineBrandsController
 );
@@ -85,14 +88,14 @@ medicineRouter.get(
 medicineRouter.get(
   '/export-all-medicines',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   exportAllMedicinesController
 );
 
 medicineRouter.get(
   '/download-medicine-sample-template',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   downloadMedicineSampleTemplateController
 );
 
@@ -106,7 +109,7 @@ medicineRouter.post(
 medicineRouter.get(
   '/stats',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getMedicineStatsController
 );
 

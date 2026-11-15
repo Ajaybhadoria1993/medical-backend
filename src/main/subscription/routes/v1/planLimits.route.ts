@@ -4,11 +4,9 @@ import {
   requireAuth,
   requireSuperAdmin,
 } from '../../../../middlewear/auth.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   getAllPlanLimits,
-  getPlanLimitsById,
-  updatePlanLimits,
   updateSinglePlanLimit,
 } from '../../controllers/planLimits.controller';
 
@@ -20,32 +18,6 @@ const planLimitsRouter = express.Router();
  * @access Private (Super Admin)
  */
 planLimitsRouter.get('/', requireAuth, requireSuperAdmin, getAllPlanLimits);
-
-/**
- * @route GET /api/v1/subscription/plan-limits/:planId
- * @desc Get limits for a specific plan
- * @access Private (Super Admin)
- */
-planLimitsRouter.get(
-  '/:planId',
-  requireAuth,
-  requireSuperAdmin,
-  getPlanLimitsById
-);
-
-/**
- * @route PUT /api/v1/subscription/plan-limits/:planId
- * @desc Update limits for a plan (bulk upsert)
- * @access Private (Super Admin)
- *
- * Body: { limits: [{ featureKey, limitValue, isUnlimited, enabled, description }] }
- */
-planLimitsRouter.put(
-  '/:planId',
-  requireAuth,
-  requireSuperAdmin,
-  updatePlanLimits
-);
 
 /**
  * @route PATCH /api/v1/subscription/plan-limits/:planId/:featureKey
@@ -68,20 +40,6 @@ docsRegistry.addEndpoint({
   method: 'get',
   path: '/api/v1/subscription/plan-limits',
   description: 'Get all plan limits grouped by plan (Super Admin)',
-  tags: ['plan-limits', 'super-admin'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'get',
-  path: '/api/v1/subscription/plan-limits/:planId',
-  description: 'Get limits for a specific plan (Super Admin)',
-  tags: ['plan-limits', 'super-admin'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'put',
-  path: '/api/v1/subscription/plan-limits/:planId',
-  description: 'Bulk update limits for a plan (Super Admin)',
   tags: ['plan-limits', 'super-admin'],
 });
 

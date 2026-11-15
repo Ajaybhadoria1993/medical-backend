@@ -5,7 +5,7 @@ import {
   requireClinic,
   requireUser,
 } from '../../../../middlewear/auth.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import { getClinicProfileOverviewController } from '../../controllers/v2/clinic.controller';
 
 const ProfileOverviewRouter = express.Router();

@@ -77,9 +77,6 @@ export async function renderTemplateToPdf(
     if (await fs.pathExists(bgPath)) {
       const bgBuffer = await fs.readFile(bgPath);
       backgroundBase64 = `data:image/png;base64,${bgBuffer.toString('base64')}`;
-      logger.info(
-        `Background image loaded, base64 length: ${backgroundBase64.length}`
-      );
     } else {
       logger.warn(`Background image not found at ${bgPath}`);
     }

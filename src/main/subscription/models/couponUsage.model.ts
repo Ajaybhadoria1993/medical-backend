@@ -9,7 +9,6 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { z } from 'zod';
 import { CouponModel } from './coupon.model';
 
 // ==================== COUPON USAGE TABLE ====================
@@ -66,34 +65,3 @@ export const CouponUsageModel = pgTable(
 
 export type CouponUsage = typeof CouponUsageModel.$inferSelect;
 export type NewCouponUsage = typeof CouponUsageModel.$inferInsert;
-
-// ==================== ZOD SCHEMAS ====================
-
-export const insertCouponUsageSchema = z.object({
-  couponId: z.number().int(),
-  clinicId: z.string().uuid(),
-  planId: z.string().uuid().optional(),
-  addOnId: z.string().uuid().optional(),
-  orderValue: z.union([z.string(), z.number()]),
-  discountAmount: z.union([z.string(), z.number()]),
-  finalAmount: z.union([z.string(), z.number()]),
-  razorpayOrderId: z.string().optional(),
-  razorpayPaymentId: z.string().optional(),
-  billingCycle: z.string().optional(),
-  usedAt: z.date().optional(),
-});
-
-export const selectCouponUsageSchema = z.object({
-  id: z.number(),
-  couponId: z.number().int(),
-  clinicId: z.string().uuid(),
-  planId: z.string().uuid().nullable(),
-  addOnId: z.string().uuid().nullable(),
-  orderValue: z.union([z.string(), z.number()]),
-  discountAmount: z.union([z.string(), z.number()]),
-  finalAmount: z.union([z.string(), z.number()]),
-  razorpayOrderId: z.string().nullable(),
-  razorpayPaymentId: z.string().nullable(),
-  billingCycle: z.string().nullable(),
-  usedAt: z.date(),
-});

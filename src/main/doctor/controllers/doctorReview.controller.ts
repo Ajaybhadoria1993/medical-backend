@@ -1,5 +1,6 @@
 import { Response, Request } from 'express';
 import { asyncHandler } from '../../../middlewear/errorHandler';
+import { sendOk } from '../../../utils/response.utils';
 import { DoctorReviewService } from '../services/doctorReview.service';
 
 export const createDoctorReviewController = asyncHandler(
@@ -86,5 +87,35 @@ export const getDoctorReviewsController = asyncHandler(
       message: 'Reviews fetched successfully',
       result,
     });
+  }
+);
+
+export const getMyDoctorReviewsController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await DoctorReviewService.getMyReviews(
+      req.user.id,
+      req.validatedQuery
+    );
+    sendOk(res, 'Reviews fetched successfully', result);
+  }
+);
+
+export const getPatientReviewsController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await DoctorReviewService.getPatientReviews(
+      req.user.id,
+      req.validatedQuery
+    );
+    sendOk(res, 'Reviews fetched successfully', result);
+  }
+);
+
+export const getMyReviewForAppointmentController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const review = await DoctorReviewService.getMyReviewForAppointment(
+      req.user.id,
+      req.validatedParams.appointmentId
+    );
+    sendOk(res, 'Review fetched successfully', { review });
   }
 );

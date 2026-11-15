@@ -1,0 +1,1 @@
+ALTER TABLE "treatment_plan_steps" ADD COLUMN "max_gap_days" integer;

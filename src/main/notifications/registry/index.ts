@@ -19,7 +19,9 @@ import { labEvents } from './lab';
 import { paymentEvents } from './payment';
 import { prescriptionEvents } from './prescription';
 import { staffEvents } from './staff';
-import { subscriptionEvents } from './subscription';
+import { subscriptionEmailEvents, subscriptionEvents } from './subscription';
+import { platformEvents } from './platform';
+import { creditEvents } from './credits';
 
 export * from './types';
 export { defineEvents } from './defineEvents';
@@ -32,6 +34,9 @@ const registry: EventRegistry = {
   ...labEvents,
   ...staffEvents,
   ...subscriptionEvents,
+  ...subscriptionEmailEvents,
+  ...platformEvents,
+  ...creditEvents,
 };
 
 export type NotificationEventKey = string;

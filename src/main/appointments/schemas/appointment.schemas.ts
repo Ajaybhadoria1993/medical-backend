@@ -78,6 +78,8 @@ export const createAppointmentSchemas = z.object({
   appointmentStatus: appointmentEnumSchema.optional(),
   commonSymptoms: z.array(commonSymptomsEnum).optional(),
   clinicSymptomIds: z.array(z.string().uuid()).optional(),
+  // Symptom names as typed/picked; resolved (or created) server-side into clinicSymptomIds.
+  symptomNames: z.array(z.string().trim().min(1).max(150)).max(10).optional(),
   appointmentNotes: z.string().optional().nullable(),
   reReasonForCancellation: z.string().min(1).optional(),
   reasionForReSchedule: z.string().min(1).optional(),
@@ -97,7 +99,6 @@ export const createAppointmentSchemas = z.object({
   // Optional for token-based appointments
   appointmentDurationMinutes: z.string().optional(),
   bookingSource: bookingSourceSchema.optional(),
-  visitingRequestId: z.uuid().optional(),
 });
 
 /**
@@ -171,6 +172,41 @@ export const updateAppointmentSchema = z.object({
   referrals: z.record(z.string(), z.any()).optional().nullable(),
   bookingSource: bookingSourceSchema.optional(),
 });
+
+// Every field optional: the server fills the next free token, shift or time.
+export const moveToTodaySchema = updateAppointmentSchema
+  .pick({ tokenNo: true, sessionIndex: true })
+  .extend({
+    appointmentTime: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/, 'appointmentTime must be HH:mm')
+      .optional(),
+    reason: z.string().trim().max(300).optional(),
+  });
+export type MoveToTodayDto = z.infer<typeof moveToTodaySchema>;
+
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const leaveDates = z.array(ymd).min(1).max(31);
+
+// `dates` arrives comma-separated in the query string.
+export const leaveMovePreviewQuerySchema = z.object({
+  dates: z
+    .string()
+    .transform((v) => v.split(','))
+    .pipe(leaveDates),
+});
+export type LeaveMovePreviewQueryDto = z.infer<
+  typeof leaveMovePreviewQuerySchema
+>;
+
+export const leaveMoveSchema = z.object({
+  dates: leaveDates,
+  targetDate: ymd,
+  reason: z.string().trim().max(300).optional(),
+});
+export type LeaveMoveDto = z.infer<typeof leaveMoveSchema>;
+
+export const leaveCancelSchema = z.object({ dates: leaveDates });
 
 export const appointmentQuerySchema = z.object({
   // Pagination
@@ -249,13 +285,42 @@ export const getAppointmentPaymentsSchema = z.object({
   paymentMode: z.union([z.string(), z.array(z.string())]).optional(),
   refundMode: z.union([z.string(), z.array(z.string())]).optional(),
   paymentStatus: z
-    .union([
-      z.enum(['Paid', 'Refunded', 'Already Paid', 'Pending']),
-      z.array(z.enum(['Paid', 'Refunded', 'Already Paid', 'Pending'])),
-    ])
-    .optional()
-    .default(['Paid', 'Refunded', 'Already Paid', 'Pending']),
+    .preprocess(
+      (val) => {
+        if (typeof val === 'string' && val.includes(',')) {
+          return val
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+        return val;
+      },
+      z.union([
+        z.enum([
+          'Paid',
+          'Refunded',
+          'Already Paid',
+          'Pending',
+          'Failed',
+          'All',
+        ]),
+        z.array(
+          z.enum([
+            'Paid',
+            'Refunded',
+            'Already Paid',
+            'Pending',
+            'Failed',
+            'All',
+          ])
+        ),
+      ])
+    )
+    // No default: the service's own default (Paid + Refunded) must apply.
+    .optional(),
   entryType: z.enum(['Credit', 'Debit']).optional(),
+  // Where the booking was made: patient app/portal, or staff in the clinic app.
+  source: z.enum(['patient_app', 'clinic_app']).optional(),
 });
 
 export const getAvailableSlotsForDateSchemas = z.object({
@@ -302,7 +367,8 @@ export const addMultipleServicesSchema = z.object({
   serviceIds: z
     .array(z.string().uuid())
     .min(1, 'At least one service ID is required'),
-  paymentMode: z.string().optional(),
+  // Every charged service records how it was paid ("Pay Later" included).
+  paymentMode: z.string().trim().min(1, 'Choose how the patient paid'),
   payment_notes: z.string().optional(),
 });
 
@@ -372,3 +438,16 @@ export type ClinicNoShowQueryDto = z.infer<typeof clinicNoShowQuerySchema>;
 export type SendManualPrescriptionNotificationDto = z.infer<
   typeof sendManualPrescriptionNotificationSchema
 >;
+
+/** Desk money on a visit; amount in rupees, omitted = everything due (payment) or received (refund). */
+export const moneyMoveSchema = z.object({
+  amount: z.coerce.number().positive('Enter an amount above ₹0').optional(),
+  paymentMode: z
+    .string()
+    .trim()
+    .min(1, 'Choose how the money was paid')
+    .transform((v) => normalizePaymentMode(v)),
+  requestId: z.string().trim().min(8, 'requestId is required').max(100),
+  reason: z.string().trim().max(500).optional(),
+});
+export type MoneyMoveDto = z.infer<typeof moneyMoveSchema>;

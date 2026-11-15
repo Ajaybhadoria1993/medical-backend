@@ -111,7 +111,8 @@ export class LabNotificationService {
             labName: recipient.labName,
             reportUrl: params.reportUrl,
           },
-        }
+        },
+        { clinicId: params.clinicId ?? null }
       );
     } catch (err) {
       logger.error(
@@ -153,7 +154,8 @@ export class LabNotificationService {
             labName: recipient.labName,
             invoiceNumber: params.invoiceNumber,
           },
-        }
+        },
+        { clinicId: params.clinicId ?? null }
       );
     } catch (err) {
       logger.error(

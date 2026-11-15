@@ -4,6 +4,18 @@ export interface PublicDoctorQualification {
   specialization: string | null;
   boardOrUniversity: string | null;
   yearOfCompletion: number | null;
+  notes: string | null;
+}
+
+export interface PublicDoctorExperience {
+  organisation: string;
+  role: string;
+  city: string | null;
+  startMonth: number;
+  startYear: number;
+  endMonth: number | null;
+  endYear: number | null;
+  isCurrent: boolean;
 }
 
 export interface PublicClinicTimingBreak {
@@ -17,6 +29,18 @@ export interface PublicClinicTiming {
   endTime: string | null;
   isAvailable: boolean;
   breaks: PublicClinicTimingBreak[];
+}
+
+export interface PatientShift {
+  startTime: string;
+  endTime: string;
+}
+
+export interface PatientClinicTiming extends Omit<
+  PublicClinicTiming,
+  'breaks'
+> {
+  shifts: PatientShift[];
 }
 
 export interface PublicClinicService {
@@ -58,6 +82,36 @@ export interface PublicDoctorReview {
   patientName: string;
 }
 
+/** One row of the public Find-a-doctor list: a doctor at one bookable clinic. */
+export interface PublicDoctorSearchItem {
+  doctor: {
+    id: string;
+    userName: string | null;
+    name: string | null;
+    gender: string | null;
+    profileImage: string | null;
+    speciality: string | null;
+    qualification: string | null;
+    yearsOfExperience: number | null;
+    averageRating: number;
+    reviewCount: number;
+  };
+  clinic: {
+    id: string;
+    clinicName: string;
+    clinicLocation: string | null;
+    city: string | null;
+    clinicPhone: string | null;
+    onlineBookingEnabled: boolean;
+    /** Lowest patient-bookable service price, if any. */
+    consultationFee: number | null;
+    /** True when the services carry more than one price, so the card says "From ₹X". */
+    hasOtherFees: boolean;
+    distanceKm: number | null;
+  };
+  nextAvailableDate: string | null;
+}
+
 export interface PublicDoctorProfile {
   doctor: {
     id: string;
@@ -66,12 +120,18 @@ export interface PublicDoctorProfile {
     profileImage: string | null;
     speciality: string | null;
     specialization: string[];
+    subSpecialties: string[];
+    alsoPractises: string[];
     qualification: string | null;
+    /** Every degree, lowest level first: the line each screen shows (`doctorDegreeLine`). */
+    degreeLine: string;
     yearsOfExperience: number | null;
     about: string | null;
     isVerified: boolean;
     registrationNumber: string | null;
     qualifications: PublicDoctorQualification[];
+    languagesSpoken: string[];
+    experiences: PublicDoctorExperience[];
   };
   rating: {
     average: number;

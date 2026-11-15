@@ -14,7 +14,16 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendEmail(to: string, subject: string, html: string) {
+export async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>
+) {
   const from =
     process.env.SMTP_FROM || envConfig.SMTP_FROM || 'no-reply@example.com';
   const maxRetries = Number(process.env.EMAIL_MAX_RETRIES || 3);
@@ -24,7 +33,13 @@ export async function sendEmail(to: string, subject: string, html: string) {
   let lastErr: any;
   while (attempt < maxRetries) {
     try {
-      const info = await transporter.sendMail({ from, to, subject, html });
+      const info = await transporter.sendMail({
+        from,
+        to,
+        subject,
+        html,
+        ...(attachments?.length ? { attachments } : {}),
+      });
       return info;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {

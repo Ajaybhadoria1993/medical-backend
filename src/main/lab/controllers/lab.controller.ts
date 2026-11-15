@@ -29,9 +29,23 @@ export const updateLabController = asyncHandler(
 );
 
 export const getDepartmentsController = asyncHandler(
-  async (_req: Request, res: Response) => {
-    const departments = await LabService.getDepartments();
-    sendOk(res, 'Departments fetched successfully', departments);
+  async (req: Request, res: Response) => {
+    const result = await LabService.getDepartments(
+      req.labId,
+      req.validatedQuery
+    );
+
+    if (Array.isArray(result)) {
+      sendOk(res, 'Departments fetched successfully', result);
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Departments fetched successfully',
+      data: result.departments,
+      pagination: result.pagination,
+    });
   }
 );
 
@@ -47,6 +61,23 @@ export const createDepartmentController = asyncHandler(
       }
     );
     sendCreated(res, 'Department added successfully', department);
+  }
+);
+
+export const updateDepartmentController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { departmentId } = req.validatedParams;
+    const department = await LabService.updateDepartment(
+      req.user.id,
+      req.clinicId,
+      departmentId,
+      req.validatedBody,
+      {
+        labId: req.labId,
+        userRole: req.user.userType,
+      }
+    );
+    sendOk(res, 'Department updated successfully', department);
   }
 );
 
@@ -469,7 +500,8 @@ export const updateLabDepartmentsController = asyncHandler(
       labId,
       body.departmentIds,
       body.departmentTestIds,
-      req.clinicId
+      req.clinicId,
+      req.user.id
     );
     sendOk(res, 'Lab departments updated successfully', departments);
   }

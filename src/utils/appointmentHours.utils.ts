@@ -55,10 +55,17 @@ export function parseHourFromTimeLabel(
   return null;
 }
 
+/** Token bookings store '23:59' as a placeholder: no clock time, never an 11 PM visit. */
+export function isTokenPlaceholderTime(
+  value: string | null | undefined
+): boolean {
+  const t = value?.trim();
+  return t === '23:59' || t === '23:59:00';
+}
+
 /**
  * Fold `GROUP BY appointment_time` rows into hour buckets, busiest first.
- * Rows whose time cannot be parsed are dropped — an unknown time is not
- * evidence of a midnight appointment.
+ * Rows whose time cannot be parsed, and token placeholders, are dropped.
  */
 export function bucketRowsByHour(
   rows: { time: string | null; cnt: number | string }[]
@@ -66,6 +73,7 @@ export function bucketRowsByHour(
   const totals = new Map<number, number>();
 
   for (const row of rows ?? []) {
+    if (isTokenPlaceholderTime(row?.time)) continue;
     const hour = parseHourFromTimeLabel(row?.time);
     if (hour === null) continue;
     const count = Number(row.cnt);

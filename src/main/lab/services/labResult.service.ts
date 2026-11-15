@@ -25,6 +25,7 @@ import {
   LabOrderTrackingEventModel,
   IndependentPatientModel,
 } from '../../test/models/labOrder.model';
+import { labOrderWithPaymentColumns } from '../utils/labOrderPayment';
 import { LabTestCatalogModel } from '../../test/models/labTestCatalog.model';
 import { TestCatalogModel } from '../../test/models/testCatalog.model';
 import { UserModel } from '../../users/models/user.model';
@@ -200,16 +201,42 @@ export class LabResultService {
    * fuzzy name approach that collapsed individual tests into department
    * templates.
    */
-  private static async resolveTestCodeFromCatalog(
+  private static async resolveCatalogTestFromOrder(
     trx: DbTransaction,
     labId: string,
-    order: { testName: string; testCategory: string | null }
+    order: {
+      testName: string;
+      testCategory: string | null;
+      labTestCatalogId?: string | null;
+    }
   ) {
+    if (order.labTestCatalogId) {
+      const [catalogTest] = await trx
+        .select({
+          id: LabTestCatalogModel.id,
+          testCode: LabTestCatalogModel.testCode,
+          testName: LabTestCatalogModel.name,
+        })
+        .from(LabTestCatalogModel)
+        .where(
+          and(
+            eq(LabTestCatalogModel.id, order.labTestCatalogId),
+            eq(LabTestCatalogModel.labId, labId),
+            eq(LabTestCatalogModel.status, 'active'),
+            isNull(LabTestCatalogModel.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (catalogTest) return catalogTest;
+    }
+
     const orderNameNormalized = this.normalizeCode(order.testName);
 
     // First try exact name match
     const catalogTests = await trx
       .select({
+        id: LabTestCatalogModel.id,
         testCode: LabTestCatalogModel.testCode,
         testName: LabTestCatalogModel.name,
       })
@@ -231,16 +258,38 @@ export class LabResultService {
         orderNameNormalized.includes(catalogNameNormalized);
 
       if (isSameTest && catalogTest.testCode) {
-        return catalogTest.testCode;
+        return catalogTest;
       }
     }
 
     return null;
   }
 
+  private static async resolveTestCodeFromCatalog(
+    trx: DbTransaction,
+    labId: string,
+    order: {
+      testName: string;
+      testCategory: string | null;
+      labTestCatalogId?: string | null;
+    }
+  ) {
+    const catalogTest = await this.resolveCatalogTestFromOrder(
+      trx,
+      labId,
+      order
+    );
+
+    return catalogTest?.testCode ?? null;
+  }
+
   private static async resolveTemplateCodeForOrder(
     trx: DbTransaction,
-    order: { testName: string; testCategory: string | null },
+    order: {
+      testName: string;
+      testCategory: string | null;
+      labTestCatalogId?: string | null;
+    },
     labId?: string
   ) {
     // 1. Primary path: resolve from lab catalog testCode
@@ -468,7 +517,7 @@ export class LabResultService {
 
     const [record] = await trx
       .select({
-        appointmentTest: LabOrderModel,
+        appointmentTest: labOrderWithPaymentColumns,
         appointmentId: LabOrderModel.appointmentId,
         appointmentDate: sql<Date>`coalesce(${AppointmentModel.appointmentDate}, ${LabOrderModel.createdAt})`,
         appointmentTime: AppointmentModel.appointmentTime,
@@ -497,9 +546,10 @@ export class LabResultService {
           string | null
         >`coalesce(${doctorUser.name}, ${IndependentPatientModel.doctorName})`,
         testId: TestCatalogModel.id,
+        labTestCatalogId: TestCatalogModel.labTestId,
         testName: TestCatalogModel.name,
         testCategory: TestCatalogModel.category,
-        assignedLabId: UserLabAssignmentsModel.labId,
+        assignedLabId: sql<string | null>`null`,
       })
       .from(LabOrderModel)
       .leftJoin(
@@ -518,13 +568,6 @@ export class LabResultService {
         IndependentPatientModel,
         eq(LabOrderModel.independentPatientId, IndependentPatientModel.id)
       )
-      .leftJoin(
-        UserLabAssignmentsModel,
-        and(
-          eq(LabOrderModel.labAssistantId, UserLabAssignmentsModel.userId),
-          eq(UserLabAssignmentsModel.clinicId, context.clinicId)
-        )
-      )
       .where(
         and(
           eq(LabOrderModel.id, labOrderId),
@@ -540,7 +583,6 @@ export class LabResultService {
     if (
       context.userRole === 'Lab_Assistant' &&
       context.labId &&
-      record.appointmentTest.labAssistantId &&
       record.assignedLabId !== context.labId
     ) {
       throw new HttpError(403, 'Lab order is assigned to another lab');
@@ -567,7 +609,11 @@ export class LabResultService {
 
   private static async getTemplateForOrder(
     trx: DbTransaction,
-    order: { testName: string; testCategory: string | null },
+    order: {
+      testName: string;
+      testCategory: string | null;
+      labTestCatalogId?: string | null;
+    },
     labId?: string
   ) {
     let templateCode = await this.resolveTemplateCodeForOrder(
@@ -669,7 +715,11 @@ export class LabResultService {
   private static async validateTemplateMatchesOrder(
     trx: DbTransaction,
     templateId: string,
-    order: { testName: string; testCategory: string | null },
+    order: {
+      testName: string;
+      testCategory: string | null;
+      labTestCatalogId?: string | null;
+    },
     labId?: string
   ) {
     const [template] = await trx
@@ -721,8 +771,45 @@ export class LabResultService {
     trx: DbTransaction,
     templateId: string,
     labId: string,
-    userId: string
+    userId: string,
+    labTestCatalogId?: string | null
   ): Promise<MergedTemplateParameter[]> {
+    if (labTestCatalogId) {
+      const catalogParameters = await trx
+        .select()
+        .from(LabReportTemplateParametersModel)
+        .where(
+          and(
+            eq(
+              LabReportTemplateParametersModel.labTestCatalogId,
+              labTestCatalogId
+            ),
+            eq(LabReportTemplateParametersModel.labId, labId),
+            eq(LabReportTemplateParametersModel.isActive, true)
+          )
+        )
+        .orderBy(LabReportTemplateParametersModel.sortOrder);
+
+      if (catalogParameters.length) {
+        return catalogParameters
+          .filter((parameter) => !parameter.isHidden)
+          .map((parameter) => ({
+            parameterId: parameter.id,
+            sectionName: parameter.sectionName ?? null,
+            parameterName: parameter.parameterName,
+            originalParameterName: parameter.parameterName,
+            unit: parameter.unit ?? null,
+            referenceRange: parameter.referenceRange ?? null,
+            inputType: parameter.inputType,
+            sortOrder: parameter.sortOrder,
+            isRequired: parameter.isRequired,
+            sourceType: parameter.sourceType,
+            isCustom: parameter.isCustom,
+            value: '',
+          }));
+      }
+    }
+
     const defaultParameters = await trx
       .select()
       .from(LabReportTemplateParametersModel)
@@ -991,7 +1078,8 @@ export class LabResultService {
     resultId: string,
     status: LabResultStatus,
     values: ResultValueInput[],
-    context: LabResultContext
+    context: LabResultContext,
+    labTestCatalogId?: string | null
   ) {
     const labId = this.requireLabId(context);
     const parameterIds = values.map((item) => item.parameterId);
@@ -1005,7 +1093,8 @@ export class LabResultService {
       trx,
       templateId,
       labId,
-      context.userId
+      context.userId,
+      labTestCatalogId
     );
     const parameterById = new Map(
       mergedParameters.map((parameter) => [parameter.parameterId, parameter])
@@ -1086,7 +1175,7 @@ export class LabResultService {
       .select({
         result: LabOrderResultsModel,
         template: LabReportTemplatesModel,
-        appointmentTest: LabOrderModel,
+        appointmentTest: labOrderWithPaymentColumns,
         appointmentId: LabOrderModel.appointmentId,
         appointmentDate: sql<Date>`coalesce(${AppointmentModel.appointmentDate}, ${LabOrderModel.createdAt})`,
         appointmentTime: AppointmentModel.appointmentTime,
@@ -1112,10 +1201,10 @@ export class LabResultService {
         testCategory: TestCatalogModel.category,
         enteredByName: enteredByUser.name,
         verifiedByName: verifiedByUser.name,
-        assignedLabId: UserLabAssignmentsModel.labId,
-        labName: LabsModel.name,
-        labAddress: LabsModel.address,
-        labContactNumber: LabsModel.contactNo,
+        assignedLabId: sql<string | null>`null`,
+        labName: sql<string | null>`null`,
+        labAddress: sql<string | null>`null`,
+        labContactNumber: sql<string | null>`null`,
       })
       .from(LabOrderResultsModel)
       .innerJoin(
@@ -1149,14 +1238,6 @@ export class LabResultService {
         verifiedByUser,
         eq(LabOrderResultsModel.verifiedBy, verifiedByUser.id)
       )
-      .leftJoin(
-        UserLabAssignmentsModel,
-        and(
-          eq(LabOrderModel.labAssistantId, UserLabAssignmentsModel.userId),
-          eq(UserLabAssignmentsModel.clinicId, context.clinicId)
-        )
-      )
-      .leftJoin(LabsModel, eq(LabsModel.id, UserLabAssignmentsModel.labId))
       .where(
         and(
           eq(LabOrderResultsModel.id, resultId),
@@ -1172,7 +1253,6 @@ export class LabResultService {
     if (
       context.userRole === 'Lab_Assistant' &&
       context.labId &&
-      record.appointmentTest.labAssistantId &&
       record.assignedLabId !== context.labId
     ) {
       throw new HttpError(403, 'Lab result belongs to another lab');
@@ -2095,8 +2175,18 @@ export class LabResultService {
         {
           testName: order.testName,
           testCategory: order.testCategory,
+          labTestCatalogId: order.labTestCatalogId,
         },
         resolvedLabId
+      );
+      const catalogTest = await this.resolveCatalogTestFromOrder(
+        trx,
+        resolvedLabId,
+        {
+          testName: order.testName,
+          testCategory: order.testCategory,
+          labTestCatalogId: order.labTestCatalogId,
+        }
       );
 
       const [existingResult] = await trx
@@ -2130,7 +2220,7 @@ export class LabResultService {
       //   overridden parameter values (e.g. referenceRange) as the lab side.
       const parameterUserId = this.resolveParameterUserId(
         context,
-        order.appointmentTest.labAssistantId,
+        null,
         existingResult?.enteredBy
       );
 
@@ -2138,7 +2228,8 @@ export class LabResultService {
         trx,
         template.id,
         resolvedLabId,
-        parameterUserId
+        parameterUserId,
+        catalogTest?.id ?? order.labTestCatalogId
       );
 
       const savedValues = existingResult
@@ -2215,10 +2306,7 @@ export class LabResultService {
       const parameterContext = {
         ...context,
         labId,
-        userId: this.resolveParameterUserId(
-          context,
-          order.appointmentTest.labAssistantId
-        ),
+        userId: this.resolveParameterUserId(context, null),
       };
 
       await this.validateTemplateMatchesOrder(
@@ -2227,9 +2315,15 @@ export class LabResultService {
         {
           testName: order.testName,
           testCategory: order.testCategory,
+          labTestCatalogId: order.labTestCatalogId,
         },
         labId
       );
+      const catalogTest = await this.resolveCatalogTestFromOrder(trx, labId, {
+        testName: order.testName,
+        testCategory: order.testCategory,
+        labTestCatalogId: order.labTestCatalogId,
+      });
 
       const [existingResult] = await trx
         .select()
@@ -2279,7 +2373,8 @@ export class LabResultService {
         result.id,
         result.status,
         payload.values,
-        parameterContext
+        parameterContext,
+        catalogTest?.id ?? order.labTestCatalogId
       );
 
       await trx
@@ -2297,7 +2392,6 @@ export class LabResultService {
             workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.COMPLETED,
             sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.COMPLETED,
             reportStatus: 'Completed',
-            readyForReportAt: now,
             updatedAt: now,
           })
           .where(eq(LabOrderModel.id, appointmentTestId));
@@ -2380,7 +2474,7 @@ export class LabResultService {
         labId,
         userId: this.resolveParameterUserId(
           context,
-          record.appointmentTest.labAssistantId,
+          null,
           record.result.enteredBy
         ),
       };
@@ -2422,7 +2516,6 @@ export class LabResultService {
             workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.COMPLETED,
             sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.COMPLETED,
             reportStatus: 'Completed',
-            readyForReportAt: now,
             updatedAt: now,
           })
           .where(eq(LabOrderModel.id, appointmentTestId));

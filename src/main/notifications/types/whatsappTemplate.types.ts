@@ -5,6 +5,7 @@ export interface WhatsAppTemplateParams {
     clinicName: string;
     date: string;
     timeOrToken: string;
+    appointmentId: string;
   };
   appointmentReminder: {
     patientName: string;
@@ -12,6 +13,27 @@ export interface WhatsAppTemplateParams {
     clinicName: string;
     date: string;
     timeOrToken: string;
+    appointmentId: string;
+  };
+  appointmentCancelled: {
+    patientName: string;
+    doctorName: string;
+    clinicName: string;
+    date: string;
+    timeOrToken: string;
+    appointmentId: string;
+  };
+  consultationStarted: {
+    patientName: string;
+    doctorName: string;
+    clinicName: string;
+  };
+  doctorRunningLate: {
+    patientName: string;
+    doctorName: string;
+    clinicName: string;
+    timeOrToken: string;
+    appointmentId: string;
   };
   appointmentRescheduled: {
     patientName: string;
@@ -31,6 +53,7 @@ export interface WhatsAppTemplateParams {
     patientName: string;
     doctorName: string;
     clinicName: string;
+    appointmentId: string;
   };
   appointmentFollowUp: {
     patientName: string;
@@ -64,6 +87,10 @@ export interface WhatsAppTemplateDefinition<K extends WhatsAppTemplateKey> {
   envVar: string;
   defaultName: string;
   toBodyParams: (params: WhatsAppTemplateParams[K]) => string[];
+  /** Dynamic URL button suffixes, in button order. */
+  toUrlButtonParams?: (params: WhatsAppTemplateParams[K]) => string[];
+  /** Env var holding a public image URL, for templates with an IMAGE header. */
+  headerImageEnvVar?: string;
 }
 
 export type WhatsAppTemplateMessage = {

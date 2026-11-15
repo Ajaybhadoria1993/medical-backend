@@ -7,30 +7,79 @@ import {
 
 const MAX_PARAM_LENGTH = 1024;
 
+// The *_utility_v1 bodies already say "Dr. {{n}}" and "Token No.: {{n}}".
+const bareDoctor = (name: string) => name.replace(/^dr\.?\s+/i, '');
+const bareToken = (timeOrToken: string) =>
+  timeOrToken.replace(/^Token No:\s*/, '');
+
 export const WHATSAPP_TEMPLATES: {
   [K in WhatsAppTemplateKey]: WhatsAppTemplateDefinition<K>;
 } = {
   appointmentBooked: {
     envVar: 'WHATSAPP_TEMPLATE_APPOINTMENT_BOOKED',
-    defaultName: 'appointment_booked',
+    defaultName: 'appointment_booked_utility_v1',
+    headerImageEnvVar: 'WHATSAPP_APPOINTMENT_BOOKED_HEADER_IMAGE_URL',
     toBodyParams: (p) => [
       p.patientName,
-      p.doctorName,
+      bareDoctor(p.doctorName),
       p.clinicName,
       p.date,
-      p.timeOrToken,
+      bareToken(p.timeOrToken),
     ],
+    // Button 0 "Track Token Status"; button 1 "Download App" is a static URL.
+    toUrlButtonParams: (p) => [`${p.appointmentId}?type=livequeue`],
   },
   appointmentReminder: {
     envVar: 'WHATSAPP_TEMPLATE_APPOINTMENT_REMINDER',
-    defaultName: 'appointment_reminder',
+    defaultName: 'appointment_reminder_utility_v1',
+    headerImageEnvVar: 'WHATSAPP_APPOINTMENT_REMINDER_HEADER_IMAGE_URL',
     toBodyParams: (p) => [
       p.patientName,
-      p.doctorName,
+      bareDoctor(p.doctorName),
       p.clinicName,
       p.date,
-      p.timeOrToken,
+      bareToken(p.timeOrToken),
     ],
+    // Button 0 "Track Token Status".
+    toUrlButtonParams: (p) => [`${p.appointmentId}?type=livequeue`],
+  },
+  appointmentCancelled: {
+    envVar: 'WHATSAPP_TEMPLATE_APPOINTMENT_CANCELLED',
+    defaultName: 'appointment_cancelled_utility_v1',
+    headerImageEnvVar: 'WHATSAPP_APPOINTMENT_CANCELLED_HEADER_IMAGE_URL',
+    toBodyParams: (p) => [
+      p.patientName,
+      bareDoctor(p.doctorName),
+      p.clinicName,
+      p.date,
+      bareToken(p.timeOrToken),
+    ],
+    // Button 0 "Reschedule Appointment"; button 1 "Open MediArogya" is static.
+    toUrlButtonParams: (p) => [p.appointmentId],
+  },
+  consultationStarted: {
+    envVar: 'WHATSAPP_TEMPLATE_CONSULTATION_STARTED',
+    defaultName: 'consultation_started_utility_v1',
+    headerImageEnvVar: 'WHATSAPP_CONSULTATION_STARTED_HEADER_IMAGE_URL',
+    // Its one button, "Open MediArogya", is static.
+    toBodyParams: (p) => [
+      p.patientName,
+      bareDoctor(p.doctorName),
+      p.clinicName,
+    ],
+  },
+  doctorRunningLate: {
+    envVar: 'WHATSAPP_TEMPLATE_DOCTOR_RUNNING_LATE',
+    defaultName: 'doctor_running_late_utility_v1',
+    headerImageEnvVar: 'WHATSAPP_DOCTOR_RUNNING_LATE_HEADER_IMAGE_URL',
+    toBodyParams: (p) => [
+      p.patientName,
+      bareDoctor(p.doctorName),
+      p.clinicName,
+      bareToken(p.timeOrToken),
+    ],
+    // Button 0 "Track Token Status".
+    toUrlButtonParams: (p) => [`${p.appointmentId}?type=livequeue`],
   },
   appointmentRescheduled: {
     envVar: 'WHATSAPP_TEMPLATE_APPOINTMENT_RESCHEDULED',
@@ -56,8 +105,15 @@ export const WHATSAPP_TEMPLATES: {
   },
   appointmentCompleted: {
     envVar: 'WHATSAPP_TEMPLATE_APPOINTMENT_COMPLETED',
-    defaultName: 'appointment_completed',
-    toBodyParams: (p) => [p.patientName, p.doctorName, p.clinicName],
+    defaultName: 'appointment_completed_utility_v1',
+    headerImageEnvVar: 'WHATSAPP_APPOINTMENT_COMPLETED_HEADER_IMAGE_URL',
+    toBodyParams: (p) => [
+      p.patientName,
+      bareDoctor(p.doctorName),
+      p.clinicName,
+    ],
+    // Button 0 "View Prescription" (…/patient/appointments/{{1}}); button 1 is static.
+    toUrlButtonParams: (p) => [`${p.appointmentId}/pdf`],
   },
   appointmentFollowUp: {
     envVar: 'WHATSAPP_TEMPLATE_APPOINTMENT_FOLLOWUP',
@@ -114,6 +170,30 @@ export function buildTemplateBodyParams<K extends WhatsAppTemplateKey>(
 ): string[] {
   const definition = WHATSAPP_TEMPLATES[key] as WhatsAppTemplateDefinition<K>;
   return definition.toBodyParams(params).map(sanitizeTemplateParam);
+}
+
+export function buildTemplateUrlButtonParams<K extends WhatsAppTemplateKey>(
+  key: K,
+  params: WhatsAppTemplateParams[K]
+): string[] {
+  const definition = WHATSAPP_TEMPLATES[key] as WhatsAppTemplateDefinition<K>;
+  return (definition.toUrlButtonParams?.(params) ?? []).map(
+    sanitizeTemplateParam
+  );
+}
+
+export function resolveTemplateHeaderImage(
+  key: WhatsAppTemplateKey
+): string | undefined {
+  const envVar = WHATSAPP_TEMPLATES[key].headerImageEnvVar;
+  return envVar ? process.env[envVar] || undefined : undefined;
+}
+
+/** Header-image env vars that are unset; Meta rejects every send of those templates (132012). */
+export function missingTemplateHeaderImages(): string[] {
+  return Object.values(WHATSAPP_TEMPLATES)
+    .map((d) => d.headerImageEnvVar)
+    .filter((v): v is string => !!v && !process.env[v]);
 }
 
 export function normalizeWhatsAppNumber(mobile: string): string {

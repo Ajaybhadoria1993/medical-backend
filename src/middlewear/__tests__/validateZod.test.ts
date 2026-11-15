@@ -18,10 +18,6 @@ import {
   validateQuery,
 } from '../validateZod';
 
-jest.mock('../../utils/docsRegistry', () => ({
-  docsRegistry: { recordError: jest.fn() },
-}));
-
 const schema = z.object({
   sections: z.string().transform((raw) => raw.split(',')),
 });

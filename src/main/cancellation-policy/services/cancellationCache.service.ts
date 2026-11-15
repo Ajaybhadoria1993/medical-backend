@@ -60,12 +60,8 @@ export class CancellationCacheService {
     ttl: number
   ): Promise<T> {
     const cached = await this.get<T>(key);
-    if (cached !== null) {
-      logger.info(`Cancellation Cache HIT for key: ${key}`);
-      return cached;
-    }
+    if (cached !== null) return cached;
 
-    logger.info(`Cancellation Cache MISS for key: ${key}. Fetching from DB...`);
     const data = await fetcher();
 
     // Cache the retrieved data if it exists/is valid (don't cache null if appropriate, or cache null briefly if needed)

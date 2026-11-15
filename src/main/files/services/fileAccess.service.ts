@@ -11,6 +11,8 @@ import { LabOrderModel } from '../../test/models/labOrder.model';
 import { PharmacyStockModel } from '../../pharmacies/models/pharmacyStock.model';
 import { PharmacyModel } from '../../pharmacy/models/pharmacy.model';
 import { PatientFamilyLinksModel } from '../../patient/models/patientFamilyLinks.model';
+import { planConsentLocation } from '../../treatmentPlan';
+import type { AuthUser } from '../../../middlewear/auth.middleware';
 import { DOCUMENT_TTL_SECONDS } from '../utils/s3Ref.utils';
 import { readS3Object, signS3Url } from './fileUrl.service';
 import type { DownloadableDocument } from '../types/files.types';
@@ -23,7 +25,9 @@ import type {
 /** Reads one document's stored location, scoped to the caller's clinic. */
 type StoredLocationLookup = (
   id: string,
-  clinicId: string
+  clinicId: string,
+  // Only plan consents read it: they follow the plan module's doctor scope.
+  user?: AuthUser
 ) => Promise<string | null>;
 
 const LOOKUPS: Record<SignDocumentQuery['type'], StoredLocationLookup> = {
@@ -134,6 +138,15 @@ const LOOKUPS: Record<SignDocumentQuery['type'], StoredLocationLookup> = {
       .limit(1);
     return row?.location ?? null;
   },
+
+  planConsent: async (id, clinicId, user) =>
+    user
+      ? planConsentLocation(id, clinicId, {
+          id: user.id,
+          isDoctor: user.userType === 'Doctor',
+          userType: user.userType,
+        })
+      : null,
 };
 
 /** Debug-level, so it prints only in development. The signature is cut off: a live link is a credential. */
@@ -152,9 +165,10 @@ function logSignedDocument(type: string, id: string, url: string) {
  */
 export async function signClinicDocument(
   query: SignDocumentQuery,
-  clinicId: string
+  clinicId: string,
+  user?: AuthUser
 ): Promise<{ url: string; expiresIn: number }> {
-  const location = await LOOKUPS[query.type](query.id, clinicId);
+  const location = await LOOKUPS[query.type](query.id, clinicId, user);
 
   // Absent and belonging-to-another-clinic are the same 404, so the endpoint
   // cannot be used to confirm that an id exists.
@@ -171,9 +185,10 @@ export async function signClinicDocument(
  * The private bucket allows no cross-origin reads, so a signed link can't be saved. */
 export async function readClinicDocument(
   query: DownloadDocumentQuery,
-  clinicId: string
+  clinicId: string,
+  user?: AuthUser
 ): Promise<DownloadableDocument> {
-  const location = await LOOKUPS[query.type](query.id, clinicId);
+  const location = await LOOKUPS[query.type](query.id, clinicId, user);
   if (!location) throw new HttpError(404, 'Document not found');
 
   const file = await readS3Object(location);

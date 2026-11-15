@@ -17,7 +17,10 @@ import {
   adminGetMedicinesController,
   adminUpdateMedicineController,
 } from '../../controllers/medicine.controller';
-import { requirePharmacySubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 // Admin view of a specific pharmacy's medicine inventory (pharmacyId as a
 // route param, unlike the self-service `medicine.route.ts` which resolves
@@ -28,8 +31,8 @@ adminMedicineRouter.get(
   '/:pharmacyId/get-all-medicines',
   requireAuth,
   requireClinic,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   requireRole(['Admin', 'Super_Admin']),
-  requirePharmacySubscription,
   validate(adminPharmacyIdParamsSchema, 'params'),
   validate(getMedicinesQuerySchema, 'query'),
   adminGetMedicinesController
@@ -39,8 +42,8 @@ adminMedicineRouter.post(
   '/:pharmacyId/add-medicine',
   requireAuth,
   requireClinic,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   requireRole(['Admin', 'Super_Admin']),
-  requirePharmacySubscription,
   validate(adminPharmacyIdParamsSchema, 'params'),
   validate(createMedicineSchema, 'body'),
   adminAddMedicineController
@@ -50,8 +53,8 @@ adminMedicineRouter.put(
   '/:pharmacyId/update-medicine/:id',
   requireAuth,
   requireClinic,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   requireRole(['Admin', 'Super_Admin']),
-  requirePharmacySubscription,
   validate(adminMedicineParamsSchema, 'params'),
   validate(updateMedicineSchema, 'body'),
   adminUpdateMedicineController

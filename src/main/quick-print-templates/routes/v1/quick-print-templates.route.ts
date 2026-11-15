@@ -1,17 +1,25 @@
 import express from 'express';
 import {
+  CLINIC_STAFF_ROLES,
   requireAuth,
   requireClinic,
+  requireRole,
 } from '../../../../middlewear/auth.middleware';
 import { requireFeature } from '../../../../middlewear/limitation.middleware';
-import { FEATURE_KEYS } from '../../../subscription/services/limitation.service';
+import { FEATURE_KEYS } from '../../../subscription';
 import { validate } from '../../../../middlewear/validation.middleware';
 import {
   getQuickPrintTemplateController,
   saveQuickPrintTemplateController,
+  setTemplateUsageController,
+  setFooterNotesController,
   previewQuickPrintTemplateController,
 } from '../../controllers/quickPrintTemplate.controller';
-import { saveQuickPrintTemplateSchema } from '../../schemas/quickPrintTemplate.schemas';
+import {
+  saveQuickPrintTemplateSchema,
+  templateUsageSchema,
+  footerNotesBodySchema,
+} from '../../schemas/quickPrintTemplate.schemas';
 
 const quickPrintTemplatesRouter = express.Router();
 
@@ -23,6 +31,7 @@ const quickPrintTemplatesRouter = express.Router();
 quickPrintTemplatesRouter.get(
   '/',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   getQuickPrintTemplateController
 );
 
@@ -34,10 +43,30 @@ quickPrintTemplatesRouter.get(
 quickPrintTemplatesRouter.post(
   '/',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
-  requireFeature(FEATURE_KEYS.CUSTOM_BRANDED_RX),
   validate(saveQuickPrintTemplateSchema, 'body'),
   saveQuickPrintTemplateController
+);
+
+/** PATCH /api/v1/quick-print-templates/usage — which design share and print use. */
+quickPrintTemplatesRouter.patch(
+  '/usage',
+  requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
+  requireClinic,
+  validate(templateUsageSchema, 'body'),
+  setTemplateUsageController
+);
+
+/** PATCH /api/v1/quick-print-templates/footer-notes — lines printed above every prescription's footer. */
+quickPrintTemplatesRouter.patch(
+  '/footer-notes',
+  requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
+  requireClinic,
+  validate(footerNotesBodySchema, 'body'),
+  setFooterNotesController
 );
 
 /**
@@ -48,6 +77,7 @@ quickPrintTemplatesRouter.post(
 quickPrintTemplatesRouter.post(
   '/preview',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   requireFeature(FEATURE_KEYS.CUSTOM_BRANDED_RX),
   previewQuickPrintTemplateController

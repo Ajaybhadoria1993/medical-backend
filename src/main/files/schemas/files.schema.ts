@@ -12,6 +12,8 @@ export const SIGNABLE_DOCUMENT_TYPES = [
   // A supplier's purchase invoice, reached through the pharmacy's clinic.
   'stockInvoice',
   'consent',
+  // A treatment plan's signed consent, keyed by plan id.
+  'planConsent',
 ] as const;
 
 export const signDocumentQuerySchema = z.object({

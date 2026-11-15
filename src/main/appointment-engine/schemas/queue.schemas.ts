@@ -93,7 +93,7 @@ export const queueBoardResponseSchema = z.object({
 export const queueStateResponseSchema = z.object({
   clinicId: z.string().uuid(),
   doctorId: z.string().uuid(),
-  date: z.string().regex(/^d{4}-d{2}-d{2}$/),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   /** Minutes the last non-terminal appointment of the day has slipped. */
   cumulativeDelay: z.number().int(),
   lastCalculatedAt: z.string(),
@@ -142,7 +142,7 @@ const liveQueueEntrySchema = z.object({
 export const receptionLiveQueueResponseSchema = z.object({
   clinicId: z.string().uuid(),
   /** The IST day this board describes. */
-  date: z.string().regex(/^d{4}-d{2}-d{2}$/),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   generatedAt: z.string().datetime(),
   doctors: z.array(
     z.object({
@@ -158,7 +158,7 @@ export const receptionLiveQueueResponseSchema = z.object({
         .extend({
           /**
            * The patient's **scheduled** slot as an instant, not when they went
-           * in — see docs/QUEUE_SYNCHRONIZATION.md "Still open".
+           * in — see docs/appointments/QUEUE_SYNCHRONIZATION.md "Still open".
            */
           startedAt: z.string().nullable(),
         })

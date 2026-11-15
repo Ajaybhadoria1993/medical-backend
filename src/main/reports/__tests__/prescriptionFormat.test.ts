@@ -1,6 +1,7 @@
-import { ReportService } from '../services/report.service';
+import { PrescriptionPrintService } from '../services/prescriptionPrint.service';
 
-const { formatPrescriptionDate, formatPrescriptionTime } = ReportService;
+const { formatPrescriptionDate, formatPrescriptionTime } =
+  PrescriptionPrintService;
 
 describe('prescription date/time formatting', () => {
   it('formats a visit date the way the templates expect', () => {

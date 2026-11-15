@@ -3,6 +3,9 @@ import {
   layoutSectionKeys,
   type BuildLayoutOptions,
 } from '../templates/layoutRenderer';
+import handlebars from 'handlebars';
+import '../../../utils/handlebarsHelpers';
+import { FOOTER_NOTES_HTML } from '../../../htmltamplates/footerNotes';
 
 const build = (options: BuildLayoutOptions) =>
   buildQuickPrintLayoutTemplate(options)!;
@@ -237,7 +240,10 @@ describe('buildQuickPrintLayoutTemplate', () => {
 
   describe('medicine table', () => {
     it('gives the dose schedule, food timing and instruction their own columns', () => {
-      const html = build({ blockLayout: [block('medicineTable', 122, 90)] });
+      const html = build({
+        blockLayout: [block('medicineTable', 122, 90)],
+        design: 'modern',
+      });
 
       for (const heading of ['Dosage', 'Timing', 'Duration', 'Instructions']) {
         expect(html).toContain(`>${heading}</th>`);
@@ -249,10 +255,10 @@ describe('buildQuickPrintLayoutTemplate', () => {
   });
 
   describe('design', () => {
-    it('defaults to the modern look', () => {
+    it('defaults to the compact (original) look', () => {
       const html = build({ blockLayout: [block('medicineTable', 122, 90)] });
 
-      expect(html).not.toContain('Timing - Freq. - Duration');
+      expect(html).toContain('Timing - Freq. - Duration');
     });
 
     it('restores the original look when the doctor chooses it', () => {
@@ -364,6 +370,58 @@ describe('buildQuickPrintLayoutTemplate', () => {
 
         expect(html).toContain('Habits:');
       }
+    });
+  });
+
+  describe('pre-printed pad spacing', () => {
+    it('keeps the footer space on every sheet and the letterhead space after the first', () => {
+      const html = build({
+        blockLayout: [
+          block('patientInfo', 45, 12),
+          block('medicineTable', 60, 90),
+        ],
+        bottomMarginMm: 20,
+      });
+
+      expect(html).toContain('margin: 45mm 0 20mm 0;');
+      expect(html).toContain('@page :first { margin-top: 0; }');
+      expect(html).toContain('min-height: 277mm;');
+    });
+
+    it('scales section text within the allowed range', () => {
+      const layout = [block('patientInfo', 45, 12)];
+
+      expect(build({ blockLayout: layout, textScale: 1.2 })).toContain(
+        'zoom: 1.2;'
+      );
+      expect(build({ blockLayout: layout, textScale: 5 })).toContain(
+        'zoom: 1.3;'
+      );
+    });
+  });
+
+  describe('footer notes', () => {
+    const render = (footerNotes: string[]) =>
+      handlebars.compile(FOOTER_NOTES_HTML)({ footerNotes });
+
+    it('prints each note escaped, so a note can never inject markup', () => {
+      const html = render([
+        'Not valid for medico-legal purposes.',
+        '<b>bold</b>',
+      ]);
+
+      expect(html).toContain('Not valid for medico-legal purposes.');
+      expect(html).toContain('&lt;b&gt;bold&lt;/b&gt;');
+    });
+
+    it('prints nothing when the doctor cleared the notes', () => {
+      expect(render([])).toBe('');
+    });
+
+    it('sits above the Quick Print footer', () => {
+      expect(build({ blockLayout: [block('patientInfo', 45, 12)] })).toContain(
+        '{{#each footerNotes}}'
+      );
     });
   });
 });

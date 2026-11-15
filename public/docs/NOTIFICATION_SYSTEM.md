@@ -1,8 +1,8 @@
-# Medisetu Notification System Implementation
+# MediArogya Notification System Implementation
 
 ## Overview
 
-This document describes the implementation of the Medisetu Notification System following the specified notification rules.
+This document describes the implementation of the MediArogya Notification System following the specified notification rules.
 
 ## Important Rule
 

@@ -4,8 +4,12 @@ import {
   requireSuperAdmin,
 } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import { uploadBannerImage } from '../../../../middlewear/upload.middleware';
+import {
+  stripSignedFileUrlsInRequests,
+  stripSignedFileUrlsInResponses,
+} from '../../../../middlewear/signFileUrls.middleware';
 
 import {
   createBannerController,
@@ -47,6 +51,7 @@ bannersRouter.post(
   '/',
   requireAuth,
   requireSuperAdmin,
+  stripSignedFileUrlsInRequests,
   validate(createBannerSchema, 'body'),
   createBannerController
 );
@@ -58,6 +63,7 @@ bannersRouter.post(
  */
 bannersRouter.get(
   '/',
+  stripSignedFileUrlsInResponses,
   requireAuth,
   requireSuperAdmin,
   validate(listBannersQuerySchema, 'query'),
@@ -102,6 +108,7 @@ bannersRouter.post(
  */
 bannersRouter.get(
   '/eligible/all',
+  stripSignedFileUrlsInResponses,
   requireAuth,
   getEligibleBannersAllController
 );
@@ -123,6 +130,7 @@ bannersRouter.get(
  */
 bannersRouter.get(
   '/eligible',
+  stripSignedFileUrlsInResponses,
   validate(eligibleBannersQuerySchema, 'query'),
   // Conditional auth: only required if placement !== LOGIN_PAGE
   (req, res, next) => {
@@ -144,6 +152,7 @@ bannersRouter.get(
  */
 bannersRouter.get(
   '/:bannerId',
+  stripSignedFileUrlsInResponses,
   requireAuth,
   requireSuperAdmin,
   validate(bannerIdParamSchema, 'params'),
@@ -160,6 +169,7 @@ bannersRouter.put(
   requireAuth,
   requireSuperAdmin,
   validate(bannerIdParamSchema, 'params'),
+  stripSignedFileUrlsInRequests,
   validate(updateBannerSchema, 'body'),
   updateBannerController
 );

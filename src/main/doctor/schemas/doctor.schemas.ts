@@ -2,6 +2,18 @@ import { z } from 'zod';
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 extendZodWithOpenApi(z);
 import { MAX_TOKENS_PER_SHIFT } from '../../appointments/schemas/appointment.schemas';
+import {
+  checkSpecializationLimits,
+  specialitySchema,
+  specializationSchema,
+} from '../../../utils/specialtyCatalog';
+import { SUGGESTION_SECTIONS } from '../../../utils/suggestionCatalog';
+import {
+  qualificationCategorySchema,
+  qualificationDegreeSchema,
+} from '../../../utils/qualificationCatalog';
+import { canonicalCollege } from '../../../utils/collegeCatalog';
+import { languagesSpokenSchema } from '../../../utils/indianLanguages';
 const currencyEnum = z.enum(['INR', 'USD', 'EUR']);
 
 const optionalYearsOfExperienceSchema = z.preprocess(
@@ -9,16 +21,82 @@ const optionalYearsOfExperienceSchema = z.preprocess(
   z.coerce.number().int().nonnegative().nullable().optional()
 );
 
+// Fits user_professional.about (varchar 1000); a longer value would fail in the DB
+// with a raw error instead of a clear validation message.
+const aboutSchema = z
+  .string()
+  .max(1000, 'About can be at most 1000 characters')
+  .optional();
+
+// Fits doctor_qualifications.notes (varchar 300); '' clears a saved note.
+export const qualificationNotesSchema = z
+  .string()
+  .trim()
+  .max(300, 'Notes can be at most 300 characters')
+  .optional();
+
 export const doctorQualificationSchema = z.object({
   id: z.string().optional(),
-  qualificationType: z.string(),
-  qualificationTitle: z.string(),
+  qualificationType: qualificationDegreeSchema,
+  qualificationTitle: qualificationCategorySchema,
   // specialization: z.string().optional(),
-  boardOrUniversity: z.string().optional(),
+  // Fits doctor_qualifications.board_or_university (varchar 150); listed colleges save in official spelling.
+  boardOrUniversity: z
+    .string()
+    .max(150)
+    .optional()
+    .transform((v) => (v === undefined ? v : canonicalCollege(v))),
   yearOfCompletion: z.coerce.number().int().optional(),
+  notes: qualificationNotesSchema,
 });
 
 export const doctorQualificationsSchema = z.array(doctorQualificationSchema);
+
+const monthSchema = z.coerce.number().int().min(1).max(12);
+const experienceYearSchema = z.coerce
+  .number()
+  .int()
+  .min(1950)
+  .max(new Date().getFullYear());
+
+// One row of doctor_experiences; a current role has no end date.
+export const doctorExperienceSchema = z
+  .object({
+    organisation: z
+      .string()
+      .trim()
+      .min(1, 'Hospital / Clinic is required')
+      .max(150),
+    role: z.string().trim().min(1, 'Role is required').max(100),
+    city: z.string().trim().max(100).optional(),
+    startMonth: monthSchema,
+    startYear: experienceYearSchema,
+    endMonth: monthSchema.optional(),
+    endYear: experienceYearSchema.optional(),
+    isCurrent: z.boolean().default(false),
+  })
+  .superRefine((row, ctx) => {
+    if (row.isCurrent) return;
+    if (row.endMonth === undefined || row.endYear === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['endYear'],
+        message: 'Add an end date or mark it as current',
+      });
+      return;
+    }
+    if (row.endYear * 12 + row.endMonth < row.startYear * 12 + row.startMonth)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['endYear'],
+        message: 'End date must be after the start date',
+      });
+  });
+
+export const MAX_DOCTOR_EXPERIENCES = 15;
+export const doctorExperiencesSchema = z
+  .array(doctorExperienceSchema)
+  .max(MAX_DOCTOR_EXPERIENCES);
 
 // 📍 2. Doctor Profile
 const updateDoctorProfileSchema = z
@@ -42,13 +120,15 @@ const updateDoctorProfileSchema = z
     qualification: z.string().optional(),
     yearsOfExperience: optionalYearsOfExperienceSchema,
     licenseNumber: z.string().optional(),
-    speciality: z.string().optional(),
-    specialization: z.array(z.string()).optional(),
-    about: z.string().optional(),
+    speciality: specialitySchema.optional(),
+    specialization: specializationSchema.optional(),
+    about: aboutSchema,
     registrationNumber: z.string().optional(),
+    languagesSpoken: languagesSpokenSchema.optional(),
     qualifications: doctorQualificationsSchema.optional(),
   })
   .superRefine((data, ctx) => {
+    checkSpecializationLimits(data, ctx);
     // Only validate equality when both values are present
     if (data.mobile && data.alternateMobile) {
       if (data.mobile === data.alternateMobile) {
@@ -174,13 +254,26 @@ export const updateDoctorScheamas = z.object({
   aivblity: z.array(updateAvailabilitySchema).optional(),
   dateAvailability: z.array(DateAvailabilitySchema).optional(),
   qualifications: doctorQualificationsSchema.optional(),
-  about: z.string().optional(),
+  // The whole list: rows left out are removed.
+  experiences: doctorExperiencesSchema.optional(),
+  about: aboutSchema,
 });
 
 export const updateDoctorProfileScheamas = z.object({
   doctorProfile: updateDoctorProfileSchema.optional(),
   qualifications: doctorQualificationsSchema.optional(),
   reason: z.string().optional(),
+});
+
+export const searchCollegesQuerySchema = z.object({
+  q: z.string().trim().min(2).max(100),
+  stream: z.string().max(40).optional(),
+});
+
+export const searchSuggestionsQuerySchema = z.object({
+  section: z.enum(SUGGESTION_SECTIONS),
+  q: z.string().trim().max(100).default(''),
+  specialty: z.string().trim().max(80).optional(),
 });
 
 export const listUpdateRequestsSchema = z.object({
@@ -253,7 +346,32 @@ export const upsertDoctorPreferencesSchema = z.object({
       z.array(z.string().trim().min(1).max(200)).max(30)
     )
     .optional(),
+  /** Built-in options removed per list; the service keeps only real built-ins. */
+  hiddenOptions: z
+    .partialRecord(
+      z.enum([
+        'habitList',
+        'allergyList',
+        'diagnosisList',
+        'preDiagnosisList',
+        'surgerySuggestedList',
+        'adviceSuggestionsList',
+        'dietarySuggestionsList',
+      ]),
+      suggestionList
+    )
+    .optional(),
+  /** Clinical details tabs in order; null goes back to the specialty's own. */
+  specialtyTools: z
+    .array(z.string().trim().min(1).max(80))
+    .max(40)
+    .nullable()
+    .optional(),
 });
+
+export type UpsertDoctorPreferencesInput = z.infer<
+  typeof upsertDoctorPreferencesSchema
+>;
 
 export const upsertDoctorPrescriptionTemplate = z.object({
   templateHtml: z.string(),

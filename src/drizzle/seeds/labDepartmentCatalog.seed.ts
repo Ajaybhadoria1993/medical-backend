@@ -1,6 +1,6 @@
-import { database } from '../../configurations/dbConnection';
+import { eq } from 'drizzle-orm';
 import { LabDepartmentsMasterModel } from '../../main/lab/models/lab.model';
-import logger from '../../utils/logger';
+import { logSeed, newCounts, syncRow, tally } from './seedSync';
 
 const departments = [
   { name: 'Hematology', code: 'HEMATOLOGY' },
@@ -16,31 +16,18 @@ const departments = [
   { name: 'Blood Bank', code: 'BLOOD_BANK' },
 ];
 
+/** Departments by code; status is the Super Admin's once created. */
 export async function seedLabDepartmentCatalog() {
-  try {
-    logger.info('Seeding lab department catalog...');
-
-    for (const department of departments) {
-      await database
-        .insert(LabDepartmentsMasterModel)
-        .values({
-          name: department.name,
-          code: department.code,
-          status: 'active',
-        })
-        .onConflictDoUpdate({
-          target: LabDepartmentsMasterModel.code,
-          set: {
-            name: department.name,
-            status: 'active',
-            updatedAt: new Date(),
-          },
-        });
-    }
-
-    logger.info('Lab department catalog seeded successfully');
-  } catch (error) {
-    logger.error('Error seeding lab department catalog', error);
-    throw error;
+  const counts = newCounts();
+  const changed: string[] = [];
+  for (const department of departments) {
+    const { result } = await syncRow({
+      table: LabDepartmentsMasterModel,
+      where: eq(LabDepartmentsMasterModel.code, department.code),
+      values: { code: department.code, name: department.name },
+      createOnly: { status: 'active' },
+    });
+    tally(counts, changed, department.code, result);
   }
+  logSeed('lab departments', counts, changed);
 }

@@ -55,6 +55,15 @@ describe('bucketRowsByHour', () => {
     expect(out).toEqual([{ hour: 9, cnt: 5 }]);
   });
 
+  it("skips token bookings' '23:59' placeholder rather than calling it 11 PM", () => {
+    const out = bucketRowsByHour([
+      { time: '23:59', cnt: 30 },
+      { time: '23:59:00', cnt: 5 },
+      { time: '10:00', cnt: 2 },
+    ]);
+    expect(out).toEqual([{ hour: 10, cnt: 2 }]);
+  });
+
   it('orders busiest first with a deterministic tie-break', () => {
     const out = bucketRowsByHour([
       { time: '15:00', cnt: 4 },

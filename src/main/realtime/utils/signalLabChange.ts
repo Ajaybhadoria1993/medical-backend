@@ -5,7 +5,7 @@
  * A lab order can exist without an appointment at all (an independent/walk-in
  * test — `appointmentId`/`doctorId` are `null` on `LabOrderModel` for those),
  * so the encounter half is opportunistic: signal it only when both ids are
- * present. See docs/REALTIME_ROLLOUT_PLAN.md Phase 3.
+ * present. See docs/realtime/REALTIME_ROLLOUT_PLAN.md Phase 3.
  *
  * Must be called post-commit, same rule as `signalAppointmentChange`.
  * Fire-and-forget: never throws, and never affects the caller's result.

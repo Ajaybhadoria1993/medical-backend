@@ -1,3 +1,4 @@
+import { brandLogoHtml } from './brandLogo';
 export const pharmacySaleInvoiceTemplate = `
 <!DOCTYPE html>
 <html lang="en">
@@ -328,7 +329,7 @@ export const pharmacySaleInvoiceTemplate = `
 
     <!-- FOOTER -->
     <div class="footer">
-      <img src="https://infinitymedisetu.com/assets/images/logoDark.svg" alt="Medisetu Logo">
+      ${brandLogoHtml(30, 14)}
     </div>
   </div>
 </body>

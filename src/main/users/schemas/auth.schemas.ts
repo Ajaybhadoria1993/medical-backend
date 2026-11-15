@@ -1,6 +1,7 @@
 // src/schemas/auth.schemas.ts
 import { z } from 'zod';
 import { updateStaffAssignmentSchema } from '../../permissions/schemas/staffAssignment.schema';
+import { specialitySchema } from '../../../utils/specialtyCatalog';
 import {
   isScopedStaffRole,
   SCOPED_STAFF_ROLES,
@@ -333,7 +334,21 @@ export const getAllPetientsSchema = z.object({
       'Radiologist',
     ])
     .optional(),
-  userStatus: z.enum(['Active', 'Inactive', 'Blocked', 'New']).optional(),
+  // One status or several, comma-separated: "Active,New".
+  userStatus: z
+    .string()
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    )
+    .pipe(
+      z
+        .array(z.enum(['Active', 'Inactive', 'Blocked', 'New']))
+        .min(1, 'userStatus needs at least one status')
+    )
+    .optional(),
   patientId: z.string().nullable().optional(),
   visitRange: z
     .enum(['yesterday', 'today', 'week', 'month', 'custom'])
@@ -368,23 +383,6 @@ export const getAllPetientsSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
 
-export const referralsSchema = z.object({
-  pageSize: z.string().min(1, 'pageSize is required').optional(),
-  pageNumber: z.string().min(1, 'pageNumber is required').optional(),
-  page: z.string().min(1).optional(),
-  searchBy: z.string().optional(),
-  status: z.enum(['pending', 'approved', 'rejected']).optional(),
-  referredByName: z.string().optional(),
-  referredToName: z.string().optional(),
-  fromDate: z.string().optional(),
-  toDate: z.string().optional(),
-});
-
-export const updateReferralSchema = z.object({
-  status: z.enum(['pending', 'approved', 'rejected']),
-  comments: z.string().optional().nullable(),
-});
-
 export const GetDoctorServiceSchema = z.object({
   doctorId: z.string().uuid(),
   patientId: z.string().uuid(),
@@ -412,7 +410,7 @@ export const addUserSchema = z
       'Lab_Assistant',
       'Radiologist',
     ]),
-    speciality: z.string().nullable().optional(),
+    speciality: specialitySchema.nullable().optional(),
     registrationNumber: z.string().nullable().optional(),
     labId: z.string().uuid().optional(),
     pharmacyId: z.string().uuid().optional(),
@@ -464,7 +462,7 @@ export const addUserSchema = z
 
 export const updateAdminPermissionToDoctorSchema = z.object({
   isAdminDoctorAccess: z.boolean(),
-  speciality: z.string().optional(),
+  speciality: specialitySchema.optional(),
 });
 
 export const updateUserSchema = z
@@ -484,7 +482,7 @@ export const updateUserSchema = z
       })
       .optional(),
 
-    speciality: z.string().nullable().optional(),
+    speciality: specialitySchema.nullable().optional(),
 
     mobile: z.string().length(10).nullable().optional(),
 
@@ -523,7 +521,7 @@ export const updateOnboardingProgressSchema = z.object({
   currentStep: z.number().int().min(0).optional(),
 });
 
-const usernameFieldSchema = z
+export const usernameFieldSchema = z
   .string()
   .min(5, 'Username must be at least 5 characters')
   .max(15, 'Username must be at most 15 characters')
@@ -571,8 +569,6 @@ export type SearchPatientDto = z.infer<typeof searchPatientSchema>;
 export type CheckPatientByMobileDto = z.infer<
   typeof checkPatientByMobileSchema
 >;
-export type GetAllReferralsDto = z.infer<typeof referralsSchema>;
-export type UpdateReferralDto = z.infer<typeof updateReferralSchema>;
 export type UpdateOnboardingProgressDto = z.infer<
   typeof updateOnboardingProgressSchema
 >;

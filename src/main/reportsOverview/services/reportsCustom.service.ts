@@ -8,6 +8,8 @@ import {
   CUSTOM_DATA_SOURCES,
   CUSTOM_DIMENSIONS,
   CUSTOM_METRICS,
+  DUES_ROW,
+  MODE,
 } from '../utils/reportsCustom.catalog';
 import {
   CustomColumn,
@@ -49,11 +51,12 @@ function buildWhere(clinicId: string, query: ReportsCustomRunDto): SQL {
       )})`
     );
   }
-  if (f.paymentMode) parts.push(sql`p.payment_mode = ${f.paymentMode}`);
+  if (f.paymentMode) parts.push(sql`${sql.raw(MODE)} = ${f.paymentMode}`);
+  // "Already Paid" took no money here, so it is neither collected nor due.
   if (f.paymentStatus === 'collected') {
-    parts.push(sql`LOWER(p.payment_status) IN ('paid', 'already paid')`);
+    parts.push(sql`LOWER(p.payment_status) = 'paid'`);
   } else if (f.paymentStatus === 'pending') {
-    parts.push(sql`LOWER(p.payment_status) IN ('pending', 'credit')`);
+    parts.push(sql.raw(DUES_ROW));
   } else if (f.paymentStatus === 'refunded') {
     parts.push(sql`LOWER(p.payment_status) = 'refunded'`);
   }

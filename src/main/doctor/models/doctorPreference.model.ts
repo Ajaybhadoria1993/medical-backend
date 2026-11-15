@@ -108,6 +108,11 @@ export const DoctorPreferenceModel = pgTable('doctor_preferences', {
   instructionSuggestions: json('instruction_suggestions').$type<
     Record<string, string[]>
   >(),
+  /** Built-in options this doctor removed, per list (`{ diagnosisList: ['Dental caries'] }`). */
+  hiddenOptions:
+    json('hidden_options').$type<Partial<Record<string, string[]>>>(),
+  /** Clinical details tabs in order (`Dental Chart`, `exam:ear`); null means the specialty's own. */
+  specialtyTools: json('specialty_tools').$type<string[]>(),
   /** Regional language prescriptions print in, set on the Translations tab; null means English only. */
   prescriptionLanguage: varchar('prescription_language', { length: 8 }),
   /** 'bilingual' also prints the English under each line; null means the translation alone. */

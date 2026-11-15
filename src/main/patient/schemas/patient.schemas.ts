@@ -58,57 +58,51 @@ export type SendMobileOtpDto = z.infer<typeof sendMobileOtpSchema>;
 export type VerifyMobileOtpDto = z.infer<typeof verifyMobileOtpSchema>;
 export type ResendMobileOtpDto = z.infer<typeof resendMobileOtpSchema>;
 
+const patientEmailSchema = z
+  .string()
+  .trim()
+  .min(5)
+  .max(254)
+  .regex(
+    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/,
+    'Invalid email format'
+  )
+  .refine((val) => !val.endsWith('.'), {
+    message: 'Email cannot end with a dot',
+  });
+
 // ─── Patient Profile Completion ───────────────────────────────────────────────
 
-/**
- * PATCH /api/v1/patient/complete-profile
- * Called after OTP login when isNewUser=true (or whenever the patient updates
- * their profile). All fields are optional — patient fills what they have.
- */
-/**
- * PATCH /api/v1/patient/complete-profile
- *
- * Collects identity, contact, and medical details for the primary patient.
- */
+/** PATCH /api/v1/patient/complete-profile — omit a field to keep it, send `null` to clear it (except `name`). */
 export const completePatientProfileSchema = z.object({
   // ── users table ────────────────────────────────────────────────────────────
   name: z.string().trim().min(1, 'Name cannot be empty').optional(),
-  email: z
-    .string()
-    .trim()
-    .min(5)
-    .max(254)
-    .regex(
-      /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/,
-      'Invalid email format'
-    )
-    .refine((val) => !val.endsWith('.'), {
-      message: 'Email cannot end with a dot',
-    })
-    .optional(),
+  email: patientEmailSchema.nullable().optional(),
 
   // ── user_profiles table — identity & contact ───────────────────────────────
-  gender: z.enum(['Male', 'Female', 'Other']).optional(),
+  gender: z.enum(['Male', 'Female', 'Other']).nullable().optional(),
   alternateMobile: z
     .string()
     .trim()
     .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit alternate mobile number')
+    .nullable()
     .optional(),
-  address: z.string().trim().min(1).optional(),
-  city: z.string().trim().min(1).optional(),
-  state: z.string().trim().min(1).optional(),
+  address: z.string().trim().min(1).nullable().optional(),
+  city: z.string().trim().min(1).nullable().optional(),
+  state: z.string().trim().min(1).nullable().optional(),
   zipCode: z.string().max(10).nullable().optional(),
 
   // ── user_profiles table — medical ─────────────────────────────────────────
-  dob: z.string().trim().min(1).optional(),
-  age: z.number().int().min(0).max(150).optional(),
+  dob: z.string().trim().min(1).nullable().optional(),
+  age: z.number().int().min(0).max(150).nullable().optional(),
   bloodGroup: z
     .enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
+    .nullable()
     .optional(),
-  height: z.string().trim().max(10).optional(),
-  weight: z.string().trim().max(10).optional(),
-  allergies: z.array(z.string()).optional(),
-  chronicConditions: z.array(z.string()).optional(),
+  height: z.string().trim().max(10).nullable().optional(),
+  weight: z.string().trim().max(10).nullable().optional(),
+  allergies: z.array(z.string()).nullable().optional(),
+  chronicConditions: z.array(z.string()).nullable().optional(),
 });
 
 export type CompletePatientProfileDto = z.infer<
@@ -162,6 +156,7 @@ export const addFamilyMemberSchema = z.object({
  */
 export const updateFamilyMemberSchema = z.object({
   name: z.string().min(1, 'Name cannot be empty').optional(),
+  email: patientEmailSchema.optional(),
   relationship: relationshipEnum.optional(),
   gender: z.enum(['Male', 'Female', 'Other']).optional(),
   age: z.number().int().min(0).max(150).optional(),
@@ -237,6 +232,8 @@ export const patientDirectorySearchSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
     .optional(),
+  minExperience: z.coerce.number().int().min(0).max(60).optional(),
+  sortBy: z.enum(['relevance', 'experience', 'rating']).optional(),
 });
 
 export const patientDoctorProfileSchema = z.object({
@@ -250,6 +247,10 @@ export const patientDoctorSlotsQuerySchema = z.object({
   clinicId: z.string().uuid('Invalid clinic ID'),
 });
 
+export const patientClinicSymptomsParamsSchema = z.object({
+  clinicId: z.string().uuid('Invalid clinic ID'),
+});
+
 export const patientBookingSchema = z.object({
   doctorId: z.string().uuid('Invalid doctor ID'),
   clinicId: z.string().uuid('Invalid clinic ID'),
@@ -260,6 +261,8 @@ export const patientBookingSchema = z.object({
   appointmentTime: z.string().trim().optional().nullable(),
   patientId: z.string().uuid('Invalid patient ID'),
   notes: z.string().trim().optional(),
+  // Picked from the clinic's symptom list (GET .../clinics/:clinicId/symptoms); verified server-side.
+  clinicSymptomIds: z.array(z.string().uuid()).max(10).optional(),
   sessionIndex: z.coerce.number().int().positive().max(10).optional(),
   // Combined payment fields matching receptionist booking
   paymentMode: z
@@ -282,6 +285,9 @@ export type PatientDoctorProfileDto = z.infer<
 >;
 export type PatientDoctorSlotsQueryDto = z.infer<
   typeof patientDoctorSlotsQuerySchema
+>;
+export type PatientClinicSymptomsParamsDto = z.infer<
+  typeof patientClinicSymptomsParamsSchema
 >;
 export type PatientBookingDto = z.infer<typeof patientBookingSchema>;
 
@@ -315,8 +321,19 @@ export type LiveQueueNotifyPrefsDto = z.infer<
 >;
 
 export const patientAppointmentsQuerySchema = z.object({
-  pageNumber: z.string().trim().optional().default('1'),
-  pageSize: z.string().trim().optional().default('10'),
+  pageNumber: z
+    .string()
+    .trim()
+    .regex(/^[1-9]\d*$/, 'pageNumber must be a positive whole number')
+    .optional()
+    .default('1'),
+  pageSize: z
+    .string()
+    .trim()
+    .regex(/^[1-9]\d*$/, 'pageSize must be a positive whole number')
+    .refine((v) => Number(v) <= 500, 'pageSize must be at most 500')
+    .optional()
+    .default('10'),
   appointmentStatus: z
     .preprocess(
       (val) => {
@@ -357,6 +374,7 @@ export const patientAppointmentsQuerySchema = z.object({
   pastOnly: z
     .preprocess((val) => val === 'true' || val === true, z.boolean())
     .optional(),
+  doctorId: z.string().uuid('Invalid doctor ID').optional(),
   sortBy: z.enum(['appointmentDate', 'createdAt']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
@@ -368,7 +386,9 @@ export const patientLabReportsQuerySchema = z.object({
   patientId: z.string().uuid('Invalid patient ID').optional(),
   pageNumber: z.string().trim().optional().default('1'),
   pageSize: z.string().trim().optional().default('10'),
-  status: z.enum(['Initiated', 'InProgress', 'Completed']).optional(),
+  status: z
+    .enum(['Initiated', 'InProgress', 'Collected', 'Completed'])
+    .optional(),
 });
 export type PatientLabReportsQueryDto = z.infer<
   typeof patientLabReportsQuerySchema
@@ -532,3 +552,22 @@ export const patientPricingPreviewQuerySchema = z
 export type PatientPricingPreviewQueryDto = z.infer<
   typeof patientPricingPreviewQuerySchema
 >;
+
+export const patientConsentFormsParamsSchema = z.object({
+  patientId: z.string().uuid('Invalid patient ID'),
+});
+
+/** Swagger only: GET /:patientId/consent-forms response. */
+export const patientConsentFormsResponseSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  data: z.array(
+    z.object({
+      source: z.enum(['appointment', 'plan']),
+      id: z.string().uuid(),
+      title: z.string(),
+      doctorName: z.string().nullable(),
+      date: z.string().nullable(),
+    })
+  ),
+});

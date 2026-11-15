@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { LabNotificationService } from '../../notifications/services/labNotification.service';
 import {
   and,
@@ -48,6 +49,12 @@ import { UserModel } from '../../users/models/user.model';
 import { UserProfileModel } from '../../users/models/userProfile.model';
 import { UserProfessionalModel } from '../../users/models/userProfessional.model';
 import {
+  getLabOrderPayment,
+  labOrderPaymentColumns,
+  labOrderWithPaymentColumns,
+  upsertLabOrderPayment,
+} from '../../lab/utils/labOrderPayment';
+import {
   APPOINTMENT_TEST_LEGACY_PAYMENT_STATUS,
   APPOINTMENT_TEST_PAYMENT_STATUS,
   APPOINTMENT_TEST_SAMPLE_ACTION,
@@ -71,7 +78,7 @@ type LabDashboardComparisonPeriod =
   'yesterday' | 'previousDay' | 'lastWeek' | 'lastMonth' | 'previousPeriod';
 
 type LabAppointmentTestsQuery = {
-  tab?: 'all' | 'assigned' | 'my' | 'new';
+  tab?: 'all' | 'assigned' | 'my' | 'new' | 'done' | 'notTaken';
   search?: string;
   category?: string;
   groupBy?: 'patient';
@@ -286,7 +293,7 @@ type LabInvoiceItemDisplayRecord = {
   invoiceCreatedAt: Date | null;
   invoiceUpdatedAt: Date | null;
   appointmentTestId: string;
-  testId: string;
+  testId: string | null;
   testName: string | null;
   category: string | null;
   sampleType: string | null;
@@ -314,16 +321,20 @@ const ALL_TAB_WORKFLOW_STATUSES: AppointmentTestWorkflowStatus[] = [
   APPOINTMENT_TEST_WORKFLOW_STATUS.COMPLETED,
   APPOINTMENT_TEST_WORKFLOW_STATUS.REJECTED,
 ];
-const ASSIGNED_TAB_WORKFLOW_STATUSES: AppointmentTestWorkflowStatus[] = [
+const NEW_TAB_WORKFLOW_STATUSES: AppointmentTestWorkflowStatus[] = [
   APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD,
+];
+const ASSIGNED_TAB_WORKFLOW_STATUSES: AppointmentTestWorkflowStatus[] = [
+  APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED,
   APPOINTMENT_TEST_WORKFLOW_STATUS.IN_PROGRESS,
+];
+const DONE_TAB_WORKFLOW_STATUSES: AppointmentTestWorkflowStatus[] = [
   APPOINTMENT_TEST_WORKFLOW_STATUS.COMPLETED,
 ];
-const REQUEST_REVIEW_TAB_WORKFLOW_STATUSES: AppointmentTestWorkflowStatus[] = [
-  APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED,
-  APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD,
+const NOT_TAKEN_TAB_WORKFLOW_STATUSES: AppointmentTestWorkflowStatus[] = [
   APPOINTMENT_TEST_WORKFLOW_STATUS.REJECTED,
 ];
+const REQUEST_REVIEW_TAB_WORKFLOW_STATUSES = NEW_TAB_WORKFLOW_STATUSES;
 
 const STATUS_BREAKDOWN_META = [
   {
@@ -590,6 +601,56 @@ export class AppointmentTestService {
       : status;
   }
 
+  private static async getOrCreateWalkInPatientUser(
+    trx: DbTransaction,
+    payload: Pick<
+      AddIndependentTestsPayload,
+      'patientName' | 'patientMobile' | 'patientAge' | 'patientGender'
+    >,
+    now: Date
+  ) {
+    const [existingPatient] = await trx
+      .select({ id: UserModel.id })
+      .from(UserModel)
+      .where(
+        and(
+          eq(UserModel.mobile, payload.patientMobile),
+          eq(UserModel.userType, 'Patient')
+        )
+      )
+      .limit(1);
+
+    if (existingPatient) {
+      return existingPatient.id;
+    }
+
+    const [patient] = await trx
+      .insert(UserModel)
+      .values({
+        name: payload.patientName,
+        mobile: payload.patientMobile,
+        userType: 'Patient',
+        userStatus: 'New',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: UserModel.id });
+
+    if (!patient) {
+      throw new HttpError(500, 'Failed to create patient record');
+    }
+
+    await trx.insert(UserProfileModel).values({
+      userId: patient.id,
+      age: payload.patientAge,
+      gender: payload.patientGender,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return patient.id;
+  }
+
   private static normalizeLabPaymentMethod(
     paymentMethod: string | null | undefined
   ): LabAppointmentPaymentMethod | null {
@@ -789,7 +850,7 @@ export class AppointmentTestService {
     const [record] = await trx
       .select({
         invoice: LabInvoiceModel,
-        appointmentTest: LabOrderModel,
+        appointmentTest: labOrderWithPaymentColumns,
         labName: LabsModel.name,
         labAddress: LabsModel.address,
         labContactNumber: LabsModel.contactNo,
@@ -839,7 +900,7 @@ export class AppointmentTestService {
     const [record] = await trx
       .select({
         invoice: LabInvoiceModel,
-        appointmentTest: LabOrderModel,
+        appointmentTest: labOrderWithPaymentColumns,
         labName: LabsModel.name,
         labAddress: LabsModel.address,
         labContactNumber: LabsModel.contactNo,
@@ -902,7 +963,7 @@ export class AppointmentTestService {
         category: TestCatalogModel.category,
         sampleType: LabSamplesModel.sampleType,
         barcodeValue: LabSamplesModel.barcodeValue,
-        appointmentTestPrice: LabOrderModel.price,
+        appointmentTestPrice: labOrderPaymentColumns.price,
         patientTestPrice: TestCatalogModel.price,
       })
       .from(LabOrderModel)
@@ -925,19 +986,14 @@ export class AppointmentTestService {
           eq(LabSamplesModel.labId, context.labId)
         )
       )
-      .leftJoin(
-        UserLabAssignmentsModel,
-        and(
-          eq(UserLabAssignmentsModel.userId, LabOrderModel.labAssistantId),
-          eq(UserLabAssignmentsModel.labId, context.labId),
-          eq(UserLabAssignmentsModel.clinicId, context.clinicId)
-        )
-      )
       .where(
         and(
           invoiceScopeCondition,
           eq(LabOrderModel.clinicId, context.clinicId),
-          eq(LabOrderModel.paymentStatus, APPOINTMENT_TEST_PAYMENT_STATUS.PAID),
+          eq(
+            labOrderPaymentColumns.paymentStatus,
+            APPOINTMENT_TEST_PAYMENT_STATUS.PAID
+          ),
           notInArray(
             LabOrderModel.workflowStatus,
             this.getLabInvoiceExcludedWorkflowStatuses()
@@ -946,10 +1002,7 @@ export class AppointmentTestService {
           isNull(TestCatalogModel.deletedAt),
           or(
             eq(LabInvoiceModel.labId, context.labId),
-            and(
-              isNull(LabInvoiceModel.id),
-              isNotNull(UserLabAssignmentsModel.id)
-            )
+            isNull(LabInvoiceModel.id)
           )
         )
       )
@@ -2689,56 +2742,16 @@ export class AppointmentTestService {
     trx: DbTransaction,
     appointmentTest: {
       id: string;
-      uniqueTestId: string | null;
       workflowStatus: string;
     },
     testName: string | null | undefined,
     clinicId: string
   ) {
-    if (this.isCompactUniqueTestId(appointmentTest.uniqueTestId)) {
-      return appointmentTest.uniqueTestId;
-    }
-
-    if (
-      appointmentTest.workflowStatus ===
-      APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED
-    ) {
-      return appointmentTest.uniqueTestId;
-    }
-
-    const uniqueTestId = await this.generateUniqueTestId(trx, testName);
-    const uniqueTestIdCondition = appointmentTest.uniqueTestId
-      ? eq(LabOrderModel.uniqueTestId, appointmentTest.uniqueTestId)
-      : isNull(LabOrderModel.uniqueTestId);
-
-    const [updated] = await trx
-      .update(LabOrderModel)
-      .set({ uniqueTestId })
-      .where(
-        and(
-          eq(LabOrderModel.id, appointmentTest.id),
-          eq(LabOrderModel.clinicId, clinicId),
-          uniqueTestIdCondition
-        )
-      )
-      .returning({ uniqueTestId: LabOrderModel.uniqueTestId });
-
-    if (updated?.uniqueTestId) {
-      return updated.uniqueTestId;
-    }
-
-    const [current] = await trx
-      .select({ uniqueTestId: LabOrderModel.uniqueTestId })
-      .from(LabOrderModel)
-      .where(
-        and(
-          eq(LabOrderModel.id, appointmentTest.id),
-          eq(LabOrderModel.clinicId, clinicId)
-        )
-      )
-      .limit(1);
-
-    return current?.uniqueTestId ?? null;
+    void trx;
+    void appointmentTest;
+    void testName;
+    void clinicId;
+    return null;
   }
 
   private static async ensureLabSample(
@@ -2748,16 +2761,9 @@ export class AppointmentTestService {
         id: string;
         clinicId: string | null;
         patientId: string | null;
-        testId: string;
-        labAssistantId: string | null;
+        testId: string | null;
         workflowStatus: string;
         sampleStatus: string | null;
-        sampleCollectedAt: Date | null;
-        sampleReceivedAt: Date | null;
-        processingStartedAt: Date | null;
-        testingStartedAt: Date | null;
-        qualityCheckedAt: Date | null;
-        readyForReportAt: Date | null;
       };
       testName: string | null;
       category: string | null;
@@ -2787,6 +2793,13 @@ export class AppointmentTestService {
       return null;
     }
 
+    if (!record.appointmentTest.testId) {
+      throw new HttpError(
+        400,
+        'Lab sample creation requires a catalog test id'
+      );
+    }
+
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const barcodeValue = await this.generateSampleBarcodeValue(
         trx,
@@ -2807,18 +2820,10 @@ export class AppointmentTestService {
           barcodeType: 'CODE128',
           status: (record.appointmentTest.sampleStatus ??
             APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED) as LabSampleStatus,
-          collectedBy: record.appointmentTest.sampleCollectedAt
-            ? record.appointmentTest.labAssistantId
-            : null,
-          collectedAt: record.appointmentTest.sampleCollectedAt,
-          receivedAtLabBy: record.appointmentTest.sampleReceivedAt
-            ? record.appointmentTest.labAssistantId
-            : null,
-          receivedAtLabAt: record.appointmentTest.sampleReceivedAt,
-          processingStartedAt: record.appointmentTest.processingStartedAt,
-          testingStartedAt: record.appointmentTest.testingStartedAt,
-          resultVerifiedAt: record.appointmentTest.qualityCheckedAt,
-          reportReadyAt: record.appointmentTest.readyForReportAt,
+          collectedBy: null,
+          collectedAt: null,
+          receivedAtLabBy: null,
+          receivedAtLabAt: null,
           updatedAt: now,
         })
         .onConflictDoNothing()
@@ -2920,14 +2925,6 @@ export class AppointmentTestService {
   private static buildTrackingSteps(appointmentTest: {
     paymentStatus: string;
     sampleStatus: string | null;
-    paymentCollectedAt: Date | null;
-    sampleCollectedAt: Date | null;
-    sampleReceivedAt: Date | null;
-    processingStartedAt: Date | null;
-    testingStartedAt: Date | null;
-    qualityCheckedAt: Date | null;
-    expectedReportReadyAt: Date | null;
-    readyForReportAt: Date | null;
   }) {
     const paymentPaid = this.isPaymentPaid(appointmentTest.paymentStatus);
     const sampleStatus =
@@ -2967,52 +2964,20 @@ export class AppointmentTestService {
         title: step.title,
         description: step.description,
         status,
-        timestamp: appointmentTest[step.timestampField],
-        expectedReportReadyAt: step.expectedReportReadyField
-          ? appointmentTest[step.expectedReportReadyField]
-          : null,
+        timestamp: null,
+        expectedReportReadyAt: null,
       };
     });
   }
 
   private static getTrackingEventCreatedAt(
-    appointmentTest: {
-      onHoldAt: Date | null;
-      rejectedAt: Date | null;
-      paymentCollectedAt: Date | null;
-      sampleCollectedAt: Date | null;
-      sampleReceivedAt: Date | null;
-      processingStartedAt: Date | null;
-      testingStartedAt: Date | null;
-      qualityCheckedAt: Date | null;
-      readyForReportAt: Date | null;
-    },
+    appointmentTest: unknown,
     eventType: string,
     fallback: Date
   ) {
-    switch (eventType) {
-      case APPOINTMENT_TEST_TRACKING_EVENT.ON_HOLD:
-        return appointmentTest.onHoldAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.REJECTED:
-        return appointmentTest.rejectedAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.PAYMENT_MARKED_PAID:
-      case APPOINTMENT_TEST_TRACKING_EVENT.SAMPLE_COLLECTION_PENDING:
-        return appointmentTest.paymentCollectedAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.SAMPLE_COLLECTED:
-        return appointmentTest.sampleCollectedAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.SAMPLE_RECEIVED_AT_LAB:
-        return appointmentTest.sampleReceivedAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.SAMPLE_PROCESSING:
-        return appointmentTest.processingStartedAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.TESTING_IN_PROGRESS:
-        return appointmentTest.testingStartedAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.QUALITY_CHECK_DONE:
-        return appointmentTest.qualityCheckedAt ?? fallback;
-      case APPOINTMENT_TEST_TRACKING_EVENT.COMPLETED:
-        return appointmentTest.readyForReportAt ?? fallback;
-      default:
-        return fallback;
-    }
+    void appointmentTest;
+    void eventType;
+    return fallback;
   }
 
   private static async verifyLabAccess(
@@ -3088,7 +3053,7 @@ export class AppointmentTestService {
 
     const [record] = await trx
       .select({
-        appointmentTest: LabOrderModel,
+        appointmentTest: labOrderWithPaymentColumns,
         appointmentId: LabOrderModel.appointmentId,
         appointmentDate: sql<Date>`coalesce(${AppointmentModel.appointmentDate}, ${LabOrderModel.createdAt})`,
         appointmentTime: AppointmentModel.appointmentTime,
@@ -3169,45 +3134,6 @@ export class AppointmentTestService {
 
     if (!record) {
       throw new HttpError(404, 'Appointment test not found');
-    }
-
-    // Once a test is claimed by an assistant (status changed -> labAssistantId set),
-    // it is private to the lab(s) that assistant belongs to. Unclaimed tests stay
-    // visible clinic-wide. The check is scoped to this labId so an assistant who
-    // belongs to multiple labs is handled correctly.
-    if (record.appointmentTest.labAssistantId) {
-      const [assistantInLab] = await trx
-        .select({ id: UserLabAssignmentsModel.id })
-        .from(UserLabAssignmentsModel)
-        .where(
-          and(
-            eq(
-              UserLabAssignmentsModel.userId,
-              record.appointmentTest.labAssistantId
-            ),
-            eq(UserLabAssignmentsModel.labId, labId),
-            eq(UserLabAssignmentsModel.clinicId, clinicId)
-          )
-        )
-        .limit(1);
-
-      if (!assistantInLab) {
-        const [assignedUser] = await trx
-          .select({ userType: UserModel.userType })
-          .from(UserModel)
-          .where(eq(UserModel.id, record.appointmentTest.labAssistantId))
-          .limit(1);
-
-        if (
-          assignedUser?.userType === 'Admin' ||
-          assignedUser?.userType === 'Super_Admin' ||
-          assignedUser?.userType === 'Receptionist'
-        ) {
-          return { ...record, performerUserType };
-        }
-
-        throw new HttpError(403, 'Appointment test is assigned to another lab');
-      }
     }
 
     return { ...record, performerUserType };
@@ -3415,6 +3341,13 @@ export class AppointmentTestService {
     // Process all in a single transaction
     const entries = await database.transaction(async (trx) => {
       const insertedEntries = [];
+      const now = new Date();
+      const labOrderGroupId = await this.getPrescribedLabOrderGroupId(
+        trx,
+        patientId,
+        doctorId,
+        clinicId
+      );
 
       for (const testId of testIds) {
         const test = testMap.get(testId)!;
@@ -3425,17 +3358,26 @@ export class AppointmentTestService {
           .values({
             appointmentId,
             testId,
+            labOrderGroupId,
             patientId,
             doctorId,
             clinicId,
             reportPdf, // Same PDF for all tests (optional)
-            price: test.price || 0,
             reportStatus: 'Initiated',
-            paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
-            workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED,
+            workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD,
             sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED,
+            onHoldAt: now,
           })
           .returning();
+
+        // Disabled: /assign no longer creates a lab_updated_payments row.
+        // await upsertLabOrderPayment(trx, {
+        //   labOrderId: newEntry.id,
+        //   price: test.price || 0,
+        //   paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
+        //   createdAt: now,
+        //   updatedAt: now,
+        // });
 
         // Log activity for each test
         await AppointmentActivityHistoryService.logActivity({
@@ -3448,7 +3390,11 @@ export class AppointmentTestService {
           tx: trx,
         });
 
-        insertedEntries.push(newEntry);
+        insertedEntries.push({
+          ...newEntry,
+          price: test.price || 0,
+          paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
+        });
       }
 
       // Optional: Log a bulk activity
@@ -3478,6 +3424,7 @@ export class AppointmentTestService {
     // Fire notifications (fire-and-forget)
     if (performerUserId && clinicId) {
       for (const entry of entries) {
+        if (!entry.testId) continue;
         const test = testMap.get(entry.testId)!;
         this.sendTestAssignedNotification(
           entry.id,
@@ -3491,6 +3438,54 @@ export class AppointmentTestService {
     }
 
     return entries;
+  }
+
+  private static async getPrescribedLabOrderGroupId(
+    trx: DbTransaction,
+    patientId: string,
+    doctorId: string,
+    clinicId?: string
+  ) {
+    // Two assigns racing for the same visit must not each start a group.
+    await trx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`lab-order-group:${clinicId ?? ''}:${patientId}:${doctorId}`}))`
+    );
+
+    // created_at comes from the DB clock here, so "today" is the DB's own day.
+    const sameDayOrders = await trx
+      .select({
+        id: LabOrderModel.id,
+        labOrderGroupId: LabOrderModel.labOrderGroupId,
+      })
+      .from(LabOrderModel)
+      .where(
+        and(
+          isNotNull(LabOrderModel.testId),
+          eq(LabOrderModel.patientId, patientId),
+          eq(LabOrderModel.doctorId, doctorId),
+          clinicId
+            ? eq(LabOrderModel.clinicId, clinicId)
+            : isNull(LabOrderModel.clinicId),
+          sql`${LabOrderModel.createdAt}::date = localtimestamp::date`
+        )
+      )
+      .orderBy(asc(LabOrderModel.createdAt));
+
+    const labOrderGroupId =
+      sameDayOrders.find((order) => order.labOrderGroupId)?.labOrderGroupId ??
+      randomUUID();
+    const ungroupedOrderIds = sameDayOrders
+      .filter((order) => !order.labOrderGroupId)
+      .map((order) => order.id);
+
+    if (ungroupedOrderIds.length > 0) {
+      await trx
+        .update(LabOrderModel)
+        .set({ labOrderGroupId })
+        .where(inArray(LabOrderModel.id, ungroupedOrderIds));
+    }
+
+    return labOrderGroupId;
   }
 
   private static async getOrCreatePatientTestFromLabCatalog(
@@ -3662,19 +3657,12 @@ export class AppointmentTestService {
     }
 
     const entries = await database.transaction(async (trx) => {
-      const performerUserType = await this.verifyLabAccess(
+      await this.verifyLabAccess(
         trx,
         payload.clinicId,
         payload.labId,
         payload.performerUserId
       );
-      // Only stamp labAssistantId when the creator is an actual lab assistant
-      // (tracked in UserLabAssignmentsModel). Admin/Receptionist walk-in
-      // creators aren't lab staff, so leave the test unclaimed rather than
-      // misattributing it to them, which would hide it from every real lab
-      // assistant's "Active Tests" view.
-      const creatorLabAssistantId =
-        performerUserType === 'Lab_Assistant' ? payload.performerUserId : null;
 
       const now = new Date();
       const resolvedTests = await this.resolveIndependentTests(
@@ -3684,6 +3672,12 @@ export class AppointmentTestService {
           clinicId: payload.clinicId,
           labId: payload.labId,
         },
+        now
+      );
+
+      const patientId = await this.getOrCreateWalkInPatientUser(
+        trx,
+        payload,
         now
       );
 
@@ -3700,41 +3694,46 @@ export class AppointmentTestService {
         })
         .returning();
 
-      const createdEntries: (typeof LabOrderModel.$inferSelect)[] = [];
+      const createdEntries: Array<
+        typeof LabOrderModel.$inferSelect & {
+          price: number;
+          paymentStatus: string;
+        }
+      > = [];
 
-      // Walk-in tests are staff-initiated: the lab assistant already picked
-      // these from our own verified catalog, so there is no external
-      // request to vet. Skip straight to ON_HOLD (the same state Accept
-      // produces) instead of INITIATED, so no Accept/Reject step is needed
-      // and the test lands directly in Active Tests.
+      // Walk-in tests now start in the same review state as doctor-ordered
+      // tests. Accepting the request moves it to ON_HOLD and creates the
+      // sample/barcode through the existing workflow.
       for (const resolvedTest of resolvedTests) {
         const test = resolvedTest.patientTest;
-        const uniqueTestId = await this.generateUniqueTestId(
-          trx,
-          resolvedTest.displayName
-        );
         const [newEntry] = await trx
           .insert(LabOrderModel)
           .values({
             appointmentId: null,
-            patientId: null,
+            patientId,
             doctorId: null,
             testId: test.id,
             isIndependent: true,
             independentPatientId: independentPatient.id,
-            labAssistantId: creatorLabAssistantId,
             clinicId: payload.clinicId,
-            price: resolvedTest.price ?? test.price ?? 0,
             reportStatus: 'Initiated',
-            uniqueTestId,
-            paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
-            workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD,
+            workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED,
             sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED,
-            onHoldAt: now,
             createdAt: now,
             updatedAt: now,
           })
           .returning();
+
+        await upsertLabOrderPayment(trx, {
+          labOrderId: newEntry.id,
+          labId: payload.labId,
+          createdBy: payload.performerUserId,
+          patientId: newEntry.patientId,
+          price: resolvedTest.price ?? test.price ?? 0,
+          paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
+          createdAt: now,
+          updatedAt: now,
+        });
 
         await this.ensureLabSample(
           trx,
@@ -3743,16 +3742,9 @@ export class AppointmentTestService {
               id: newEntry.id,
               clinicId: newEntry.clinicId,
               patientId: newEntry.patientId,
-              testId: newEntry.testId,
-              labAssistantId: newEntry.labAssistantId,
+              testId: test.id,
               workflowStatus: newEntry.workflowStatus,
               sampleStatus: newEntry.sampleStatus,
-              sampleCollectedAt: null,
-              sampleReceivedAt: null,
-              processingStartedAt: null,
-              testingStartedAt: null,
-              qualityCheckedAt: null,
-              readyForReportAt: null,
             },
             testName: resolvedTest.displayName,
             category: test.category,
@@ -3769,21 +3761,25 @@ export class AppointmentTestService {
           clinicId: payload.clinicId,
           labId: payload.labId,
           appointmentTestId: newEntry.id,
-          eventType: APPOINTMENT_TEST_TRACKING_EVENT.ON_HOLD,
+          eventType: APPOINTMENT_TEST_TRACKING_EVENT.INITIATED,
           title: 'Independent lab test created',
-          description: 'Walk-in test, auto-accepted at creation',
+          description: 'Walk-in test created and waiting for lab review',
           actorUserId: payload.performerUserId,
           metadata: {
             independentPatientId: independentPatient.id,
             requestedTestId: resolvedTest.inputTestId,
             testId: test.id,
             testName: resolvedTest.displayName,
-            autoAccepted: true,
+            autoAccepted: false,
           },
           createdAt: now,
         });
 
-        createdEntries.push(newEntry);
+        createdEntries.push({
+          ...newEntry,
+          price: resolvedTest.price ?? test.price ?? 0,
+          paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
+        });
       }
 
       return createdEntries;
@@ -3879,9 +3875,8 @@ export class AppointmentTestService {
         );
 
       // Doctor-ordered tests that match this lab's own verified catalog
-      // don't need a human to vet them - same reasoning as the walk-in path
-      // (see addIndependentTests): auto-accept them straight to ON_HOLD so
-      // they land in Active Tests without a manual Accept/Reject click.
+      // don't need a human to vet them: auto-accept them straight to ON_HOLD
+      // so they land in Active Tests without a manual Accept/Reject click.
       await this.autoAcceptEligibleAppointmentTests(
         trx,
         { clinicId, labId, userId },
@@ -3927,56 +3922,7 @@ export class AppointmentTestService {
       const includeDashboard = query.includeDashboard ?? true;
       const dateRange = this.getLabDashboardDateRange(query);
       const dateCondition = this.getLabDashboardDateCondition(dateRange);
-      const [currentUser] = await trx
-        .select({ userType: UserModel.userType })
-        .from(UserModel)
-        .where(eq(UserModel.id, userId))
-        .limit(1);
-      const isClinicLabAdmin =
-        currentUser?.userType === 'Admin' ||
-        currentUser?.userType === 'Super_Admin';
-      // Receptionists have full front-desk visibility over lab test data
-      // (gated separately via requirePermission(LAB_TEST_VIEW)), so they
-      // should see the same lab-wide records an Admin sees rather than being
-      // scoped to tests claimed under their own user id.
-      const hasLabWideVisibility =
-        isClinicLabAdmin || currentUser?.userType === 'Receptionist';
-
-      // Get all assistant IDs for this lab to show shared active tests
-      const assistants = await trx
-        .select({ userId: UserLabAssignmentsModel.userId })
-        .from(UserLabAssignmentsModel)
-        .where(
-          and(
-            eq(UserLabAssignmentsModel.labId, labId),
-            eq(UserLabAssignmentsModel.clinicId, clinicId)
-          )
-        );
-      const assistantIds = assistants.map((a) => a.userId);
-      const targetAssistantIds = Array.from(
-        new Set(
-          hasLabWideVisibility
-            ? [...assistantIds, userId]
-            : assistantIds.length > 0
-              ? assistantIds
-              : [userId]
-        )
-      );
-
       const baseConditions: SQL[] = [eq(LabOrderModel.clinicId, clinicId)];
-
-      // A test that has been claimed by an assistant (labAssistantId set, e.g.
-      // moved to ON_HOLD) is private to that assistant's lab. Unclaimed tests
-      // remain visible clinic-wide. Admins and receptionists bypass this
-      // scoping entirely since they need full lab-wide visibility.
-      if (!hasLabWideVisibility) {
-        baseConditions.push(
-          or(
-            isNull(LabOrderModel.labAssistantId),
-            inArray(LabOrderModel.labAssistantId, targetAssistantIds)
-          ) as SQL
-        );
-      }
 
       if (query.search?.trim()) {
         const pattern = `%${query.search.trim().toLowerCase()}%`;
@@ -3987,7 +3933,6 @@ export class AppointmentTestService {
             sql`lower(coalesce(${doctorUser.name}, ${IndependentPatientModel.doctorName}, '')) LIKE ${pattern}`,
             sql`lower(${TestCatalogModel.name}) LIKE ${pattern}`,
             sql`lower(${TestCatalogModel.category}) LIKE ${pattern}`,
-            sql`lower(${LabOrderModel.uniqueTestId}) LIKE ${pattern}`,
             sql`lower(${LabSamplesModel.barcodeValue}) LIKE ${pattern}`
           ) as SQL
         );
@@ -4024,29 +3969,21 @@ export class AppointmentTestService {
         );
       } else if (tab === 'new') {
         listConditions.push(
-          inArray(
-            LabOrderModel.workflowStatus,
-            REQUEST_REVIEW_TAB_WORKFLOW_STATUSES
-          )
+          inArray(LabOrderModel.workflowStatus, NEW_TAB_WORKFLOW_STATUSES)
         );
       } else if (tab === 'assigned') {
         listConditions.push(
           inArray(LabOrderModel.workflowStatus, ASSIGNED_TAB_WORKFLOW_STATUSES)
         );
-        if (!hasLabWideVisibility) {
-          // Unclaimed tests (e.g. a walk-in auto-accepted at creation, never
-          // picked up by a specific assistant) stay visible to every assistant
-          // of this lab, same as the base scoping already does for other tabs.
-          listConditions.push(
-            or(
-              isNull(LabOrderModel.labAssistantId),
-              inArray(LabOrderModel.labAssistantId, targetAssistantIds)
-            ) as SQL
-          );
-        }
       } else if (tab === 'my') {
+        listConditions.push(sql`false`);
+      } else if (tab === 'done') {
         listConditions.push(
-          inArray(LabOrderModel.labAssistantId, targetAssistantIds)
+          inArray(LabOrderModel.workflowStatus, DONE_TAB_WORKFLOW_STATUSES)
+        );
+      } else if (tab === 'notTaken') {
+        listConditions.push(
+          inArray(LabOrderModel.workflowStatus, NOT_TAKEN_TAB_WORKFLOW_STATUSES)
         );
       }
 
@@ -4069,26 +4006,21 @@ export class AppointmentTestService {
         );
       } else if (tab === 'new') {
         dashboardConditions.push(
-          eq(
-            LabOrderModel.workflowStatus,
-            APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED
-          )
+          inArray(LabOrderModel.workflowStatus, NEW_TAB_WORKFLOW_STATUSES)
         );
       } else if (tab === 'assigned') {
         dashboardConditions.push(
           inArray(LabOrderModel.workflowStatus, ASSIGNED_TAB_WORKFLOW_STATUSES)
         );
-        if (!hasLabWideVisibility) {
-          dashboardConditions.push(
-            or(
-              isNull(LabOrderModel.labAssistantId),
-              inArray(LabOrderModel.labAssistantId, targetAssistantIds)
-            ) as SQL
-          );
-        }
       } else if (tab === 'my') {
+        dashboardConditions.push(sql`false`);
+      } else if (tab === 'done') {
         dashboardConditions.push(
-          inArray(LabOrderModel.labAssistantId, targetAssistantIds)
+          inArray(LabOrderModel.workflowStatus, DONE_TAB_WORKFLOW_STATUSES)
+        );
+      } else if (tab === 'notTaken') {
+        dashboardConditions.push(
+          inArray(LabOrderModel.workflowStatus, NOT_TAKEN_TAB_WORKFLOW_STATUSES)
         );
       }
 
@@ -4351,7 +4283,7 @@ export class AppointmentTestService {
           .select({
             appointmentTestId: LabOrderModel.id,
             appointmentId: LabOrderModel.appointmentId,
-            uniqueTestId: LabOrderModel.uniqueTestId,
+            uniqueTestId: sql<string | null>`null`,
             isIndependent: LabOrderModel.isIndependent,
             independentPatientId: LabOrderModel.independentPatientId,
             patientName: patientNameExpression,
@@ -4361,19 +4293,19 @@ export class AppointmentTestService {
             doctorName: doctorNameExpression,
             testName: TestCatalogModel.name,
             category: TestCatalogModel.category,
-            price: LabOrderModel.price,
+            price: labOrderPaymentColumns.price,
             testPrice: TestCatalogModel.price,
             dateTime: dateTimeExpression,
             appointmentTime: AppointmentModel.appointmentTime,
             workflowStatus: LabOrderModel.workflowStatus,
-            paymentStatus: LabOrderModel.paymentStatus,
+            paymentStatus: labOrderPaymentColumns.paymentStatus,
             sampleStatus: LabOrderModel.sampleStatus,
             reportStatus: LabOrderModel.reportStatus,
             reportPdf: LabOrderModel.reportPdf,
-            labAssistantId: LabOrderModel.labAssistantId,
-            rejectedAt: LabOrderModel.rejectedAt,
-            rejectionReason: LabOrderModel.rejectionReason,
-            expectedReportReadyAt: LabOrderModel.expectedReportReadyAt,
+            labAssistantId: sql<string | null>`null`,
+            rejectedAt: sql<Date | null>`null`,
+            rejectionReason: sql<string | null>`null`,
+            expectedReportReadyAt: sql<Date | null>`null`,
             sampleId: LabSamplesModel.id,
             sampleBarcodeValue: LabSamplesModel.barcodeValue,
             sampleBarcodeType: LabSamplesModel.barcodeType,
@@ -4409,7 +4341,7 @@ export class AppointmentTestService {
 
       const dashboardSelection = {
         appointmentTestId: LabOrderModel.id,
-        uniqueTestId: LabOrderModel.uniqueTestId,
+        uniqueTestId: sql<string | null>`null`,
         patientName: patientNameExpression,
         patientMobile: patientMobileExpression,
         patientAge: patientAgeExpression,
@@ -4418,23 +4350,23 @@ export class AppointmentTestService {
         doctorDepartment: doctorProfessional.speciality,
         testName: TestCatalogModel.name,
         category: TestCatalogModel.category,
-        price: LabOrderModel.price,
+        price: labOrderPaymentColumns.price,
         testPrice: TestCatalogModel.price,
         dateTime: dateTimeExpression,
         appointmentTime: AppointmentModel.appointmentTime,
         workflowStatus: LabOrderModel.workflowStatus,
-        paymentStatus: LabOrderModel.paymentStatus,
+        paymentStatus: labOrderPaymentColumns.paymentStatus,
         sampleStatus: LabOrderModel.sampleStatus,
         reportStatus: LabOrderModel.reportStatus,
         reportPdf: LabOrderModel.reportPdf,
         sampleType: LabSamplesModel.sampleType,
-        labAssistantId: LabOrderModel.labAssistantId,
-        rejectedAt: LabOrderModel.rejectedAt,
-        rejectionReason: LabOrderModel.rejectionReason,
+        labAssistantId: sql<string | null>`null`,
+        rejectedAt: sql<Date | null>`null`,
+        rejectionReason: sql<string | null>`null`,
         onHoldAt: LabOrderModel.onHoldAt,
-        paymentCollectedAt: LabOrderModel.paymentCollectedAt,
-        expectedReportReadyAt: LabOrderModel.expectedReportReadyAt,
-        readyForReportAt: LabOrderModel.readyForReportAt,
+        paymentCollectedAt: sql<Date | null>`null`,
+        expectedReportReadyAt: sql<Date | null>`null`,
+        readyForReportAt: sql<Date | null>`null`,
         createdAt: LabOrderModel.createdAt,
         updatedAt: LabOrderModel.updatedAt,
       };
@@ -4870,11 +4802,9 @@ export class AppointmentTestService {
     });
   }
 
-  // Finds INITIATED requests that match this lab's own verified catalog and
-  // moves them straight to ON_HOLD (the same state a manual Accept
-  // produces), without waiting for a lab assistant to click Accept. Mirrors
-  // addIndependentTests: there's nothing to "vet" once the request maps
-  // cleanly onto a catalog entry the lab has already configured.
+  // Finds doctor-ordered INITIATED requests that match this lab's own verified
+  // catalog and moves them straight to ON_HOLD (the same state a manual Accept
+  // produces), without waiting for a lab assistant to click Accept.
   private static async autoAcceptEligibleAppointmentTests(
     trx: DbTransaction,
     context: { clinicId: string; labId: string; userId: string },
@@ -4898,6 +4828,7 @@ export class AppointmentTestService {
       .where(
         and(
           eq(LabOrderModel.clinicId, context.clinicId),
+          eq(LabOrderModel.isIndependent, false),
           eq(
             LabOrderModel.workflowStatus,
             APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED
@@ -4937,20 +4868,10 @@ export class AppointmentTestService {
     }
 
     const now = new Date();
-    const uniqueTestId =
-      record.appointmentTest.uniqueTestId ??
-      (await this.generateUniqueTestId(trx, record.testName));
-
-    // Left unclaimed (labAssistantId untouched) rather than attributed to
-    // whichever user's request happened to trigger this - same as an
-    // unclaimed walk-in test, it stays visible to every assistant of this
-    // lab instead of being pinned to one person who never actually reviewed it.
     const [updated] = await trx
       .update(LabOrderModel)
       .set({
-        uniqueTestId,
         workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD,
-        paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
         sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED,
         onHoldAt: now,
         updatedAt: now,
@@ -4974,6 +4895,14 @@ export class AppointmentTestService {
       // Already moved by a concurrent request - nothing left to do.
       return;
     }
+
+    await upsertLabOrderPayment(trx, {
+      labOrderId: appointmentTestId,
+      labId: context.labId,
+      createdBy: context.userId,
+      paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
+      updatedAt: now,
+    });
 
     await this.ensureLabSample(
       trx,
@@ -5023,18 +4952,12 @@ export class AppointmentTestService {
       }
 
       const now = new Date();
-      const uniqueTestId =
-        record.appointmentTest.uniqueTestId ??
-        (await this.generateUniqueTestId(trx, record.testName));
       const [updated] = await trx
         .update(LabOrderModel)
         .set({
-          uniqueTestId,
           workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD,
-          paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
           sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED,
           onHoldAt: now,
-          labAssistantId: context.userId,
           updatedAt: now,
         })
         .where(
@@ -5049,9 +4972,7 @@ export class AppointmentTestService {
         )
         .returning({
           id: LabOrderModel.id,
-          uniqueTestId: LabOrderModel.uniqueTestId,
           workflowStatus: LabOrderModel.workflowStatus,
-          paymentStatus: LabOrderModel.paymentStatus,
           sampleStatus: LabOrderModel.sampleStatus,
         });
 
@@ -5059,13 +4980,20 @@ export class AppointmentTestService {
         throw new HttpError(409, 'Appointment test status already moved');
       }
 
+      const payment = await upsertLabOrderPayment(trx, {
+        labOrderId: appointmentTestId,
+        labId: context.labId,
+        createdBy: context.userId,
+        paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PENDING,
+        updatedAt: now,
+      });
+
       const sample = await this.ensureLabSample(
         trx,
         {
           ...record,
           appointmentTest: {
             ...record.appointmentTest,
-            labAssistantId: context.userId,
             workflowStatus: updated.workflowStatus,
             sampleStatus: updated.sampleStatus,
           },
@@ -5092,7 +5020,7 @@ export class AppointmentTestService {
 
       return {
         appointmentTestId: updated.id,
-        uniqueTestId: updated.uniqueTestId,
+        uniqueTestId: null,
         barcodeValue: sample?.barcodeValue ?? null,
         barcodeType: sample?.barcodeType ?? 'CODE128',
         scanValue,
@@ -5100,7 +5028,103 @@ export class AppointmentTestService {
         workflowStatus: this.getLabResponseWorkflowStatus(
           updated.workflowStatus
         ),
-        paymentStatus: updated.paymentStatus,
+        paymentStatus: payment[0]?.paymentStatus ?? null,
+        sampleStatus: updated.sampleStatus,
+      };
+    });
+  }
+
+  static async moveOnHoldToInitiated(
+    appointmentTestId: string,
+    context: { clinicId: string; labId: string; userId: string }
+  ) {
+    return await database.transaction(async (trx) => {
+      const record = await this.getScopedAppointmentTest(
+        trx,
+        appointmentTestId,
+        context.clinicId,
+        context.labId,
+        context.userId
+      );
+
+      if (
+        record.appointmentTest.workflowStatus !==
+        APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD
+      ) {
+        throw new HttpError(409, 'Only pending tests can move to initiated');
+      }
+
+      if (!this.isPaymentPending(record.appointmentTest.paymentStatus)) {
+        throw new HttpError(
+          409,
+          'Only pending payment tests can move to initiated'
+        );
+      }
+
+      const currentSampleStatus =
+        record.appointmentTest.sampleStatus ??
+        APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED;
+
+      if (currentSampleStatus !== APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED) {
+        throw new HttpError(
+          409,
+          'Sample process has already started for this test'
+        );
+      }
+
+      const now = new Date();
+      const [updated] = await trx
+        .update(LabOrderModel)
+        .set({
+          workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.INITIATED,
+          sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED,
+          onHoldAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(LabOrderModel.id, appointmentTestId),
+            eq(LabOrderModel.clinicId, context.clinicId),
+            eq(
+              LabOrderModel.workflowStatus,
+              APPOINTMENT_TEST_WORKFLOW_STATUS.ON_HOLD
+            )
+          )
+        )
+        .returning({
+          id: LabOrderModel.id,
+          workflowStatus: LabOrderModel.workflowStatus,
+          sampleStatus: LabOrderModel.sampleStatus,
+        });
+
+      if (!updated) {
+        throw new HttpError(409, 'Appointment test status already moved');
+      }
+
+      const payment = await getLabOrderPayment(trx, appointmentTestId);
+
+      await trx
+        .update(LabSamplesModel)
+        .set({
+          status: APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED,
+          updatedAt: now,
+        })
+        .where(eq(LabSamplesModel.appointmentTestId, appointmentTestId));
+
+      await this.createTrackingEvent(trx, {
+        clinicId: context.clinicId,
+        labId: context.labId,
+        appointmentTestId,
+        eventType: APPOINTMENT_TEST_TRACKING_EVENT.INITIATED,
+        title: 'Test moved to initiated',
+        actorUserId: context.userId,
+        createdAt: now,
+      });
+
+      return {
+        appointmentTestId: updated.id,
+        workflowStatus: updated.workflowStatus,
+        paymentStatus: payment?.paymentStatus ?? null,
         sampleStatus: updated.sampleStatus,
       };
     });
@@ -5141,10 +5165,6 @@ export class AppointmentTestService {
         .update(LabOrderModel)
         .set({
           workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.REJECTED,
-          rejectedAt: now,
-          rejectionReason: payload.reason ?? null,
-          labAssistantId:
-            record.appointmentTest.labAssistantId ?? context.userId,
           updatedAt: now,
         })
         .where(
@@ -5160,7 +5180,6 @@ export class AppointmentTestService {
         .returning({
           id: LabOrderModel.id,
           workflowStatus: LabOrderModel.workflowStatus,
-          rejectionReason: LabOrderModel.rejectionReason,
         });
 
       if (!updated) {
@@ -5189,7 +5208,7 @@ export class AppointmentTestService {
       return {
         appointmentTestId: updated.id,
         workflowStatus: updated.workflowStatus,
-        rejectionReason: updated.rejectionReason,
+        rejectionReason: payload.reason ?? null,
       };
     });
   }
@@ -5291,8 +5310,8 @@ export class AppointmentTestService {
             appointmentTest.sampleStatus ??
             APPOINTMENT_TEST_SAMPLE_STATUS.NOT_STARTED,
           reportStatus: appointmentTest.reportStatus,
-          expectedReportReadyAt: appointmentTest.expectedReportReadyAt,
-          readyForReportAt: appointmentTest.readyForReportAt,
+          expectedReportReadyAt: null,
+          readyForReportAt: sample?.reportReadyAt ?? null,
         },
         patient:
           record.patientName || record.patientMobile
@@ -5355,12 +5374,12 @@ export class AppointmentTestService {
           collectedAmount: paymentDetails.amount,
           paymentMethod: paymentDetails.paymentMethod,
           transactionId: paymentDetails.transactionId,
-          collectedAt: appointmentTest.paymentCollectedAt,
-          collectedBy: appointmentTest.paymentCollectedBy,
+          collectedAt: null,
+          collectedBy: null,
         },
         reportSchedule: {
-          expectedReportReadyAt: appointmentTest.expectedReportReadyAt,
-          readyForReportAt: appointmentTest.readyForReportAt,
+          expectedReportReadyAt: null,
+          readyForReportAt: sample?.reportReadyAt ?? null,
           canEditExpectedReportReadyAt: this.canEditExpectedReportReadyAt(
             appointmentTest.sampleStatus
           ),
@@ -5368,14 +5387,6 @@ export class AppointmentTestService {
         steps: this.buildTrackingSteps({
           paymentStatus: appointmentTest.paymentStatus,
           sampleStatus: appointmentTest.sampleStatus,
-          paymentCollectedAt: appointmentTest.paymentCollectedAt,
-          sampleCollectedAt: appointmentTest.sampleCollectedAt,
-          sampleReceivedAt: appointmentTest.sampleReceivedAt,
-          processingStartedAt: appointmentTest.processingStartedAt,
-          testingStartedAt: appointmentTest.testingStartedAt,
-          qualityCheckedAt: appointmentTest.qualityCheckedAt,
-          expectedReportReadyAt: appointmentTest.expectedReportReadyAt,
-          readyForReportAt: appointmentTest.readyForReportAt,
         }),
         events: timelineEvents,
         nextAction: paymentPaid
@@ -5717,26 +5728,13 @@ export class AppointmentTestService {
         throw new HttpError(409, 'Payment has already been updated');
       }
 
-      // Only reassign labAssistantId when the payer is an actual lab
-      // assistant. A Receptionist/Admin collecting payment isn't lab staff —
-      // stamping their id here would hide the test from every real lab
-      // assistant's list (same pitfall as at walk-in creation).
-      const labAssistantId =
-        record.performerUserType === 'Lab_Assistant'
-          ? context.userId
-          : record.appointmentTest.labAssistantId;
-
       const [updated] = await trx
         .update(LabOrderModel)
         .set({
           workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.IN_PROGRESS,
           reportStatus: 'InProgress',
-          paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PAID,
-          paymentCollectedAt: now,
-          paymentCollectedBy: context.userId,
           sampleStatus:
             APPOINTMENT_TEST_SAMPLE_STATUS.SAMPLE_COLLECTION_PENDING,
-          labAssistantId,
           updatedAt: now,
         })
         .where(
@@ -5752,13 +5750,20 @@ export class AppointmentTestService {
         .returning({
           id: LabOrderModel.id,
           workflowStatus: LabOrderModel.workflowStatus,
-          paymentStatus: LabOrderModel.paymentStatus,
           sampleStatus: LabOrderModel.sampleStatus,
         });
 
       if (!updated) {
         throw new HttpError(409, 'Appointment test status already moved');
       }
+
+      const payment = await upsertLabOrderPayment(trx, {
+        labOrderId: appointmentTestId,
+        labId: context.labId,
+        createdBy: context.userId,
+        paymentStatus: APPOINTMENT_TEST_PAYMENT_STATUS.PAID,
+        updatedAt: now,
+      });
 
       await this.ensureLabSample(
         trx,
@@ -5825,7 +5830,7 @@ export class AppointmentTestService {
         appointmentTestId: updated.id,
         workflowStatus: updated.workflowStatus,
         paymentStatus: this.normalizePaymentStatus(
-          updated.paymentStatus
+          payment[0]?.paymentStatus
         )?.toUpperCase(),
         paymentMethod,
         transactionId: payload.transactionId ?? null,
@@ -5886,12 +5891,10 @@ export class AppointmentTestService {
       const [updated] = await trx
         .update(LabOrderModel)
         .set({
-          expectedReportReadyAt: payload.expectedReportReadyAt,
           ...(shouldStartProcessing
             ? {
                 sampleStatus: APPOINTMENT_TEST_SAMPLE_STATUS.SAMPLE_PROCESSING,
                 workflowStatus: APPOINTMENT_TEST_WORKFLOW_STATUS.IN_PROGRESS,
-                processingStartedAt: now,
               }
             : {}),
           updatedAt: now,
@@ -5906,9 +5909,7 @@ export class AppointmentTestService {
         .returning({
           id: LabOrderModel.id,
           workflowStatus: LabOrderModel.workflowStatus,
-          paymentStatus: LabOrderModel.paymentStatus,
           sampleStatus: LabOrderModel.sampleStatus,
-          expectedReportReadyAt: LabOrderModel.expectedReportReadyAt,
         });
 
       if (!updated) {
@@ -5957,9 +5958,11 @@ export class AppointmentTestService {
         workflowStatus: this.getLabResponseWorkflowStatus(
           updated.workflowStatus
         ),
-        paymentStatus: this.normalizePaymentStatus(updated.paymentStatus),
+        paymentStatus: this.normalizePaymentStatus(
+          record.appointmentTest.paymentStatus
+        ),
         sampleStatus: updated.sampleStatus,
-        expectedReportReadyAt: updated.expectedReportReadyAt,
+        expectedReportReadyAt: payload.expectedReportReadyAt,
         nextAction: this.getNextAction(updated.sampleStatus),
       };
     });
@@ -6013,7 +6016,6 @@ export class AppointmentTestService {
         .set({
           sampleStatus: transition.to,
           workflowStatus,
-          [transition.timestampField]: now,
           updatedAt: now,
         })
         .where(
@@ -6026,7 +6028,6 @@ export class AppointmentTestService {
         .returning({
           id: LabOrderModel.id,
           workflowStatus: LabOrderModel.workflowStatus,
-          paymentStatus: LabOrderModel.paymentStatus,
           sampleStatus: LabOrderModel.sampleStatus,
         });
 
@@ -6070,7 +6071,7 @@ export class AppointmentTestService {
       return {
         appointmentTestId: updated.id,
         workflowStatus: updated.workflowStatus,
-        paymentStatus: updated.paymentStatus,
+        paymentStatus: record.appointmentTest.paymentStatus,
         sampleStatus: updated.sampleStatus,
         nextAction:
           transition.to === APPOINTMENT_TEST_SAMPLE_STATUS.COMPLETED
@@ -6124,8 +6125,9 @@ export class AppointmentTestService {
           test: TestCatalogModel,
 
           reportPdf: LabOrderModel.reportPdf,
-          paymentStatus: LabOrderModel.paymentStatus,
           sampleStatus: LabOrderModel.sampleStatus,
+          paymentStatus: labOrderPaymentColumns.paymentStatus,
+          workflowStatus: LabOrderModel.workflowStatus,
           assignedAt: LabOrderModel.createdAt,
 
           doctorId: AppointmentModel.doctorId,
@@ -6197,7 +6199,7 @@ export class AppointmentTestService {
           test: TestCatalogModel,
 
           reportPdf: LabOrderModel.reportPdf,
-          paymentStatus: LabOrderModel.paymentStatus,
+          paymentStatus: labOrderPaymentColumns.paymentStatus,
           sampleStatus: LabOrderModel.sampleStatus,
           assignedAt: LabOrderModel.createdAt,
 
@@ -6262,10 +6264,10 @@ export class AppointmentTestService {
     id: string,
     payload: {
       doctorId?: string;
-      labAssistantId?: string;
-      reportStatus?: 'Initiated' | 'InProgress' | 'Completed';
+      reportStatus?: 'Initiated' | 'InProgress' | 'Collected' | 'Completed';
       reportPdf?: string;
       paymentStatus?: 'pending' | 'paid' | 'failed';
+      sampleStatus?: string | null;
       workflowStatus?: AppointmentTestWorkflowStatus;
     },
     performerUserId?: string,
@@ -6286,7 +6288,7 @@ export class AppointmentTestService {
 
       const [appointmentTestRecord] = await trx
         .select({
-          appointmentTest: LabOrderModel,
+          appointmentTest: labOrderWithPaymentColumns,
           appointmentId: AppointmentModel.id,
           patientId: AppointmentModel.patientId,
           test: TestCatalogModel, // ✅ ADD THIS to get test name

@@ -2,12 +2,13 @@ import { and, eq, sql, desc } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { AppointmentPaymentModel } from '../../appointments/models/appointment-payment.model';
-import { VisitingRequestModel } from '../../appointments/models/visitingRequest.model';
-import { FinancialLedgerModel } from '../../appointments/models/financialLedger.model';
+import { AppointmentMoneySync } from '../../appointments/services/appointmentMoneySync.service';
+import { SYSTEM_ACTOR_ID } from '../../money';
 import { HttpError } from '../../../middlewear/errorHandler';
 
 import { razorpayInstance } from '../../../utils/razorpay';
 import { signalAppointmentChange } from '../../realtime';
+import { AppointmentNotificationService } from '../../notifications/services/appointmentNotification.service';
 import logger from '../../../utils/logger';
 import redisClient from '../../../configurations/redisConfig';
 import {
@@ -23,6 +24,7 @@ import { PolicyEvaluationService } from './policyEvaluation.service';
 import { CancellationCacheService } from './cancellationCache.service';
 import { ICancellationRequestPayload } from '../interfaces';
 import { autoNoShowQueue } from '../../appointments/services/autoNoShow.service';
+import { AppointmentActivityHistoryService } from '../../appointments/services/appointmentActivityHistory.service';
 import { CANCELLATION_REASONS } from '../constants/reasons';
 import { AppointmentEngineOrchestrator } from '../../appointment-engine/services/orchestrator.service';
 import {
@@ -31,6 +33,7 @@ import {
 } from '../../appointment-engine/types/engine.types';
 import { UserModel } from '../../users/models/user.model';
 import { PatientFamilyLinksModel } from '../../patient/models/patientFamilyLinks.model';
+import { RefundReviewModel } from '../../clinicFinance/models/refundReview.model';
 
 function formatCooldown(seconds: number): string {
   if (seconds < 60) {
@@ -126,7 +129,15 @@ export class CancellationPolicyService {
     }
 
     return {
-      globalPolicy,
+      globalPolicy: globalPolicy
+        ? {
+            ...globalPolicy,
+            defaultRefundCooldownHours: 6,
+            defaultRefundPercentage: 100,
+            partialRefundCooldownHours: 0,
+            partialRefundPercentage: 0,
+          }
+        : null,
       clinicPolicy: clinicPolicy || DEFAULT_CLINIC_POLICY,
       isCustomClinicPolicy: !!clinicPolicy,
     };
@@ -397,6 +408,10 @@ export class CancellationPolicyService {
       refundResult = await PolicyEvaluationService.calculateRefund(
         resolvedAppointmentId
       );
+      const requiresManualReview =
+        process.env.ENABLE_REFUND_REVIEWS === 'true' &&
+        userRole.toLowerCase() === 'patient' &&
+        payload.reasonCode === 'medical_emergency';
 
       // 4. Create Cancellation Request record
       const [cancellationRequest] = await tx
@@ -433,26 +448,32 @@ export class CancellationPolicyService {
         .where(eq(AppointmentModel.id, resolvedAppointmentId))
         .returning();
 
+      // Same entry the other status changes write, so the visit's history shows who cancelled and why.
+      await AppointmentActivityHistoryService.logActivity({
+        appointmentId: resolvedAppointmentId,
+        action: 'STATUS_CHANGED',
+        performedBy: userId,
+        previousState: { appointmentStatus: appointment.appointmentStatus },
+        newState: { appointmentStatus: 'Cancelled' },
+        remarks: `Cancelled · ${formattedReason.replace(/^Reason: /, '').replace('\nComments: ', ' · ')}`,
+        tx,
+      });
+
+      // An unpaid visit stops owing now (charge taken back, "Not Charged"); a paid one keeps it for the refund below.
+      await AppointmentMoneySync.afterChange(tx, resolvedAppointmentId, userId);
+
       // Remove auto NoShow task if present
       await autoNoShowQueue.removeAutoNoShow(resolvedAppointmentId);
 
-      // If this appointment was generated from a visiting request, revoke
-      // the link so the request goes back to Pending and can be rebooked.
-      await tx
-        .update(VisitingRequestModel)
-        .set({
-          status: 'Pending',
-          generatedAppointmentId: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          eq(VisitingRequestModel.generatedAppointmentId, resolvedAppointmentId)
-        );
-
       // 6. Handle refund details in database
       let refundRecordId: string | null = null;
+      let effectiveRefundAmount = refundResult.refundAmount;
+      let refundReviewCreated = false;
 
-      if (refundResult.eligible && refundResult.refundAmount > 0) {
+      if (
+        (refundResult.eligible && refundResult.refundAmount > 0) ||
+        requiresManualReview
+      ) {
         const [payment] = await tx
           .select()
           .from(AppointmentPaymentModel)
@@ -463,6 +484,12 @@ export class CancellationPolicyService {
 
         if (payment) {
           paymentRecord = payment;
+          const reviewAmount = requiresManualReview
+            ? refundResult.refundAmount > 0
+              ? refundResult.refundAmount
+              : Number(payment.primaryServicePrice || payment.price || 0)
+            : refundResult.refundAmount;
+          effectiveRefundAmount = reviewAmount;
           // Create a pending refund record
           const [refundRecord] = await tx
             .insert(CancellationRefundModel)
@@ -471,17 +498,39 @@ export class CancellationPolicyService {
               appointmentId: resolvedAppointmentId,
               clinicId: appointment.clinicId,
               paymentId: payment.id,
-              refundType: refundResult.refundType,
+              refundType: requiresManualReview
+                ? reviewAmount >=
+                  Number(payment.primaryServicePrice || payment.price || 0)
+                  ? 'Full'
+                  : 'Partial'
+                : refundResult.refundType,
               originalPrice: payment.price || '0.00',
-              refundAmount: String(refundResult.refundAmount),
-              refundStatus: ['razorpay', 'online'].includes(
-                payment.paymentMode?.toLowerCase() || ''
-              )
-                ? 'Processing'
-                : 'Pending', // pending for cash/manual
+              refundAmount: String(reviewAmount),
+              refundStatus: requiresManualReview
+                ? 'Pending'
+                : ['razorpay', 'online'].includes(
+                      payment.paymentMode?.toLowerCase() || ''
+                    )
+                  ? 'Processing'
+                  : 'Pending', // pending for cash/manual
             })
             .returning();
           refundRecordId = refundRecord.id;
+
+          if (requiresManualReview) {
+            await tx.insert(RefundReviewModel).values({
+              clinicId: appointment.clinicId,
+              appointmentId: resolvedAppointmentId,
+              cancellationRequestId: cancellationRequest.id,
+              cancellationRefundId: refundRecord.id,
+              reasonCategory: payload.reasonCode,
+              policyReference: 'Medical emergency exception review',
+              amount: String(reviewAmount),
+              status: 'PENDING',
+              patientNote: payload.comments || null,
+            });
+            refundReviewCreated = true;
+          }
         }
       }
 
@@ -507,6 +556,9 @@ export class CancellationPolicyService {
         refundRecordId,
         doctorName,
         cooldownSeconds,
+        requiresManualReview,
+        refundReviewCreated,
+        effectiveRefundAmount,
       };
     });
 
@@ -529,6 +581,15 @@ export class CancellationPolicyService {
     // doctor's queue and reception's board never learned the slot freed up.
     signalAppointmentChange(result.appointment, 'appointment.cancelled');
 
+    // Staff cancels from the web app land here, never in notifyAppointmentCanceled.
+    // The approved body blames the doctor's unavailability, so not for a patient's own cancel.
+    if (userRole !== 'Patient') {
+      void AppointmentNotificationService.sendPatientWhatsApp(
+        result.appointment.id,
+        'appointmentCancelled'
+      );
+    }
+
     const isOnlinePayment =
       ['razorpay', 'online'].includes(
         paymentRecord?.paymentMode?.toLowerCase() || ''
@@ -540,7 +601,8 @@ export class CancellationPolicyService {
       result.refundRecordId &&
       paymentRecord &&
       isOnlinePayment &&
-      gatewayPaymentId
+      gatewayPaymentId &&
+      !result.requiresManualReview
     ) {
       try {
         const amountInPaise = Math.round(refundResult.refundAmount * 100);
@@ -587,34 +649,29 @@ export class CancellationPolicyService {
             .update(AppointmentPaymentModel)
             .set({
               paymentStatus: 'Refunded',
-              refundMode: 'Razorpay',
-              refundedAmount: String(refundResult.refundAmount),
-              refundNotes: `Auto-refunded via policy engine. Razorpay Refund ID: ${refundRes.id}`,
               updatedAt: new Date(),
             })
             .where(eq(AppointmentPaymentModel.id, paymentRecord!.id));
 
-          // Append ledger entries
-          await tx.insert(FinancialLedgerModel).values([
+          // The refund itself with its own Razorpay id, so Finance can match it to its cancellation.
+          await AppointmentMoneySync.afterChange(
+            tx,
+            result.appointment.id,
+            SYSTEM_ACTOR_ID,
             {
-              appointmentId: result.appointment.id,
-              clinicId: result.appointment.clinicId,
-              paymentId: paymentRecord!.id,
-              entryType: 'REFUND',
-              amount: String(-refundResult.refundAmount),
-              description: `Patient refund issued. Razorpay Refund ID: ${refundRes.id}`,
-              gatewayReferenceId: refundRes.id,
-            },
-            {
-              appointmentId: result.appointment.id,
-              clinicId: result.appointment.clinicId,
-              paymentId: paymentRecord!.id,
-              entryType: 'TRANSFER_REVERSAL',
-              amount: String(refundResult.refundAmount),
-              description: `Automatic split transfer reversal. Razorpay Refund ID: ${refundRes.id}`,
-              gatewayReferenceId: refundRes.id,
-            },
-          ]);
+              move: {
+                kind: 'refund',
+                amountPaise: Math.round(
+                  Number(refundResult.refundAmount) * 100
+                ),
+                paymentMode: 'Razorpay',
+                channel: 'online',
+                gatewayRef: refundRes.id,
+                reason: 'Cancellation refund (policy)',
+                requestId: `razorpay:refund:${refundRes.id}`,
+              },
+            }
+          );
         });
 
         finalRefundStatus = 'Completed';
@@ -648,47 +705,30 @@ export class CancellationPolicyService {
               .update(AppointmentPaymentModel)
               .set({
                 paymentStatus: 'Refunded',
-                refundMode: 'razorpay',
-                refundedAmount: String(refundResult.refundAmount),
-                refundNotes: `Already refunded in Razorpay. Local DB synced.`,
                 updatedAt: new Date(),
               })
               .where(eq(AppointmentPaymentModel.id, paymentRecord!.id));
 
-            // Check if ledger already has REFUND logged to prevent duplicate
-            const [existingLedgerRefund] = await tx
-              .select({ id: FinancialLedgerModel.id })
-              .from(FinancialLedgerModel)
-              .where(
-                and(
-                  eq(FinancialLedgerModel.paymentId, paymentRecord!.id),
-                  eq(FinancialLedgerModel.entryType, 'REFUND')
-                )
-              )
-              .limit(1);
-
-            if (!existingLedgerRefund) {
-              await tx.insert(FinancialLedgerModel).values([
-                {
-                  appointmentId: result.appointment.id,
-                  clinicId: result.appointment.clinicId,
-                  paymentId: paymentRecord!.id,
-                  entryType: 'REFUND',
-                  amount: String(-refundResult.refundAmount),
-                  description: `Patient refund processed. Synced from Razorpay.`,
-                  gatewayReferenceId: paymentRecord!.transactionId || '',
+            // Razorpay gave no refund id here; one stable key per refund record records it once.
+            await AppointmentMoneySync.afterChange(
+              tx,
+              result.appointment.id,
+              SYSTEM_ACTOR_ID,
+              {
+                move: {
+                  kind: 'refund',
+                  amountPaise: Math.round(
+                    Number(refundResult.refundAmount) * 100
+                  ),
+                  paymentMode: 'Razorpay',
+                  channel: 'online',
+                  gatewayRef: null,
+                  reason:
+                    'Cancellation refund (policy, already refunded in Razorpay)',
+                  requestId: `policy:refund:${result.refundRecordId}`,
                 },
-                {
-                  appointmentId: result.appointment.id,
-                  clinicId: result.appointment.clinicId,
-                  paymentId: paymentRecord!.id,
-                  entryType: 'TRANSFER_REVERSAL',
-                  amount: String(refundResult.refundAmount),
-                  description: `Automatic split transfer reversal. Synced from Razorpay.`,
-                  gatewayReferenceId: paymentRecord!.transactionId || '',
-                },
-              ]);
-            }
+              }
+            );
           });
 
           finalRefundStatus = 'Completed';
@@ -710,6 +750,8 @@ export class CancellationPolicyService {
           finalRefundStatus = 'Failed';
         }
       }
+    } else if (result.refundReviewCreated) {
+      finalRefundStatus = 'PendingReview';
     } else if (result.refundRecordId && paymentRecord) {
       // For cash/manual, it stays 'Pending'
       finalRefundStatus = 'Pending';
@@ -749,7 +791,8 @@ export class CancellationPolicyService {
     return {
       success: true,
       refundStatus: finalRefundStatus,
-      refundAmount: refundResult.refundAmount,
+      refundAmount:
+        (result as any).effectiveRefundAmount ?? refundResult.refundAmount,
       message: `Appointment cancelled successfully. Refund status: ${finalRefundStatus}.`,
       note,
     };

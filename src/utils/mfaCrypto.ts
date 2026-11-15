@@ -10,23 +10,23 @@ const KEY_LENGTH = 32; // 32 bytes for AES-256
  * @returns The 32-byte encryption key as a Buffer
  * @throws Error if the key is missing or invalid
  */
-function getEncryptionKey(): Buffer {
-  const hexKey = process.env.MFA_ENCRYPTION_KEY;
+function getEncryptionKey(keyName = 'MFA_ENCRYPTION_KEY'): Buffer {
+  const hexKey = process.env[keyName];
 
   if (!hexKey) {
     throw new Error(
-      'MFA_ENCRYPTION_KEY environment variable is not set. A 32-byte hex-encoded key is required.'
+      `${keyName} environment variable is not set. A 32-byte hex-encoded key is required.`
     );
   }
 
   if (hexKey.length !== KEY_LENGTH * 2) {
     throw new Error(
-      `MFA_ENCRYPTION_KEY must be exactly ${KEY_LENGTH * 2} hex characters (${KEY_LENGTH} bytes). Got ${hexKey.length} characters.`
+      `${keyName} must be exactly ${KEY_LENGTH * 2} hex characters (${KEY_LENGTH} bytes). Got ${hexKey.length} characters.`
     );
   }
 
   if (!/^[0-9a-fA-F]+$/.test(hexKey)) {
-    throw new Error('MFA_ENCRYPTION_KEY must be a valid hexadecimal string.');
+    throw new Error(`${keyName} must be a valid hexadecimal string.`);
   }
 
   return Buffer.from(hexKey, 'hex');
@@ -40,8 +40,8 @@ function getEncryptionKey(): Buffer {
  * @returns Encrypted string in format: {iv_hex}:{ciphertext_hex}:{auth_tag_hex}
  * @throws Error if encryption fails or the key is missing/invalid
  */
-export function encrypt(plaintext: string): string {
-  const key = getEncryptionKey();
+export function encrypt(plaintext: string, keyName?: string): string {
+  const key = getEncryptionKey(keyName);
   const iv = crypto.randomBytes(IV_LENGTH);
 
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
@@ -61,8 +61,8 @@ export function encrypt(plaintext: string): string {
  * @returns The decrypted plaintext string
  * @throws Error if decryption fails, the format is invalid, or the key is missing/invalid
  */
-export function decrypt(encrypted: string): string {
-  const key = getEncryptionKey();
+export function decrypt(encrypted: string, keyName?: string): string {
+  const key = getEncryptionKey(keyName);
 
   const parts = encrypted.split(':');
   if (parts.length !== 3) {

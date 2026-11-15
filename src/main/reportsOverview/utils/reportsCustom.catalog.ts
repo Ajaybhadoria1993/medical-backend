@@ -1,3 +1,12 @@
+import { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { DUE_AMOUNT } from '../../dashboard/utils/revenueSql';
+import { AppointmentModel } from '../../appointments/models/appointment.model';
+import { visitMoneySql, visitModeSql } from '../../money';
+import {
+  NOT_ATTENDED,
+  UNPAID_PAYMENT,
+} from '../../dashboard/services/clinicInsights.service';
 import {
   CustomCatalogDataSource,
   CustomValueType,
@@ -21,11 +30,24 @@ export const CUSTOM_BASE_FROM = `
   LEFT JOIN clinics_service cs ON cs.id = a.clinic_service_id
 `;
 
-const PRICE = `CAST(COALESCE(p.price, '0') AS NUMERIC)`;
-const REFUNDED = `CAST(NULLIF(COALESCE(p.refunded_amount, '0'), '') AS NUMERIC)`;
-const COLLECTED = `LOWER(p.payment_status) IN ('paid', 'already paid')`;
-const PENDING = `LOWER(p.payment_status) IN ('pending', 'credit')`;
-const BILLED = `LOWER(COALESCE(p.payment_status, '')) NOT IN ('refunded', 'failed')`;
+const dialect = new PgDialect();
+
+/** A shared money fragment as raw SQL on this FROM's aliases (`a`, `p`); the fragments bind no params. */
+function onBaseAliases(fragment: SQL): string {
+  const { sql: text, params } = dialect.sqlToQuery(fragment);
+  if (params.length)
+    throw new Error('Custom report fragments must not bind params');
+  return text
+    .replace(/"appointment_payments"\./g, 'p.')
+    .replace(/"appointments"\./g, 'a.');
+}
+
+// Each visit's money from the money ledger: net (after refunds) and gross (before).
+const NET = onBaseAliases(visitMoneySql(AppointmentModel.id, 'net'));
+const GROSS = onBaseAliases(visitMoneySql(AppointmentModel.id, 'gross'));
+export const DUES_ROW = `${onBaseAliases(UNPAID_PAYMENT)} AND NOT ${onBaseAliases(NOT_ATTENDED)}`;
+const DUES = `CASE WHEN ${DUES_ROW} THEN ${onBaseAliases(DUE_AMOUNT)} ELSE 0 END`;
+export const MODE = onBaseAliases(visitModeSql(AppointmentModel.id));
 
 export interface MetricDefinition {
   id: string;
@@ -95,38 +117,39 @@ export const CUSTOM_METRICS: Record<string, MetricDefinition> = {
   },
   totalRevenue: {
     id: 'totalRevenue',
-    label: 'Total Revenue',
+    // Built per appointment, so plan payments aren't in it; the label says so.
+    label: 'Visit Revenue (excl. plans)',
     category: 'Revenue',
     type: 'currency',
-    expression: `ROUND(COALESCE(SUM(${PRICE}) FILTER (WHERE ${BILLED}), 0))`,
+    expression: `ROUND(COALESCE(SUM(${NET}), 0))`,
   },
   amountCollected: {
     id: 'amountCollected',
-    label: 'Amount Collected',
+    label: 'Gross Collected',
     category: 'Revenue',
     type: 'currency',
-    expression: `ROUND(COALESCE(SUM(${PRICE}) FILTER (WHERE ${COLLECTED}), 0))`,
+    expression: `ROUND(COALESCE(SUM(${GROSS}), 0))`,
   },
   pendingAmount: {
     id: 'pendingAmount',
-    label: 'Pending Amount',
+    label: 'Outstanding Dues',
     category: 'Revenue',
     type: 'currency',
-    expression: `ROUND(COALESCE(SUM(${PRICE}) FILTER (WHERE ${PENDING}), 0))`,
+    expression: `ROUND(COALESCE(SUM(${DUES}), 0))`,
   },
   refunds: {
     id: 'refunds',
     label: 'Refunds',
     category: 'Revenue',
     type: 'currency',
-    expression: `ROUND(COALESCE(SUM(${REFUNDED}), 0))`,
+    expression: `ROUND(COALESCE(SUM(${GROSS}) - SUM(${NET}), 0))`,
   },
   avgConsultationFee: {
     id: 'avgConsultationFee',
-    label: 'Avg. Consultation Fee',
+    label: 'Avg. per Paid Appointment',
     category: 'Revenue',
     type: 'currency',
-    expression: `ROUND(COALESCE(AVG(${PRICE}) FILTER (WHERE ${BILLED} AND ${PRICE} > 0), 0))`,
+    expression: `ROUND(COALESCE(SUM(${NET}) / NULLIF(COUNT(p.id) FILTER (WHERE ${GROSS} > 0), 0), 0))`,
   },
 };
 
@@ -163,12 +186,13 @@ export const CUSTOM_DIMENSIONS: Record<string, DimensionDefinition> = {
   appointmentStatus: {
     id: 'appointmentStatus',
     label: 'Status',
-    expression: `a.appointment_status::text`,
+    expression: `CASE WHEN a.appointment_status = 'NoShow' THEN 'No Show' ELSE a.appointment_status::text END`,
   },
   paymentMode: {
     id: 'paymentMode',
     label: 'Payment Mode',
-    expression: `COALESCE(p.payment_mode, 'Not recorded')`,
+    // Same label rule as Reports → Revenue: "cash" → "Cash", "UPI" stays, missing → "Not Recorded".
+    expression: `COALESCE(CASE WHEN ${MODE} = LOWER(${MODE}) THEN INITCAP(${MODE}) ELSE ${MODE} END, 'Not Recorded')`,
   },
   day: {
     id: 'day',
@@ -239,7 +263,10 @@ const SHARED_FILTERS = [
     id: 'appointmentStatus',
     label: 'Appointment Status',
     type: 'multiselect' as const,
-    options: APPOINTMENT_STATUSES.map((s) => ({ label: s, value: s })),
+    options: APPOINTMENT_STATUSES.map((s) => ({
+      label: s === 'NoShow' ? 'No Show' : s,
+      value: s,
+    })),
   },
   {
     id: 'paymentStatus',

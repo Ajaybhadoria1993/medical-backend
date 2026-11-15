@@ -7,7 +7,7 @@ import {
   requireLab,
   requireLabAssistant,
 } from '../../../../middlewear/auth.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   createLabTestsSchema,
   labTestsIdParamSchema,

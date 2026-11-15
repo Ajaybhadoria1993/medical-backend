@@ -7,6 +7,7 @@ import {
   pgEnum,
   text,
   uniqueIndex,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { ClinicModel } from '../../clinic/models/clinic.model';
 import { UserModel } from '../../users/models/user.model';
@@ -37,6 +38,9 @@ export const LabsModel = pgTable(
     logo: text('logo'),
     gstNumber: varchar('gst_number', { length: 50 }),
     reportFooter: text('report_footer'),
+    autoGenerateSampleCode: boolean('auto_generate_sample_code')
+      .default(true)
+      .notNull(),
     deletedAt: timestamp('deleted_at'),
     labStatus: labStatusEnum('lab_status').default('New').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),

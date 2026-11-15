@@ -1,4 +1,5 @@
 import {
+  index,
   jsonb,
   pgEnum,
   pgTable,
@@ -28,6 +29,9 @@ export const appointmentActivityActionEnum = pgEnum(
     'PRESCRIPTION_CREATED',
     'PRESCRIPTION_UPDATED',
     'TEST_REPORT_UPLOADED',
+    // Desk follow-up on a doctor-set follow-up date; newState carries reportCardId (+ outcome, nextCallDate).
+    'FOLLOW_UP_CALL',
+    'FOLLOW_UP_DISMISSED',
   ]
 );
 
@@ -44,5 +48,12 @@ export const AppointmentActivityHistoryModel = pgTable(
     newState: jsonb('new_state'),
     remarks: text('remarks'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
-  }
+  },
+  // Follow-ups list: FOLLOW_UP_* rows by action alone and per visit; action first serves both.
+  (table) => [
+    index('appointment_activity_history_action_appt_idx').on(
+      table.action,
+      table.appointmentId
+    ),
+  ]
 );

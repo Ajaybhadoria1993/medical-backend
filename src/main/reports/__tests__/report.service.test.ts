@@ -1,6 +1,10 @@
-import { ReportService } from '../services/report.service';
 import { database } from '../../../configurations/dbConnection';
+import { ReportCardService } from '../services/reportCard.service';
+import { PrescriptionPrintService } from '../services/prescriptionPrint.service';
+import { ReportHistoryService } from '../services/reportHistory.service';
+import { ReportService } from '../services/report.service';
 import { HttpError } from '../../../middlewear/errorHandler';
+import { PrescriptionNotificationService } from '../../notifications/services/prescriptionNotification.service';
 
 // Mock dependencies
 jest.mock('../../../configurations/dbConnection');
@@ -90,7 +94,7 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
         }
       );
 
-      const result = await ReportService.getReportCard(
+      const result = await ReportHistoryService.getReportCard(
         { appointmentId: 'app-1' },
         'clinic-1'
       );
@@ -156,7 +160,7 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
         tests,
       ]);
 
-      const result = await ReportService.getReportCard(
+      const result = await ReportHistoryService.getReportCard(
         { appointmentId: 'app-1' },
         'clinic-1'
       );
@@ -178,7 +182,7 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
         tests,
       ]);
 
-      const result = await ReportService.getReportCard(
+      const result = await ReportHistoryService.getReportCard(
         { appointmentId: 'app-1' },
         'clinic-1'
       );
@@ -191,7 +195,7 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
       // report card, pharmacy, clinic
       const { select } = mockTransaction([[], [], [{ id: 'clinic-1' }]]);
 
-      const result = await ReportService.getReportCard(
+      const result = await ReportHistoryService.getReportCard(
         { reportCardId: 'rc-9' },
         'clinic-1'
       );
@@ -209,7 +213,10 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
         [],
       ]);
 
-      await ReportService.getReportCard({ appointmentId: 'app-1' }, 'clinic-1');
+      await ReportHistoryService.getReportCard(
+        { appointmentId: 'app-1' },
+        'clinic-1'
+      );
 
       // report card, prescriptions, pharmacy, then the clinic query
       expect(Object.keys(select.mock.calls[3][0]).sort()).toEqual(
@@ -261,7 +268,7 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
       (database.select as jest.Mock).mockReturnValue(selectChain);
 
       await expect(
-        ReportService.getFavouritePrescription('doc-1', 'clinic-1')
+        ReportCardService.getFavouritePrescription('doc-1', 'clinic-1')
       ).rejects.toThrow(
         new HttpError(
           403,
@@ -281,7 +288,7 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
         .mockReturnValueOnce(assignChain)
         .mockReturnValueOnce(favChain);
 
-      const result = await ReportService.getFavouritePrescription(
+      const result = await ReportCardService.getFavouritePrescription(
         'doc-1',
         'clinic-1'
       );
@@ -305,12 +312,161 @@ describe('ReportService Clinic Isolation Unit Tests', () => {
         }
       );
 
-      const result = await ReportService.getAppoinmentsPrescriptionsReport(
-        { patientId: 'pat-1' },
-        { typeOfPaginations: 'Appointments' },
-        'clinic-1'
+      const result =
+        await ReportHistoryService.getAppoinmentsPrescriptionsReport(
+          { patientId: 'pat-1' },
+          { typeOfPaginations: 'Appointments' },
+          'clinic-1',
+          { id: 'rec-1', userType: 'Receptionist' }
+        );
+      expect(
+        result && 'appointments' in result ? result.appointments : undefined
+      ).toEqual(mockAppointments);
+    });
+
+    it.each(['Prescriptions', 'Medcial history'] as const)(
+      'refuses %s to a receptionist',
+      async (typeOfPaginations) => {
+        await expect(
+          ReportHistoryService.getAppoinmentsPrescriptionsReport(
+            { patientId: 'pat-1' },
+            { typeOfPaginations },
+            'clinic-1',
+            { id: 'rec-1', userType: 'Receptionist' }
+          )
+        ).rejects.toMatchObject({ status: 403 });
+      }
+    );
+  });
+
+  // Rows in query order: manual, doctor HTML, named, quick print.
+  describe('getResolvedTemplateForPreview purpose', () => {
+    const rows = (value: any) => {
+      const chain: any = new Proxy(
+        {},
+        {
+          get: (_target, prop) =>
+            prop === 'then'
+              ? (fn: any) => Promise.resolve(value).then(fn)
+              : () => chain,
+        }
       );
-      expect(result?.appointments).toEqual(mockAppointments);
+      return chain;
+    };
+
+    const mockDoctorTemplates = (
+      quickSavedAt: string,
+      elementConfig: Record<string, unknown> = {}
+    ) => {
+      const results = [
+        [],
+        [],
+        [{ templateName: 'template2', updatedAt: new Date('2026-01-01') }],
+        [
+          {
+            selectedTemplate: 'minimal-prescription',
+            elementConfig,
+            updatedAt: new Date(quickSavedAt),
+          },
+        ],
+      ];
+      (database.select as jest.Mock).mockImplementation(() =>
+        rows(results.shift())
+      );
+    };
+
+    it('prints with Quick Print even when it was saved earlier', async () => {
+      mockDoctorTemplates('2025-12-01');
+      const result =
+        await PrescriptionPrintService.getResolvedTemplateForPreview(
+          'doc-1',
+          [],
+          [],
+          null,
+          'print'
+        );
+      expect(result.isQuickPrint).toBe(true);
+    });
+
+    it('shares with the prescription template even when Quick Print is newer', async () => {
+      mockDoctorTemplates('2026-09-01');
+      const result =
+        await PrescriptionPrintService.getResolvedTemplateForPreview('doc-1');
+      expect(result.isQuickPrint).toBe(false);
+    });
+
+    const resolve = (purpose: 'print' | 'share') =>
+      PrescriptionPrintService.getResolvedTemplateForPreview(
+        'doc-1',
+        [],
+        [],
+        null,
+        purpose
+      );
+
+    it('uses the prescription template for both when chosen', async () => {
+      mockDoctorTemplates('2026-09-01', { templateUsage: 'prescription' });
+      expect((await resolve('print')).isQuickPrint).toBe(false);
+    });
+
+    it('uses Quick Print for both when chosen', async () => {
+      mockDoctorTemplates('2026-09-01', { templateUsage: 'quickPrint' });
+      expect((await resolve('share')).isQuickPrint).toBe(true);
+    });
+
+    it('prints the default Quick Print layout when only settings are saved', async () => {
+      mockDoctorTemplates('2026-09-01', {
+        templateUsage: 'separate',
+        usageOnly: true,
+      });
+      expect((await resolve('print')).isQuickPrint).toBe(true);
+    });
+
+    it('gives a new clinic Quick Print for printing and the prescription template for sharing', async () => {
+      const newClinic = () => {
+        const results = [[], [], [], []];
+        (database.select as jest.Mock).mockImplementation(() =>
+          rows(results.shift())
+        );
+      };
+      newClinic();
+      expect((await resolve('print')).isQuickPrint).toBe(true);
+      newClinic();
+      expect((await resolve('share')).isQuickPrint).toBe(false);
+    });
+  });
+
+  // The save path builds its PDF exactly like regenerate, so share and print choices apply to it too.
+  describe('prescription save PDF', () => {
+    it('texts the patient and renders through the shared PDF path', async () => {
+      const input = {
+        appointment: { id: 'app-1', clinicId: 'clinic-1' },
+        patient: { id: 'pat-1', mobile: '9999999999' },
+        pdfData: { clinic: { name: 'Test Clinic' } },
+      };
+      jest
+        .spyOn(PrescriptionPrintService as any, 'buildPrescriptionPdfInput')
+        .mockResolvedValue(input);
+      const regenerate = jest
+        .spyOn(PrescriptionPrintService as any, 'regeneratePdf')
+        .mockResolvedValue(undefined);
+      const sms = jest
+        .spyOn(PrescriptionNotificationService, 'sendPrescriptionNotification')
+        .mockResolvedValue(undefined as any);
+
+      await (ReportCardService as any).generatePdfAndSendNotifications(
+        { id: 'rc-1', appointmentId: 'app-1' },
+        { reportCard: { followUpInDays: 7 }, printLanguage: 'hi' }
+      );
+
+      expect(sms).toHaveBeenCalledWith(
+        'app-1',
+        'clinic-1',
+        '9999999999',
+        'Test Clinic',
+        7
+      );
+      expect(regenerate).toHaveBeenCalledWith('rc-1', 'hi', input);
     });
   });
 });

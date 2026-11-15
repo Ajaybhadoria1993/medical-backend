@@ -63,6 +63,8 @@ export class SocketManager {
         host: envConfig.REDIS_HOST,
         port: envConfig.REDIS_PORT,
         password: envConfig.REDIS_PASSWORD,
+        username: envConfig.REDIS_USERNAME,
+        tls: envConfig.REDIS_TLS,
         // Long-lived pub/sub, not request/response: a command must never give
         // up and throw MaxRetriesPerRequestError, which would take the process
         // down over a Redis blip. These two carry every cross-node emit now
@@ -353,19 +355,11 @@ export class SocketManager {
   private setupConnectionHandler() {
     this.io.on('connection', async (socket: Socket) => {
       const user = (socket as any).data?.user ?? (socket as any).user ?? null;
-      logger.info(
-        `[SocketManager] client connected: ${socket.id}`,
-        user ? `user=${user.id}` : ''
-      );
 
       // Join user's private room + clinic rooms
       try {
         if (user?.id) {
           socket.join(`user:${user.id}`);
-          logger.info(
-            '[SocketManager] user joined private room',
-            `user:${user.id}`
-          );
 
           const clinicIds = await this.getUserClinicIds(user.id);
 
@@ -733,9 +727,6 @@ export class SocketManager {
             socket.emit('queue.update', payload);
 
             if (ack) ack({ status: 'success', message: 'Joined live queue' });
-            logger.info(
-              `[SocketManager] Patient ${user.id} joined live-queue for appointment=${resolvedId}`
-            );
           } catch (err) {
             logger.error('[SocketManager] join.live-queue error', err);
             // The message is deliberately generic — an unexpected throw here
@@ -917,12 +908,6 @@ export class SocketManager {
           }
         }
       );
-
-      socket.on('disconnect', (reason) => {
-        logger.info(
-          `[SocketManager] client disconnected: ${socket.id} reason=${reason}`
-        );
-      });
     });
   }
 

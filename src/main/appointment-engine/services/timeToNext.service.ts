@@ -77,17 +77,9 @@ export class TimeToNextService {
         date
       );
 
-      if (!hasNextWaiting) {
-        // Current patient is the last one — no "next" to show
-        logger.info(
-          `[TimeToNext] In-progress appointment=${inProgressAppointment.appointmentId} is the last one for clinic=${clinicId}, doctor=${doctorId}. Returning null.`
-        );
-        return null;
-      }
+      // Current patient is the last one — no "next" to show
+      if (!hasNextWaiting) return null;
 
-      logger.info(
-        `[TimeToNext] Found in-progress appointment=${inProgressAppointment.appointmentId} (status=${inProgressAppointment.status}) for clinic=${clinicId}, doctor=${doctorId}`
-      );
       return this.computeFromInProgress(inProgressAppointment);
     }
 
@@ -99,17 +91,9 @@ export class TimeToNextService {
       date
     );
 
-    if (!nextAppointment) {
-      // No further appointments exist
-      logger.info(
-        `[TimeToNext] No further appointments for clinic=${clinicId}, doctor=${doctorId}, date=${date}. Returning null.`
-      );
-      return null;
-    }
+    // No further appointments exist
+    if (!nextAppointment) return null;
 
-    logger.info(
-      `[TimeToNext] No in-progress, using next appointment=${nextAppointment.appointmentId} for clinic=${clinicId}, doctor=${doctorId}`
-    );
     return this.computeFromNextProjectedStart(nextAppointment, now, date);
   }
 
@@ -151,7 +135,7 @@ export class TimeToNextService {
     _date: string,
     queueData: QueueDelayData
   ): Promise<number | null> {
-    const value = await this.computeFromQueue(clinicId, doctorId, queueData);
+    const value = await this.computeFromQueue(queueData);
     return this.broadcastValue(clinicId, doctorId, value);
   }
 
@@ -159,8 +143,6 @@ export class TimeToNextService {
    * Computes time-to-next from pre-fetched QueueDelayData (no cache read).
    */
   private async computeFromQueue(
-    clinicId: string,
-    doctorId: string,
     queueData: QueueDelayData
   ): Promise<number | null> {
     const appointments = queueData.appointments;
@@ -177,17 +159,9 @@ export class TimeToNextService {
         queueData.date
       );
 
-      if (!hasNextWaiting) {
-        // Current patient is the last one — no "next" to show
-        logger.info(
-          `[TimeToNext] In-progress appointment=${inProgressAppointment.appointmentId} is the last one. Returning null.`
-        );
-        return null;
-      }
+      // Current patient is the last one — no "next" to show
+      if (!hasNextWaiting) return null;
 
-      logger.info(
-        `[TimeToNext] Found in-progress appointment=${inProgressAppointment.appointmentId} (status=${inProgressAppointment.status}) for clinic=${clinicId}, doctor=${doctorId}`
-      );
       return this.computeFromInProgress(inProgressAppointment);
     }
 
@@ -199,16 +173,8 @@ export class TimeToNextService {
       today
     );
 
-    if (!nextAppointment) {
-      logger.info(
-        `[TimeToNext] No further appointments for clinic=${clinicId}, doctor=${doctorId}. Returning null.`
-      );
-      return null;
-    }
+    if (!nextAppointment) return null;
 
-    logger.info(
-      `[TimeToNext] No in-progress, using next appointment=${nextAppointment.appointmentId} for clinic=${clinicId}, doctor=${doctorId}`
-    );
     return this.computeFromNextProjectedStart(nextAppointment, now, today);
   }
 
@@ -283,8 +249,6 @@ export class TimeToNextService {
         timeToNextMinutes: value,
         ts: new Date().toISOString(),
       });
-
-      logger.info(`[TimeToNext] Broadcast timeToNext=${value} to room ${room}`);
     } catch (err) {
       logger.warn('[TimeToNext] Failed to emit WebSocket event', err);
     }
@@ -325,12 +289,6 @@ export class TimeToNextService {
 
     const duration = inProgressEntry.durationMinutes;
     const remaining = duration - elapsedMinutes;
-
-    logger.info(
-      `[TimeToNext] In-progress: appointment=${inProgressEntry.appointmentId}, ` +
-        `duration=${duration}min, elapsed=${elapsedMinutes.toFixed(1)}min, ` +
-        `remaining=${remaining.toFixed(1)}min, result=${Math.max(0, Math.ceil(remaining))}`
-    );
 
     // max(0, ceil(duration - elapsed)) — rounded up to whole minutes
     return Math.max(0, Math.ceil(remaining));
@@ -378,13 +336,6 @@ export class TimeToNextService {
     const nowMinutes = istHours * 60 + istMinutes + now.getSeconds() / 60;
 
     const diffMinutes = projectedStartMinutes - nowMinutes;
-
-    logger.info(
-      `[TimeToNext] No in-progress: next appointment=${nextAppointment.appointmentId}, ` +
-        `projectedStart=${nextAppointment.projectedStartTime} (${projectedStartMinutes}min), ` +
-        `now=${nowMinutes.toFixed(1)}min, diff=${diffMinutes.toFixed(1)}min, ` +
-        `result=${Math.max(0, Math.ceil(diffMinutes))}`
-    );
 
     // max(0, nextProjectedStart - now) in whole minutes
     return Math.max(0, Math.ceil(diffMinutes));

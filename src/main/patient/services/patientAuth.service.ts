@@ -1,4 +1,5 @@
 // src/main/patient/services/patientAuth.service.ts
+import { toCachedUser } from '../../../utils/authUtils';
 import { and, eq, lt } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import redisClient from '../../../configurations/redisConfig';
@@ -156,10 +157,6 @@ export class PatientAuthService {
     const otp = bypassMode ? FIXED_OTP : generateOTP(6);
     const otpHash = hashToken(otp);
 
-    if (bypassMode) {
-      logger.info(`[OTP Bypass] OTP for ${normalised}: ${otp}`);
-    }
-
     await database.insert(TokenModel).values({
       // userId is NULL at this stage — patient may not exist yet
       email: normalised, // stores mobile in email column per data model spec
@@ -180,7 +177,7 @@ export class PatientAuthService {
           recipient: { mobile: toE164(normalised) },
           event: 'patient_mobile_verification',
           channels: ['sms'],
-          title: 'Medisetu OTP',
+          title: 'MediArogya OTP',
           body: smsBody,
           throwOnError: true,
         });
@@ -385,7 +382,7 @@ export class PatientAuthService {
     await redisClient.setex(
       `user:${patient.id}`,
       SESSION_CACHE_TTL_SECS,
-      JSON.stringify(patient)
+      JSON.stringify(toCachedUser(patient))
     );
 
     // 7️⃣ Clear OTP rate limit on successful login
@@ -499,10 +496,6 @@ export class PatientAuthService {
     const newOtp = bypassMode ? FIXED_OTP : generateOTP(6);
     const newOtpHash = hashToken(newOtp);
 
-    if (bypassMode) {
-      logger.info(`[OTP Bypass] Resent OTP for ${normalised}: ${newOtp}`);
-    }
-
     const newExpiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
     if (existing) {
@@ -536,7 +529,7 @@ export class PatientAuthService {
           recipient: { mobile: toE164(normalised) },
           event: 'patient_mobile_verification_resend',
           channels: ['sms'],
-          title: 'Medisetu OTP',
+          title: 'MediArogya OTP',
           body: smsBody,
           throwOnError: true,
         });

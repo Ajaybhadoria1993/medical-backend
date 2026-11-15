@@ -116,6 +116,15 @@ export const target = {
   }),
 
   /**
+   * The clinic's treatment plans (lists, tab counts, an open plan). Clinic-wide like `board`.
+   * Snapshot: GET /api/v1/treatment-plan and GET /api/v1/treatment-plan/:planId
+   */
+  treatmentPlans: (clinicId: string): RealtimeTarget => ({
+    section: `treatmentPlans:${clinicId}`,
+    room: rooms.clinic(clinicId),
+  }),
+
+  /**
    * One user's active session / authentication state (e.g. password changed or reset).
    * Addressed to that user's private room.
    */

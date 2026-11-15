@@ -22,16 +22,12 @@ import {
   checkInviteTokenController,
   changePasswordController,
   getChangePasswordVisibilityController,
-  generateReferralCodeController,
   GetDoctorServiceController,
   togglePaymentHistory,
   updateUserStatusController,
   archiveController,
-  referralsController,
-  updateReferralController,
   updateOnboardingProgressController,
   submitForApprovalController,
-  verifySubscriptionController,
   getClinicDashboardOverviewController,
   getClinicDashboardActivitiesController,
   getClinicDashboardStatsController,
@@ -62,16 +58,14 @@ import {
   changePasswordSchema,
   GetDoctorServiceSchema,
   updateUserStatusSchema,
-  referralsSchema,
-  updateReferralSchema,
   updateOnboardingProgressSchema,
   updateUsernameSchema,
   checkUsernameSchema,
 } from '../../schemas/auth.schemas';
 import { validate } from '../../../../middlewear/validation.middleware';
 import {
+  CLINIC_STAFF_ROLES,
   enforceClinicAutoLogout,
-  requireAdmin,
   requireAuth,
   requireClinic,
   requireDoctor,
@@ -87,7 +81,7 @@ import {
   strictRateLimit,
   otpRateLimit,
 } from '../../../../middlewear/rateLimit.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import { UserService } from '../../services/user.service';
 import { asyncHandler } from '../../../../middlewear/errorHandler';
 
@@ -205,6 +199,7 @@ userRouter.post(
 userRouter.post(
   '/change-password',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   validate(changePasswordSchema, 'body'),
   changePasswordController
 );
@@ -212,21 +207,8 @@ userRouter.post(
 userRouter.get(
   '/change-password-visibility',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   getChangePasswordVisibilityController
-);
-
-userRouter.get(
-  '/generate-referral-code',
-  requireAuth,
-  generateReferralCodeController
-);
-
-userRouter.patch(
-  '/update-referral-status/:referralId',
-  requireAuth,
-  requireSuperAdmin,
-  validate(updateReferralSchema, 'body'),
-  updateReferralController
 );
 
 /**
@@ -234,7 +216,12 @@ userRouter.patch(
  * @desc Send email verification link to current user
  * @access Private
  */
-userRouter.post('/send-verification', requireAuth, sendVerificationController);
+userRouter.post(
+  '/send-verification',
+  requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
+  sendVerificationController
+);
 
 /**
  * @route GET /api/v1/users/verify-email/:token
@@ -281,21 +268,10 @@ userRouter.post(
 userRouter.get(
   '/',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireReceptionist,
   // requireClinic,
   getUserController
-);
-
-/**
- * @route POST /api/v1/users/verify-subscription
- * @desc Take the one-time subscription
- * @access Private
- */
-userRouter.post(
-  '/verify-subscription',
-  requireAuth,
-  requireClinic,
-  verifySubscriptionController
 );
 
 /**
@@ -306,7 +282,7 @@ userRouter.post(
 userRouter.post(
   '/adduser',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(addUserSchema, 'body'),
   requireAddUserLimit,
@@ -316,7 +292,7 @@ userRouter.post(
 userRouter.post(
   '/resend-invite',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   strictRateLimit,
   validate(resendInviteSchema, 'body'),
@@ -348,7 +324,7 @@ userRouter.post(
 userRouter.put(
   '/update-admin-permission-to-doctor',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(updateAdminPermissionToDoctorSchema, 'body'),
   updateAdminPermissionToDoctorController
@@ -362,7 +338,7 @@ userRouter.put(
 userRouter.patch(
   '/:userId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(updateUserSchema, 'body'),
   UpdateUserController
@@ -393,7 +369,7 @@ userRouter.post('/activate-doctor', requireAuth, activateDoctorController);
 userRouter.get(
   '/get-service/:patientId/:doctorId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(GetDoctorServiceSchema, 'params'),
   GetDoctorServiceController
@@ -448,6 +424,7 @@ userRouter.get(
 userRouter.get(
   '/lab-pharmacy/overview',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getClinicDashboardOverviewController
 );
@@ -455,6 +432,7 @@ userRouter.get(
 userRouter.get(
   '/lab-pharmacy/activities-users',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getClinicDashboardActivitiesController
 );
@@ -462,16 +440,9 @@ userRouter.get(
 userRouter.get(
   '/lab-pharmacy/stats',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getClinicDashboardStatsController
-);
-
-userRouter.get(
-  '/get-all-referrals',
-  requireAuth,
-  requireSuperAdmin,
-  validate(referralsSchema, 'query'),
-  referralsController
 );
 
 /**
@@ -482,6 +453,7 @@ userRouter.get(
 userRouter.put(
   '/onboarding/progress',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   validate(updateOnboardingProgressSchema, 'body'),
   updateOnboardingProgressController
 );
@@ -491,7 +463,12 @@ userRouter.put(
  * @desc Submit user profile for approval
  * @access Private
  */
-userRouter.post('/onboarding/submit', requireAuth, submitForApprovalController);
+userRouter.post(
+  '/onboarding/submit',
+  requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
+  submitForApprovalController
+);
 
 /**
  * @route POST /api/v1/users/check-username
@@ -508,6 +485,7 @@ userRouter.post(
 userRouter.put(
   '/update-username',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   validate(updateUsernameSchema, 'body'),
   updateUsernameController
 );

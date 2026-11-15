@@ -14,17 +14,9 @@ export const dashboardDoctorQuerySchema = z.object({
   doctorId: z.string().uuid('doctorId must be a valid UUID').optional(),
 });
 
-export const superAdminDashboardQuerySchema = z.object({
-  startDate: z.string().min(1, 'startDate is required'),
-  endDate: z.string().min(1, 'endDate is required'),
-});
-
 export type DashboardQueryDto = z.infer<typeof dashboardQuerySchema>;
 export type DashboardDoctorQueryDto = z.infer<
   typeof dashboardDoctorQuerySchema
->;
-export type SuperAdminDashboardQueryDto = z.infer<
-  typeof superAdminDashboardQuerySchema
 >;
 
 export const revenueOverviewQuerySchema = z.object({
@@ -51,23 +43,4 @@ export const receptionOverviewQuerySchema = z.object({
 
 export type ReceptionOverviewQueryDto = z.infer<
   typeof receptionOverviewQuerySchema
->;
-
-export const superAdminRevenueQuerySchema = z.object({
-  period: z
-    .enum([
-      'month',
-      'year',
-      'thisMonth',
-      'thisYear',
-      'monthly',
-      'yearly',
-      'week',
-      'weekly',
-    ])
-    .default('month'),
-});
-
-export type SuperAdminRevenueQueryDto = z.infer<
-  typeof superAdminRevenueQuerySchema
 >;

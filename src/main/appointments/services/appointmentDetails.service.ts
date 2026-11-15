@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, isNotNull, lte, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte, ne, sql } from 'drizzle-orm';
+import { MoneyReadService } from '../../money';
 import { alias } from 'drizzle-orm/pg-core';
 import { database } from '../../../configurations/dbConnection';
 import { HttpError } from '../../../middlewear/errorHandler';
@@ -7,6 +8,7 @@ import {
   ClinicAvailability,
   ClinicServiceModel,
 } from '../../clinic/models/clinic.model';
+import { PatientVaccineService } from '../../patient/services/patientVaccine.service';
 import { StaffScopeService } from '../../permissions/services/staffScope.service';
 import { UserModel } from '../../users/models/user.model';
 import { UserProfileModel } from '../../users/models/userProfile.model';
@@ -16,6 +18,8 @@ import { AppointmentModel } from '../models/appointment.model';
 import { doctorManualPrescriptionModel } from '../models/doctorManualPrescription.model';
 import { AppointmentMultipleServiceService } from './appointmentMultipleService.service';
 import { AppointmentRegistrationService } from './appointmentRegistration.service';
+import { coveringVisit } from '../utils/serviceCoverage.utils';
+import { DoctorServices } from '../../doctor/services/doctor.service';
 
 type RequestingUser = { id: string; userType: string; clinicId?: string };
 
@@ -39,7 +43,7 @@ export class AppointmentDetailsService {
       throw new HttpError(404, 'Appointment not found');
     }
 
-    // Same rules as AppointmentService.getAppointment, so both endpoints agree.
+    // Same rules as AppointmentService.getAppointmentDetails, so both endpoints agree.
     const isClinicStaff =
       (requestingUser.userType === 'Admin' ||
         requestingUser.userType === 'Receptionist') &&
@@ -77,6 +81,15 @@ export class AppointmentDetailsService {
           age: UserProfileModel.age,
           dob: UserProfileModel.dob,
           profileImage: UserProfileModel.profileImage,
+          // Shown read-only as tags on the prescription; the profile is shared across clinics, so it is never written here.
+          bloodGroup: UserProfileModel.bloodGroup,
+          allergies: UserProfileModel.allergies,
+          chronicConditions: UserProfileModel.chronicConditions,
+          // Last vaccine and dose counts, owned by the patient module; next due is worked out below.
+          ...PatientVaccineService.patientBarColumns(
+            UserModel.id,
+            AppointmentModel.clinicId
+          ),
           // One printable line; the separate city/state/zip fields are not needed.
           address: sql<
             string | null
@@ -112,9 +125,6 @@ export class AppointmentDetailsService {
           price: AppointmentPaymentModel.price,
           primaryServicePrice: AppointmentPaymentModel.primaryServicePrice,
           paymentNotes: AppointmentPaymentModel.paymentNotes,
-          refundMode: AppointmentPaymentModel.refundMode,
-          refundedAmount: AppointmentPaymentModel.refundedAmount,
-          refundNotes: AppointmentPaymentModel.refundNotes,
         },
         doctor: {
           id: DoctorUser.id,
@@ -154,51 +164,75 @@ export class AppointmentDetailsService {
 
     const { clinicSymptomIds, ...appointment } = row.appointment;
 
-    const [manualPrescription, serviceRows, symptoms, additionalServices] =
-      await Promise.all([
-        database
-          .select({
-            id: doctorManualPrescriptionModel.id,
-            doctorManualPrescription:
-              doctorManualPrescriptionModel.doctorManualPrescription,
-            createdAt: doctorManualPrescriptionModel.createdAt,
-            updatedAt: doctorManualPrescriptionModel.updatedAt,
-          })
-          .from(doctorManualPrescriptionModel)
-          .where(eq(doctorManualPrescriptionModel.appointmentId, appointmentId))
-          .limit(1),
-        appointment.clinicServiceId
-          ? database
-              .select({
-                id: ClinicServiceModel.id,
-                serviceName: ClinicServiceModel.serviceName,
-                price: ClinicServiceModel.price,
-                currency: ClinicServiceModel.currency,
-                durationDays: ClinicServiceModel.durationDays,
-                additionalServices: ClinicServiceModel.additionalServices,
-              })
-              .from(ClinicServiceModel)
-              .where(eq(ClinicServiceModel.id, appointment.clinicServiceId))
-              .limit(1)
-          : Promise.resolve([]),
-        Array.isArray(clinicSymptomIds) && clinicSymptomIds.length > 0
-          ? database
-              .select({
-                id: ClinicSymptomModel.id,
-                name: ClinicSymptomModel.name,
-              })
-              .from(ClinicSymptomModel)
-              .where(inArray(ClinicSymptomModel.id, clinicSymptomIds))
-          : Promise.resolve([]),
-        AppointmentMultipleServiceService.listByAppointmentId(appointmentId),
-      ]);
+    const [
+      manualPrescription,
+      serviceRows,
+      symptoms,
+      additionalServices,
+      doctorDegreeLine,
+      refunds,
+    ] = await Promise.all([
+      database
+        .select({
+          id: doctorManualPrescriptionModel.id,
+          doctorManualPrescription:
+            doctorManualPrescriptionModel.doctorManualPrescription,
+          createdAt: doctorManualPrescriptionModel.createdAt,
+          updatedAt: doctorManualPrescriptionModel.updatedAt,
+        })
+        .from(doctorManualPrescriptionModel)
+        .where(eq(doctorManualPrescriptionModel.appointmentId, appointmentId))
+        .limit(1),
+      appointment.clinicServiceId
+        ? database
+            .select({
+              id: ClinicServiceModel.id,
+              serviceName: ClinicServiceModel.serviceName,
+              price: ClinicServiceModel.price,
+              currency: ClinicServiceModel.currency,
+              durationDays: ClinicServiceModel.durationDays,
+              additionalServices: ClinicServiceModel.additionalServices,
+            })
+            .from(ClinicServiceModel)
+            .where(eq(ClinicServiceModel.id, appointment.clinicServiceId))
+            .limit(1)
+        : Promise.resolve([]),
+      Array.isArray(clinicSymptomIds) && clinicSymptomIds.length > 0
+        ? database
+            .select({
+              id: ClinicSymptomModel.id,
+              name: ClinicSymptomModel.name,
+            })
+            .from(ClinicSymptomModel)
+            .where(inArray(ClinicSymptomModel.id, clinicSymptomIds))
+        : Promise.resolve([]),
+      AppointmentMultipleServiceService.listByAppointmentId(appointmentId),
+      // The appointment's own doctor, never the viewer: same 3-degree line as the prescription.
+      row.doctor?.id
+        ? DoctorServices.degreeLine(row.doctor.id, 3)
+        : Promise.resolve(''),
+      MoneyReadService.refundsOf([appointmentId]),
+    ]);
+    const refund = refunds.get(appointmentId);
 
     const clinicService = serviceRows[0] ?? null;
 
     return {
-      patient: row.patient,
+      patient: (() => {
+        const { vaccineCounts, ...patient } = row.patient;
+        return {
+          ...patient,
+          nextVaccine: PatientVaccineService.nextDue(
+            patient.dob,
+            vaccineCounts
+          ),
+        };
+      })(),
       appointment: {
         ...appointment,
+        refundMode: refund?.refundMode ?? null,
+        refundedAmount: refund?.refundedAmount ?? null,
+        refundNotes: refund?.refundNotes ?? null,
         coveredBy: await AppointmentDetailsService.findCoveringVisit(
           appointmentId,
           scope,
@@ -206,7 +240,9 @@ export class AppointmentDetailsService {
           clinicService?.durationDays ?? null
         ),
       },
-      doctor: row.doctor,
+      doctor: row.doctor
+        ? { ...row.doctor, degreeLine: doctorDegreeLine }
+        : row.doctor,
       clinicService,
       symptoms,
       manualPrescription: manualPrescription[0] ?? null,
@@ -215,7 +251,7 @@ export class AppointmentDetailsService {
   }
 
   // A covered visit stores no payment of its own: find the paid visit it falls under.
-  // ponytail: copy of the rule in AppointmentService.getAppointment; share it once that API can change.
+  // ponytail: copy of the rule in AppointmentService.getAppointmentDetails; share it once that API can change.
   private static async findCoveringVisit(
     appointmentId: string,
     scope: { doctorId: string | null; clinicId: string | null },
@@ -262,13 +298,7 @@ export class AppointmentDetailsService {
           eq(AppointmentModel.clinicServiceId, appt.clinicServiceId),
           ne(AppointmentModel.id, appointmentId),
           lte(AppointmentModel.appointmentDate, appt.appointmentDate),
-          inArray(AppointmentModel.appointmentStatus, [
-            'Completed',
-            'Confirmed',
-            'Pending',
-          ]),
-          isNotNull(AppointmentPaymentModel.paymentMode),
-          sql`${AppointmentPaymentModel.paymentStatus} IS DISTINCT FROM 'Refunded'`
+          coveringVisit()
         )
       )
       .orderBy(

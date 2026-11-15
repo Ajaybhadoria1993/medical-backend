@@ -6,7 +6,7 @@
  * refetch that section's existing REST snapshot. The socket never carries
  * state, so the snapshot endpoint stays the single source of truth.
  *
- * See docs/REALTIME_SIGNAL_CONTRACT.md for the full contract.
+ * See docs/realtime/REALTIME_SIGNAL_CONTRACT.md for the full contract.
  */
 
 export { realtimeBus, REALTIME_EVENT } from './services/realtimeBus.service';

@@ -1,8 +1,7 @@
 // src/main/medicine/routes/v1/medicine.route.ts
 import express from 'express';
-import { ensure1mgJwt } from '../../../../middlewear/ensure1mgJwt';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   createMedicineController,
   deleteMedicineController,
@@ -40,9 +39,11 @@ const medicineRouter = express.Router();
 
 import multer from 'multer';
 import {
+  // requireDoctor,
+  CLINIC_STAFF_ROLES,
   enforceClinicAutoLogout,
   requireAuth,
-  // requireDoctor,
+  requireRole,
   requireUser,
 } from '../../../../middlewear/auth.middleware';
 const uploadCsv = multer({ storage: multer.memoryStorage() });
@@ -57,6 +58,7 @@ const uploadCsv = multer({ storage: multer.memoryStorage() });
 medicineRouter.post(
   '/medicines/upload',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   uploadCsv.single('file'),
   (req, res, next) => {
@@ -75,6 +77,7 @@ medicineRouter.post(
 medicineRouter.post(
   '/medicines',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   enforceClinicAutoLogout,
   validate(createMedicineSchema, 'body'),
@@ -89,6 +92,7 @@ medicineRouter.post(
 medicineRouter.get(
   '/medicines/search',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   enforceClinicAutoLogout,
   validate(searchMedicineQuerySchema, 'query'),
@@ -103,12 +107,18 @@ medicineRouter.get(
 medicineRouter.get(
   '/medicines',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   validate(searchMedicineQuerySchema, 'query'),
   getAllMedicinesController
 );
 
-medicineRouter.get('/medicines/forms', requireAuth, getUniqueFormsController);
+medicineRouter.get(
+  '/medicines/forms',
+  requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
+  getUniqueFormsController
+);
 
 /**
  * @route GET /api/v1/medicine/medicines/lists/generics
@@ -130,12 +140,14 @@ medicineRouter.get(
 medicineRouter.get(
   '/medicines/lists/brands',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   getDistinctBrandNamesController
 );
 medicineRouter.get(
   '/medicines/lists/manufacturers',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   enforceClinicAutoLogout,
   getDistinctManufacturersController
@@ -143,6 +155,7 @@ medicineRouter.get(
 medicineRouter.get(
   '/medicines/lists/categories',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   getDistinctCategoriesController
 );
@@ -150,7 +163,6 @@ medicineRouter.get(
 // Get medicine by ID
 medicineRouter.get(
   '/medicines/:medicineId',
-  ensure1mgJwt,
   validate(medicineParamsSchema, 'params'),
 
   getMedicineController
@@ -160,6 +172,7 @@ medicineRouter.get(
 medicineRouter.patch(
   '/medicines/:medicineId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   validate(medicineParamsSchema, 'params'),
   validate(updateMedicineSchema, 'body'),
@@ -171,6 +184,7 @@ medicineRouter.patch(
 medicineRouter.patch(
   '/medicines/:medicineId/toggle-status',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   validate(medicineParamsSchema, 'params'),
   enforceClinicAutoLogout,
@@ -181,6 +195,7 @@ medicineRouter.patch(
 medicineRouter.delete(
   '/medicines/:medicineId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   validate(medicineParamsSchema, 'params'),
   deleteMedicineController
@@ -191,6 +206,7 @@ medicineRouter.delete(
 medicineRouter.get(
   '/',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   validate(locationsQuerySchema, 'query'),
   getLocationsController
@@ -200,6 +216,7 @@ medicineRouter.get(
 medicineRouter.get(
   '/search/all',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   // requireDoctor,
   // customLimit,
   validate(searchAllQuerySchema, 'query'),
@@ -216,7 +233,6 @@ medicineRouter.get(
 
 medicineRouter.get(
   '/drug-static/:drug_sku_id',
-  ensure1mgJwt,
   validate(drugstaticQuerySchemas, 'query'),
   validate(drugstaticParamsSchemas, 'params'),
   drugStaticController

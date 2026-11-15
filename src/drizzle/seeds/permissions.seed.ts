@@ -1,7 +1,8 @@
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { database } from '../../configurations/dbConnection';
 import { ClinicAssignModel } from '../../main/clinic/models/clinic.model';
 import {
+  PermissionAuditLogModel,
   PermissionsModel,
   UserPermissionsModel,
 } from '../../main/permissions/models/permission.model';
@@ -12,6 +13,7 @@ import {
 import { SCOPED_STAFF_ROLES } from '../../main/permissions/utils/staffScope.utils';
 import { UserModel } from '../../main/users/models/user.model';
 import logger from '../../utils/logger';
+import { logSeed, newCounts, syncRow, tally } from './seedSync';
 
 // `resource` doubles as the list of roles the key applies to — it is what
 // PermissionService.getUserPermissionMatrix filters the admin UI on. Comma
@@ -114,12 +116,36 @@ async function backfillExistingStaff() {
     .innerJoin(UserModel, eq(UserModel.id, ClinicAssignModel.userId))
     .where(inArray(UserModel.userType, [...SCOPED_STAFF_ROLES]));
 
-  if (!staff.length) {
-    logger.info('No existing staff to backfill.');
+  if (!staff.length) return;
+
+  // Only staff never configured: no permission rows and no grant/revoke in the audit log. The log
+  // remembers an admin who revoked everything, so a revoked permission never comes back.
+  const [granted, audited] = await Promise.all([
+    database
+      .selectDistinct({
+        userId: UserPermissionsModel.userId,
+        clinicId: UserPermissionsModel.clinicId,
+      })
+      .from(UserPermissionsModel),
+    database
+      .selectDistinct({
+        userId: PermissionAuditLogModel.targetUserId,
+        clinicId: PermissionAuditLogModel.clinicId,
+      })
+      .from(PermissionAuditLogModel),
+  ]);
+  const configured = new Set(
+    [...granted, ...audited].map((r) => `${r.userId}|${r.clinicId}`)
+  );
+  const fresh = staff.filter(
+    (s) => !configured.has(`${s.userId}|${s.clinicId}`)
+  );
+  if (!fresh.length) {
+    logger.info('[seed] staff permission backfill: 0 created');
     return;
   }
 
-  const rows = staff.flatMap(({ userId, clinicId }) =>
+  const rows = fresh.flatMap(({ userId, clinicId }) =>
     permissions.map((permission) => ({
       userId,
       clinicId,
@@ -127,43 +153,26 @@ async function backfillExistingStaff() {
     }))
   );
 
-  // Idempotent: a re-run re-grants nothing, and a permission an admin has since
-  // revoked stays revoked only until the next seed — which is why this seed is
-  // a one-time migration aid, not something to run on a schedule.
-  await database
+  const added = await database
     .insert(UserPermissionsModel)
     .values(rows)
-    .onConflictDoNothing();
-
-  logger.info(
-    `Backfilled staff permissions for ${staff.length} clinic assignment(s).`
-  );
+    .onConflictDoNothing()
+    .returning({ id: UserPermissionsModel.id });
+  logger.info(`[seed] staff permission backfill: ${added.length} created`);
 }
 
+/** The permission catalog is code-owned: every key is kept in step with PERMISSION_CATALOG. */
 export async function seedPermissions() {
-  try {
-    logger.info('Seeding permission catalog...');
-
-    await database
-      .insert(PermissionsModel)
-      .values(PERMISSION_CATALOG.map((entry) => ({ ...entry, isActive: true })))
-      .onConflictDoUpdate({
-        target: PermissionsModel.key,
-        set: {
-          resource: sql`excluded.resource`,
-          action: sql`excluded.action`,
-          description: sql`excluded.description`,
-          isActive: sql`excluded.is_active`,
-        },
-      });
-
-    logger.info(
-      `Permission catalog seeded successfully (${PERMISSION_CATALOG.length} keys)!`
-    );
-
-    await backfillExistingStaff();
-  } catch (error) {
-    logger.error('Error seeding permission catalog:', error);
-    throw error;
+  const counts = newCounts();
+  const changed: string[] = [];
+  for (const entry of PERMISSION_CATALOG) {
+    const { result } = await syncRow({
+      table: PermissionsModel,
+      where: eq(PermissionsModel.key, entry.key),
+      values: { ...entry, isActive: true },
+    });
+    tally(counts, changed, entry.key, result);
   }
+  logSeed('permissions', counts, changed);
+  await backfillExistingStaff();
 }

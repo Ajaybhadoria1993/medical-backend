@@ -1,4 +1,6 @@
 export const APPOINTMENT_TYPE_CONSULTATION = 'Consultation';
+/** A visit booked for a treatment plan step; carries no consultation fee. */
+export const APPOINTMENT_TYPE_TREATMENT = 'Treatment';
 
 /** Override: no reason given beyond "the schedule did not offer this". */
 export const APPOINTMENT_TYPE_CUSTOM = 'Custom';

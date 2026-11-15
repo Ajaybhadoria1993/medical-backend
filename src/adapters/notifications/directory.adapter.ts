@@ -1,7 +1,5 @@
-/**
- * DirectoryPort implementation — the only place notification code touches
- * another feature's tables, kept outside the module so extraction is a swap.
- */
+/** DirectoryPort implementation: the only place notification code touches another feature's tables,
+ *  kept outside the module so moving it out is a swap. */
 
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -59,10 +57,8 @@ export const directoryAdapter: DirectoryPort = {
     return user ? { ...user, name: user.name ?? '' } : null;
   },
 
-  /**
-   * Staff responsible for one doctor, in one query. Staff with no scope row
-   * count as all-doctors, mirroring StaffScopeService (D1a).
-   */
+  /** Staff responsible for one doctor, in one query. Staff with no scope row count as all-doctors,
+   *  as StaffScopeService does. */
   async getStaffResponsibleForDoctor(
     clinicId: string,
     doctorId: string | null
@@ -99,16 +95,14 @@ export const directoryAdapter: DirectoryPort = {
           eq(ClinicAssignModel.clinicId, clinicId),
           inArray(UserModel.userType, STAFF_ROLES),
           or(
-            // Unrestricted by role. Kept as-is because this lookup also serves
-            // payment notifications, where clinic-wide admin oversight is
-            // wanted. Appointment events narrow it further in their own
-            // recipient rule (appointmentStaff) rather than here.
+            // Unrestricted roles: this lookup also serves payment notifications, where admin oversight is wanted;
+            // appointment events narrow it in their own recipient rule (appointmentStaff).
             inArray(UserModel.userType, UNRESTRICTED),
             // No scope configured yet — mirrors StaffScopeService's default.
             isNull(StaffScopeModel.id),
             eq(StaffScopeModel.accessScope, 'all_doctors'),
-            // Explicitly assigned to this doctor.
-            eq(assignment.doctorUserId, doctorId ?? '')
+            // Explicitly assigned to this doctor; '' is not a uuid, so skip it when there is none.
+            doctorId ? eq(assignment.doctorUserId, doctorId) : undefined
           )
         )
       );
@@ -191,9 +185,8 @@ export const directoryAdapter: DirectoryPort = {
       .from(UserModel)
       .where(inArray(UserModel.id, userIds));
 
-    // Role defaults answer most recipients without touching the database at
-    // all — a receptionist holding appointment:view by role needs no lookup.
-    // Only whoever is left falls through to their granted keys.
+    // Role defaults answer most recipients with no query (a receptionist has appointment:view by role);
+    // only the rest fall through to their granted keys.
     const byRole: string[] = [];
     const needsLookup: { id: string; userType: string }[] = [];
 
@@ -226,6 +219,36 @@ export const directoryAdapter: DirectoryPort = {
     );
 
     return [...byRole, ...granted.filter((id): id is string => id !== null)];
+  },
+
+  async getClinic(clinicId: string) {
+    const [clinic] = await database
+      .select({ name: ClinicModel.clinicName, ownerUserId: ClinicModel.userId })
+      .from(ClinicModel)
+      .where(eq(ClinicModel.id, clinicId))
+      .limit(1);
+    return clinic ?? null;
+  },
+
+  async getUserEmails(userIds: string[]) {
+    if (!userIds.length) return new Map();
+    const rows = await database
+      .select({
+        id: UserModel.id,
+        email: UserModel.email,
+        name: UserModel.name,
+        userType: UserModel.userType,
+      })
+      .from(UserModel)
+      .where(inArray(UserModel.id, userIds));
+    return new Map(
+      rows
+        .filter((r): r is typeof r & { email: string } => Boolean(r.email))
+        .map((r) => [
+          r.id,
+          { email: r.email, name: r.name ?? '', userType: r.userType },
+        ])
+    );
   },
 
   async getUserMobiles(userIds: string[]): Promise<Map<string, string>> {

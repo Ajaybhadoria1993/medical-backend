@@ -42,28 +42,27 @@ export const callRazorpaySdk = async <T>(
   }
 };
 
-export const createRazorpayOrder = async (
-  amount: number,
-  clinicId: string,
-  planId: string,
-  providerSubscriptionId: string,
-  extraNotes?: Record<string, string>
-) => {
-  const options = {
-    amount: Math.round(amount * 100),
-    currency: 'INR',
-    receipt: `receipt_${Date.now()}`,
-    payment_capture: 1,
-    notes: {
-      clinicId: clinicId,
-      planId: planId,
-      providerSubscriptionId: providerSubscriptionId,
-      ...(extraNotes || {}),
-    },
-  };
-  return await callRazorpaySdk('Razorpay order creation', () =>
-    razorpayInstance.orders.create(options)
-  );
+const LIST_PAGE = 100;
+
+/** Every payment or refund on the account in a window (Unix seconds), all pages. */
+export const listRazorpayAll = async <T>(
+  kind: 'payments' | 'refunds',
+  from: number,
+  to: number
+): Promise<T[]> => {
+  const all: T[] = [];
+  for (let skip = 0; ; skip += LIST_PAGE) {
+    const page = (await callRazorpaySdk(`Razorpay ${kind} list`, () =>
+      (
+        razorpayInstance[kind] as unknown as {
+          all: (q: object) => Promise<{ items?: T[] }>;
+        }
+      ).all({ from, to, count: LIST_PAGE, skip })
+    )) as { items?: T[] };
+    const items = page?.items ?? [];
+    all.push(...items);
+    if (items.length < LIST_PAGE) return all;
+  }
 };
 
 // ✅ Fixed: Use KEY_SECRET instead of WEBHOOK_SECRET
@@ -165,6 +164,12 @@ export const verifyWebhookSignature = (
   }
 };
 
+/** Test keys (rzp_test_) mean test mode, where Razorpay refuses UPI payouts to linked accounts. */
+export const razorpayUpiPayoutsAvailable = () =>
+  !String(envConfig.RAZORPAY_KEY_ID ?? '').startsWith('rzp_test_');
+
+export const UPI_TEST_MODE =
+  'UPI payouts work only in live mode. In test mode, use a bank account.';
 export const validateRazorpayVpa = async (vpa: string) => {
   if (!envConfig.RAZORPAY_KEY_ID || !envConfig.RAZORPAY_KEY_SECRET) {
     throw HttpError.internal(
@@ -217,33 +222,31 @@ export const createRazorpayRouteAccount = async (data: {
   name: string;
   referenceId: string;
   contactName: string;
-  address?: {
-    street?: string | null;
-    city?: string | null;
-    state?: string | null;
-    postalCode?: number | null;
-    country?: string | null;
+  businessType: string;
+  businessPan?: string;
+  gstin?: string;
+  address: {
+    street1: string;
+    street2: string;
+    city: string;
+    state: string;
+    postalCode: number;
+    country: string;
   };
 }) => {
+  if (!data.referenceId || data.referenceId.length > 20) {
+    throw new HttpError(
+      400,
+      'Razorpay Route reference ID must be between 1 and 20 characters'
+    );
+  }
+
   const authHeader = Buffer.from(
     `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
   ).toString('base64');
 
-  const fullAddress = data.address?.street || 'Clinic Address';
-  let street1 = fullAddress.trim();
-  let street2 = 'Area/Locality';
-
-  if (fullAddress.includes(',')) {
-    const parts = fullAddress.split(',');
-    street1 = parts[0].trim();
-    street2 = parts.slice(1).join(',').trim() || 'Area/Locality';
-  } else if (fullAddress.length > 30) {
-    street1 = fullAddress.substring(0, 30).trim();
-    street2 = fullAddress.substring(30).trim() || 'Area/Locality';
-  }
-
-  if (!street1) street1 = 'Clinic Address';
-  if (!street2) street2 = 'Area/Locality';
+  const street1 = data.address.street1.normalize('NFKC').trim();
+  const street2 = data.address.street2.normalize('NFKC').trim();
 
   try {
     const response = await axios.post(
@@ -252,9 +255,17 @@ export const createRazorpayRouteAccount = async (data: {
         email: data.email,
         phone: data.phone,
         type: 'route',
-        reference_id: `${data.referenceId.replace(/-/g, '').substring(0, 14)}_${Math.random().toString(36).substring(2, 7)}`,
+        reference_id: data.referenceId,
         legal_business_name: data.name,
-        business_type: 'individual',
+        business_type: data.businessType,
+        ...(data.businessPan || data.gstin
+          ? {
+              legal_info: {
+                ...(data.businessPan ? { pan: data.businessPan } : {}),
+                ...(data.gstin ? { gst: data.gstin } : {}),
+              },
+            }
+          : {}),
         contact_name: data.contactName,
         profile: {
           category: 'healthcare',
@@ -263,10 +274,10 @@ export const createRazorpayRouteAccount = async (data: {
             registered: {
               street1: street1,
               street2: street2,
-              city: data.address?.city || 'City',
-              state: data.address?.state || 'State',
-              postal_code: data.address?.postalCode || 110001,
-              country: data.address?.country || 'IN',
+              city: data.address.city,
+              state: data.address.state,
+              postal_code: data.address.postalCode,
+              country: data.address.country,
             },
           },
         },
@@ -283,11 +294,19 @@ export const createRazorpayRouteAccount = async (data: {
     if (axios.isAxiosError(error) && error.response) {
       const status = error.response.status || 400;
       const description =
-        error.response.data?.error?.description || error.message;
+        error.response.data?.error?.description ||
+        error.response.data?.error?.reason ||
+        error.message;
       throw new HttpError(
         status,
         `Razorpay route account creation failed: ${description}`,
         error.response.data
+      );
+    }
+    if (axios.isAxiosError(error)) {
+      throw new HttpError(
+        502,
+        `Razorpay route account creation network error: ${error.message}`
       );
     }
     throw error;
@@ -370,6 +389,61 @@ export const fetchRazorpayOrder = async (orderId: string) =>
     razorpayInstance.orders.fetch(orderId)
   );
 
+/** One Route transfer: settlement_status and, once paid out, recipient_settlement_id. */
+export const fetchRazorpayTransfer = async (transferId: string) =>
+  callRazorpaySdk(
+    'Razorpay transfer fetch',
+    () =>
+      razorpayInstance.transfers.fetch(transferId) as unknown as Promise<
+        Record<string, unknown>
+      >
+  );
+
+/** A linked account's settlement (amount, UTR, date), read as that account via X-Razorpay-Account. */
+export const fetchRazorpayLinkedSettlement = async (
+  accountId: string,
+  settlementId: string
+) => {
+  const authHeader = Buffer.from(
+    `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
+  ).toString('base64');
+  const response = await axios.get(
+    `https://api.razorpay.com/v1/settlements/${encodeURIComponent(settlementId)}`,
+    {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        'X-Razorpay-Account': accountId,
+      },
+    }
+  );
+  return response.data as Record<string, unknown>;
+};
+
+/** One Route linked account by id (reference_id tells whose it is). */
+export const fetchRazorpayRouteAccount = async (accountId: string) => {
+  const authHeader = Buffer.from(
+    `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
+  ).toString('base64');
+  try {
+    const response = await axios.get(
+      `https://api.razorpay.com/v2/accounts/${encodeURIComponent(accountId)}`,
+      { headers: { Authorization: `Basic ${authHeader}` } }
+    );
+    return response.data as {
+      id: string;
+      reference_id?: string;
+      status?: string;
+    };
+  } catch (error: any) {
+    const description =
+      error.response?.data?.error?.description || error.message;
+    throw new HttpError(
+      error.response?.status || 500,
+      `Razorpay account fetch failed: ${description}`
+    );
+  }
+};
+
 /**
  * Fetches the active product configurations (such as settlement bank details) for a Route Linked Account.
  */
@@ -412,7 +486,8 @@ export const createRazorpayStakeholder = async (
     email: string;
     phone: string;
     pan: string;
-    dob: string; // YYYY-MM-DD
+    relationship?: { director: boolean; executive: boolean };
+    percentageOwnership?: number;
     address?: {
       street?: string | null;
       city?: string | null;
@@ -440,6 +515,10 @@ export const createRazorpayStakeholder = async (
         kyc: {
           pan: data.pan,
         },
+        relationship: data.relationship || { executive: true },
+        ...(data.percentageOwnership !== undefined
+          ? { percentage_ownership: data.percentageOwnership }
+          : {}),
         addresses: {
           residential: {
             street: fullAddress.trim() || 'Clinic Address',
@@ -460,10 +539,13 @@ export const createRazorpayStakeholder = async (
     return response.data;
   } catch (error: any) {
     const description =
-      error.response?.data?.error?.description || error.message;
+      error.response?.data?.error?.description ||
+      error.response?.data?.error?.reason ||
+      error.message;
     throw new HttpError(
       error.response?.status || 500,
-      `Razorpay stakeholder creation failed: ${description}`
+      `Razorpay stakeholder creation failed: ${description}`,
+      error.response?.data
     );
   }
 };
@@ -473,7 +555,7 @@ export const createRazorpayStakeholder = async (
  */
 export const requestRazorpayProductConfig = async (
   accountId: string,
-  clientIp: string
+  _clientIp: string
 ) => {
   const authHeader = Buffer.from(
     `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
@@ -485,7 +567,7 @@ export const requestRazorpayProductConfig = async (
       {
         product_name: 'route',
         tnc_accepted: true,
-        ip: clientIp,
+        // Razorpay's v2 products API refuses an ip field ("should not be sent"); consent is tnc_accepted.
       },
       {
         headers: {
@@ -508,6 +590,96 @@ export const requestRazorpayProductConfig = async (
 /**
  * Updates settlement bank configuration for the Route product.
  */
+/** Pays a linked account to a UPI ID; Razorpay verifies it instantly (settlement_accounts, one entry). */
+export const updateRazorpayUpiSettlement = async (
+  accountId: string,
+  productId: string,
+  upi: { vpa: string; beneficiaryName: string }
+) => {
+  const authHeader = Buffer.from(
+    `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
+  ).toString('base64');
+  try {
+    const response = await axios.patch(
+      `https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`,
+      {
+        settlement_accounts: [
+          {
+            method: 'upi',
+            upi: {
+              vpa: upi.vpa,
+              beneficiary_name: upi.beneficiaryName,
+              currency: 'INR',
+              is_default: true,
+            },
+          },
+        ],
+        tnc_accepted: true,
+      },
+      {
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    const description =
+      error.response?.data?.error?.description || error.message;
+    throw new HttpError(
+      error.response?.status || 500,
+      `Razorpay UPI settlement update failed: ${description}`
+    );
+  }
+};
+
+/** Makes a bank account the default payout destination; the documented way to switch away from UPI. */
+export const updateRazorpayBankSettlementAccount = async (
+  accountId: string,
+  productId: string,
+  bank: { accountNumber: string; ifscCode: string; beneficiaryName: string }
+) => {
+  const authHeader = Buffer.from(
+    `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
+  ).toString('base64');
+  try {
+    const response = await axios.patch(
+      `https://api.razorpay.com/v2/accounts/${accountId}/products/${productId}`,
+      {
+        settlement_accounts: [
+          {
+            method: 'bank_account',
+            bank_account: {
+              account_number: bank.accountNumber,
+              beneficiary_name: bank.beneficiaryName,
+              code_type: 'ifsc',
+              code: bank.ifscCode,
+              currency: 'INR',
+              is_default: true,
+            },
+          },
+        ],
+        tnc_accepted: true,
+      },
+      {
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    const description =
+      error.response?.data?.error?.description || error.message;
+    throw new HttpError(
+      error.response?.status || 500,
+      `Razorpay bank settlement update failed: ${description}`
+    );
+  }
+};
+
 export const updateRazorpayProductSettlements = async (
   accountId: string,
   productId: string,
@@ -555,7 +727,8 @@ export const updateRazorpayProductSettlements = async (
  * Fetches all products requested for a route Linked Account.
  */
 export const fetchRazorpayRouteAccountAllProducts = async (
-  accountId: string
+  accountId: string,
+  _clientIp?: string
 ) => {
   const authHeader = Buffer.from(
     `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
@@ -591,8 +764,10 @@ export const fetchRazorpayRouteAccountAllProducts = async (
 /**
  * Maps our internal document type name to the Razorpay KYC document_type value.
  * Razorpay v2 onboarding API uses `document_type` (not `purpose`).
- * - Stakeholder docs: individual_proof_of_identification, individual_proof_of_address
- * - Business docs: business_proof_of_identification, business_proof_of_address, business_proof_of_entity
+ * Stakeholder docs use personal_pan, aadhar front/back, passport front/back,
+ * or voter ID front/back document types.
+ * Business document_type values include business_pan_url, gst_certificate,
+ * msme_certificate, shop_establishment_certificate, and business_proof_url.
  */
 const RAZORPAY_DOCUMENT_TYPE_MAP: Record<string, string> = {
   pan: 'personal_pan',
@@ -606,12 +781,47 @@ const RAZORPAY_DOCUMENT_TYPE_MAP: Record<string, string> = {
   passport_back: 'passport_back',
   voter_id_front: 'voter_id_front',
   voter_id_back: 'voter_id_back',
-  business_pan: 'business_pan',
+  business_pan: 'business_pan_url',
+  // Accept Razorpay's generic business-proof value when the caller is
+  // resolving a requirement returned by the product configuration API.
+  business_proof_url: 'business_proof_url',
   gst: 'gst_certificate',
   gst_certificate: 'gst_certificate',
   cancelled_cheque: 'cancelled_cheque',
   cancel_cheque: 'cancelled_cheque',
-  bank_statement: 'bank_statement',
+  incorporation_certificate: 'business_proof_url',
+  partnership_deed: 'business_proof_url',
+  llp_agreement: 'business_proof_url',
+  board_resolution: 'business_proof_url',
+  power_of_attorney: 'business_proof_url',
+  moa: 'business_proof_url',
+  aoa: 'business_proof_url',
+  business_address_proof: 'business_proof_url',
+  business_identity_proof: 'business_proof_url',
+  msme_certificate: 'msme_certificate',
+  shop_establishment_certificate: 'shop_establishment_certificate',
+};
+
+const RAZORPAY_DOCUMENT_TYPE_ALIASES: Record<string, string> = {
+  pan: 'personal_pan',
+  aadhaar_front: 'aadhar_front',
+  aadhaar_back: 'aadhar_back',
+  passport: 'passport_front',
+  cancel_cheque: 'cancelled_cheque',
+  gst: 'gst_certificate',
+  // Razorpay's API value is also commonly sent back by its requirements API.
+  // Normalize it to our user-facing slot so it can be uploaded/replaced.
+  business_pan_url: 'business_pan',
+};
+
+export const getRazorpayDocumentType = (documentType: string) =>
+  RAZORPAY_DOCUMENT_TYPE_MAP[documentType] || null;
+
+export const normalizeRazorpayDocumentType = (docType: string) => {
+  if (typeof docType !== 'string' || !docType.trim()) return null;
+  const normalized = docType.trim().toLowerCase();
+  const canonical = RAZORPAY_DOCUMENT_TYPE_ALIASES[normalized] || normalized;
+  return RAZORPAY_DOCUMENT_TYPE_MAP[canonical] ? canonical : null;
 };
 
 /**
@@ -629,7 +839,10 @@ export const uploadRazorpayDocument = async (
     `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
   ).toString('base64');
 
-  const razorpayDocumentType = RAZORPAY_DOCUMENT_TYPE_MAP[docType] ?? docType;
+  const razorpayDocumentType = RAZORPAY_DOCUMENT_TYPE_MAP[docType];
+  if (!razorpayDocumentType) {
+    throw new HttpError(400, `Unsupported KYC document type: ${docType}`);
+  }
 
   const form = new FormData();
   form.append('file', fileBuffer, {
@@ -656,6 +869,47 @@ export const uploadRazorpayDocument = async (
     throw new HttpError(
       error.response?.status || 500,
       `Razorpay document upload failed: ${description}`
+    );
+  }
+};
+
+/** Fetches the KYC document index for an account or one of its stakeholders. */
+export const fetchRazorpayRouteDocuments = async (
+  accountId: string,
+  stakeholderId?: string | null
+): Promise<Array<{ type: string; documentId: string }>> => {
+  const authHeader = Buffer.from(
+    `${envConfig.RAZORPAY_KEY_ID}:${envConfig.RAZORPAY_KEY_SECRET}`
+  ).toString('base64');
+  const url = stakeholderId
+    ? `https://api.razorpay.com/v2/accounts/${encodeURIComponent(accountId)}/stakeholders/${encodeURIComponent(stakeholderId)}/documents`
+    : `https://api.razorpay.com/v2/accounts/${encodeURIComponent(accountId)}/documents`;
+
+  try {
+    const response = await axios.get(url, {
+      headers: { Authorization: `Basic ${authHeader}` },
+      timeout: 30000,
+    });
+    const groups = Array.isArray(response.data)
+      ? [response.data]
+      : Object.values(response.data || {}).filter(Array.isArray);
+    return groups.flatMap((group: any[]) =>
+      group.flatMap((item: any) => {
+        const documentId = item?.document_id || item?.id;
+        return item?.type && documentId
+          ? [{ type: String(item.type), documentId: String(documentId) }]
+          : [];
+      })
+    );
+  } catch (error: any) {
+    const status = error.response?.status || 502;
+    const description =
+      error.response?.data?.error?.description ||
+      error.message ||
+      'Could not fetch Razorpay KYC documents';
+    throw new HttpError(
+      status === 401 || status === 403 ? 502 : status,
+      `Razorpay document lookup failed: ${description}`
     );
   }
 };

@@ -1,6 +1,5 @@
 import { IPaymentAdapter } from '../interfaces/IPaymentAdapter';
 import { RazorpayAdapter } from '../adapters/razorpay.adapter';
-import { CashfreeAdapter } from '../adapters/cashfree.adapter';
 import logger from '../../../utils/logger';
 
 export class PaymentStrategyFactory {
@@ -17,11 +16,6 @@ export class PaymentStrategyFactory {
     if (enabledGateways.includes('razorpay')) {
       this.strategies.set('razorpay', new RazorpayAdapter());
       logger.info('Initialized Payment Gateway Adapter: Razorpay');
-    }
-
-    if (enabledGateways.includes('cashfree')) {
-      this.strategies.set('cashfree', new CashfreeAdapter());
-      logger.info('Initialized Payment Gateway Adapter: Cashfree');
     }
 
     this.initialized = true;

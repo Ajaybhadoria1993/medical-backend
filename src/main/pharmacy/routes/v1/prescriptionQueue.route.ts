@@ -1,6 +1,6 @@
 import express from 'express';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   requireAuth,
   requireClinic,

@@ -4,15 +4,14 @@ import {
   requireClinic,
   requireSuperAdmin,
 } from '../../../../middlewear/auth.middleware';
+import { requireBillingAdmin } from '../../middlewares/billingAdmin.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   createCoupon,
   deleteCoupon,
   getAllCoupons,
-  getCouponById,
   getCouponStats,
-  getMyCouponHistory,
   updateCoupon,
   validateCoupon,
 } from '../../controllers/coupon.controller';
@@ -26,8 +25,6 @@ import {
 
 const couponsRouter = express.Router();
 
-// ==================== Clinic Routes (defined first to avoid :id conflicts) ====================
-
 /**
  * @route POST /api/v1/subscription/coupons/validate
  * @desc Validate/apply a coupon code for a purchase
@@ -36,24 +33,11 @@ const couponsRouter = express.Router();
 couponsRouter.post(
   '/validate',
   requireAuth,
+  requireBillingAdmin,
   requireClinic,
   validate(validateCouponSchema, 'body'),
   validateCoupon
 );
-
-/**
- * @route GET /api/v1/subscription/coupons/my-history
- * @desc Get clinic's coupon usage history
- * @access Private (Clinic)
- */
-couponsRouter.get(
-  '/my-history',
-  requireAuth,
-  requireClinic,
-  getMyCouponHistory
-);
-
-// ==================== Admin Routes (Super Admin) ====================
 
 /**
  * @route POST /api/v1/subscription/coupons
@@ -79,19 +63,6 @@ couponsRouter.get(
   requireSuperAdmin,
   validate(getCouponsQuerySchema, 'query'),
   getAllCoupons
-);
-
-/**
- * @route GET /api/v1/subscription/coupons/:id
- * @desc Get a single coupon by ID
- * @access Private (Super Admin)
- */
-couponsRouter.get(
-  '/:id',
-  requireAuth,
-  requireSuperAdmin,
-  validate(couponIdParamsSchema, 'params'),
-  getCouponById
 );
 
 /**
@@ -136,8 +107,6 @@ couponsRouter.get(
 
 export default couponsRouter;
 
-// ==================== API Documentation ====================
-
 docsRegistry.addEndpoint({
   method: 'post',
   path: '/api/v1/subscription/coupons',
@@ -150,14 +119,6 @@ docsRegistry.addEndpoint({
   method: 'get',
   path: '/api/v1/subscription/coupons',
   description: 'Get all coupons with pagination (Super Admin)',
-  tags: ['coupons', 'admin'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'get',
-  path: '/api/v1/subscription/coupons/:id',
-  description: 'Get coupon by ID (Super Admin)',
-  params: couponIdParamsSchema,
   tags: ['coupons', 'admin'],
 });
 
@@ -191,12 +152,5 @@ docsRegistry.addEndpoint({
   path: '/api/v1/subscription/coupons/validate',
   description: 'Validate/apply a coupon code (Clinic)',
   requestSchema: validateCouponSchema,
-  tags: ['coupons', 'clinic'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'get',
-  path: '/api/v1/subscription/coupons/my-history',
-  description: 'Get clinic coupon usage history',
   tags: ['coupons', 'clinic'],
 });

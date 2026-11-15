@@ -58,7 +58,7 @@ ${clinicalSummarySection}
 {{/if}}
 
 {{#if config.elements.showMedicineTable}}
-<div class="rx">℞</div>
+{{#if prescriptions.length}}<div class="rx">℞</div>{{/if}}
 <table>
   <thead>
     <tr>
@@ -108,7 +108,7 @@ ${clinicalNotesSection}
 </div>
 {{/if}}
 
-<div style="position:fixed;bottom:4mm;left:0;right:0;text-align:center;font-size:8px;color:#999;">Powered by Infinity Medisetu | www.infinitymedisetu.com</div>
+<div style="position:fixed;bottom:4mm;left:0;right:0;text-align:center;font-size:8px;color:#999;">Powered by MediArogya | www.infinitymedisetu.com</div>
 
 {{#if i18n.bilingual}}<div class="tr-note">{{bi "Translation for patient convenience. The English text prevails."}}</div>{{/if}}
 </body>

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 // ==================== ADMIN SCHEMAS ====================
 
-export const createCouponSchema = z.object({
+const couponFields = z.object({
   code: z
     .string()
     .min(3)
@@ -13,17 +13,11 @@ export const createCouponSchema = z.object({
       'Code must be uppercase letters, numbers, hyphens, underscores'
     ),
   description: z.string().optional(),
-  discountType: z.enum(['percentage', 'fixed', 'trial']),
-  discountValue: z.number().min(0),
+  discountType: z.enum(['percentage', 'fixed']),
+  discountValue: z.number().positive('Enter a discount greater than 0.'),
   maxDiscountAmount: z.number().min(0).optional(),
-  trialDays: z.number().int().min(1).optional(),
-  appliesTo: z.enum([
-    'all',
-    'plans',
-    'addons',
-    'specific_plans',
-    'specific_addons',
-  ]),
+  // An empty list under plans / addons means all of them.
+  appliesTo: z.enum(['all', 'plans', 'addons']),
   applicablePlanIds: z.array(z.string()).optional(),
   applicableAddOnIds: z.array(z.string()).optional(),
   maxUses: z.number().int().min(1).optional(),
@@ -34,7 +28,24 @@ export const createCouponSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 
-export const updateCouponSchema = createCouponSchema.partial();
+const percentUpTo100 = (
+  data: { discountType?: string; discountValue?: number },
+  ctx: z.RefinementCtx
+) => {
+  if (data.discountType === 'percentage' && (data.discountValue ?? 0) > 100) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['discountValue'],
+      message: 'Enter a percentage from 1 to 100.',
+    });
+  }
+};
+
+export const createCouponSchema = couponFields.superRefine(percentUpTo100);
+
+export const updateCouponSchema = couponFields
+  .partial()
+  .superRefine(percentUpTo100);
 
 export const couponIdParamsSchema = z.object({
   id: z.string().regex(/^\d+$/, 'ID must be a number'),

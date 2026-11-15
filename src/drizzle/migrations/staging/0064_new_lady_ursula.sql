@@ -1,0 +1,1 @@
+ALTER TABLE "treatment_templates" ADD CONSTRAINT "treatment_templates_review_ck" CHECK ("treatment_templates"."plan_type" <> 'review' OR ("treatment_templates"."session_count" >= 1 AND "treatment_templates"."interval_days" >= 1));

@@ -1,7 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { QuickPrintTemplateModel } from '../models/quickPrintTemplate.model';
-import type { SaveQuickPrintTemplateDto } from '../schemas/quickPrintTemplate.schemas';
+import type {
+  SaveQuickPrintTemplateDto,
+  TemplateUsage,
+} from '../schemas/quickPrintTemplate.schemas';
+import type { ElementConfig } from '../models/quickPrintTemplate.model';
+
+/** Printed until the doctor changes or clears it. */
+export const DEFAULT_FOOTER_NOTES = ['Not valid for medico-legal purposes.'];
 import handlebars from 'handlebars';
 import { quickPrintTemplate1 } from '../templates/compact-medicine-slip';
 import { quickPrintTemplate2 } from '../templates/standard-medicine-sheet';
@@ -45,7 +52,17 @@ export class QuickPrintTemplateService {
     };
     if (data.fontFamily) payload.fontFamily = data.fontFamily;
     if (data.accentColor) payload.accentColor = data.accentColor;
-    if (data.elementConfig) payload.elementConfig = data.elementConfig;
+    // A saved design replaces the config but keeps the shared settings; usageOnly is dropped.
+    if (data.elementConfig) {
+      const savedUsage = (existing?.elementConfig as any)?.templateUsage;
+      payload.elementConfig = {
+        ...data.elementConfig,
+        templateUsage: data.elementConfig.templateUsage ?? savedUsage,
+        footerNotes:
+          data.elementConfig.footerNotes ??
+          (existing?.elementConfig as any)?.footerNotes,
+      };
+    }
 
     if (existing) {
       const [updated] = await database
@@ -63,6 +80,57 @@ export class QuickPrintTemplateService {
       .returning();
 
     return { action: 'created' as const, template: inserted };
+  }
+
+  static setTemplateUsage(doctorId: string, templateUsage: TemplateUsage) {
+    return this.updateSharedSettings(doctorId, { templateUsage });
+  }
+
+  static setFooterNotes(doctorId: string, footerNotes: string[]) {
+    return this.updateSharedSettings(doctorId, { footerNotes });
+  }
+
+  /** The doctor's footer lines, or the default note when they never set any. */
+  static footerNotesOf(elementConfig: unknown): string[] {
+    const notes = (elementConfig as ElementConfig | null | undefined)
+      ?.footerNotes;
+    return Array.isArray(notes) ? notes : DEFAULT_FOOTER_NOTES;
+  }
+
+  static async getFooterNotes(doctorId: string) {
+    return this.footerNotesOf(
+      (await this.getSelectedTemplate(doctorId))?.elementConfig
+    );
+  }
+
+  /** Settings that apply to every design live on this row; a doctor with no Quick Print design gets a usage-only one. */
+  private static async updateSharedSettings(
+    doctorId: string,
+    patch: Pick<ElementConfig, 'templateUsage' | 'footerNotes'>
+  ) {
+    const existing = await this.getSelectedTemplate(doctorId);
+
+    if (existing) {
+      const [updated] = await database
+        .update(QuickPrintTemplateModel)
+        .set({
+          elementConfig: { ...(existing.elementConfig ?? {}), ...patch },
+          updatedAt: new Date(),
+        })
+        .where(eq(QuickPrintTemplateModel.doctorId, doctorId))
+        .returning();
+      return updated;
+    }
+
+    const [inserted] = await database
+      .insert(QuickPrintTemplateModel)
+      .values({
+        doctorId,
+        selectedTemplate: 'compact-medicine-slip',
+        elementConfig: { ...patch, usageOnly: true },
+      })
+      .returning();
+    return inserted;
   }
 
   /**
@@ -90,6 +158,7 @@ export class QuickPrintTemplateService {
     showTests: false,
     showClinicalNotes: false,
     showAdvice: true,
+    showTreatmentPlan: true,
     showFollowUp: true,
     showDoctorName: true,
     showDoctorQualification: true,
@@ -210,7 +279,7 @@ export class QuickPrintTemplateService {
         elements,
       },
       clinic: context?.clinic || {
-        name: 'Medisetu Clinic',
+        name: 'MediArogya Clinic',
         address: '123 Health Street, Medical Complex',
         phone: '+91 98765 43210',
         logo: '',
@@ -242,6 +311,7 @@ export class QuickPrintTemplateService {
         rbs: 110,
         pulse: 78,
         spo2: 98,
+        respiratoryRate: 18,
         temperatureC: 36.9,
         heightCm: 163,
         weightKg: 64,

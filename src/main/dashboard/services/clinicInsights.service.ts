@@ -4,7 +4,7 @@ import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { AppointmentPaymentModel } from '../../appointments/models/appointment-payment.model';
 import { ClinicAssignModel } from '../../clinic/models/clinic.model';
 import { UserModel } from '../../users/models/user.model';
-import { getISTDateString } from '../../../utils/istDateTime';
+import { getISTDateString, istDayBoundsUtc } from '../../../utils/istDateTime';
 import type { ClinicInsights } from '../types/clinicInsights.types';
 import {
   fillDuesBrackets,
@@ -13,12 +13,15 @@ import {
   rankDoctors,
   topBusiestHours,
 } from '../utils/clinicInsights.utils';
-import { RECEIVED_AMOUNT } from '../utils/revenueSql';
+import { MoneyReadService } from '../../money';
+import { DUE_AMOUNT } from '../utils/revenueSql';
+import { knownTimeOfDay } from '../../reportsOverview/utils/reportsTrend.utils';
 
-const BUSIEST_WINDOW_DAYS = 30;
+// Four full weeks: every weekday occurs exactly 4 times, so day totals compare fairly (30 days gives two weekdays a 5th).
+const BUSIEST_WINDOW_DAYS = 28;
 
 /** Money still owed. Shared with the Pending Payments stat so the two can't disagree. */
-export const UNPAID_PAYMENT = sql`LOWER(COALESCE(${AppointmentPaymentModel.paymentStatus}, '')) IN ('pending', 'credit')`;
+export const UNPAID_PAYMENT = sql`LOWER(COALESCE(${AppointmentPaymentModel.paymentStatus}, '')) IN ('pending', 'credit', 'partly paid')`;
 
 /** The patient never attended, so nothing is owed and it isn't a visit. */
 export const NOT_ATTENDED = sql`${AppointmentModel.appointmentStatus} IN ('Cancelled', 'NoShow', 'Missed')`;
@@ -85,15 +88,9 @@ export class ClinicInsightsService {
         doctor: UserModel.name,
         appointments: sql<number>`COUNT(DISTINCT ${AppointmentModel.id}) FILTER (WHERE ${inRange})::int`,
         completed: sql<number>`COUNT(DISTINCT ${AppointmentModel.id}) FILTER (WHERE ${inRange} AND ${AppointmentModel.appointmentStatus} = 'Completed')::int`,
-        // Same rule as Total Revenue and Payments History, so doctor rows sum to both.
-        revenue: sql<string>`COALESCE(SUM(CASE WHEN ${inRange} THEN ${RECEIVED_AMOUNT} ELSE 0 END), 0)`,
       })
       .from(AppointmentModel)
       .innerJoin(UserModel, eq(UserModel.id, AppointmentModel.doctorId))
-      .leftJoin(
-        AppointmentPaymentModel,
-        eq(AppointmentPaymentModel.appointmentId, AppointmentModel.id)
-      )
       .where(
         and(
           eq(AppointmentModel.clinicId, clinicId),
@@ -106,9 +103,21 @@ export class ClinicInsightsService {
       )
       .groupBy(AppointmentModel.doctorId, UserModel.name);
 
+    // Revenue from the ledger reader, so doctor rows sum to Total Revenue and Payments History.
+    const revenue = await MoneyReadService.byDoctor({
+      clinicId,
+      start: istDayBoundsUtc(
+        start.toISOString().slice(0, 10)
+      ).start.toISOString(),
+      end: istDayBoundsUtc(end.toISOString().slice(0, 10)).end.toISOString(),
+    });
     return rows
       .filter((r): r is typeof r & { doctorId: string } => Boolean(r.doctorId))
-      .map((r) => ({ ...r, doctorId: r.doctorId }));
+      .map((r) => ({
+        ...r,
+        doctorId: r.doctorId,
+        revenue: String((revenue[r.doctorId] ?? 0) / 100),
+      }));
   }
 
   /** Any date. A past appointment, or one already completed today, can owe money. */
@@ -121,7 +130,7 @@ export class ClinicInsightsService {
           WHEN ${today}::date - ${AppointmentModel.appointmentDate}::date <= 90 THEN '61-90'
           ELSE '90+'
         END AS bracket,
-        COALESCE(SUM(${AppointmentPaymentModel.price}::numeric), 0) AS amount,
+        COALESCE(SUM(${DUE_AMOUNT}), 0) AS amount,
         COUNT(DISTINCT ${AppointmentModel.id}) AS count
       FROM ${AppointmentModel}
       INNER JOIN ${AppointmentPaymentModel}
@@ -139,21 +148,17 @@ export class ClinicInsightsService {
     return fillDuesBrackets(rows);
   }
 
-  /** Token bookings store a '23:59' placeholder; counting it would invent an 11 PM peak. */
+  /** Same rule as Reports: check-in time, else the booked slot; `bucketRowsByHour` drops the token
+   *  '23:59' placeholder of a token not yet checked in. Visits that didn't happen are left out. */
   private static async getBusiestHours(clinicId: string, today: string) {
     const from = shiftYmd(today, -(BUSIEST_WINDOW_DAYS - 1));
     const rows = (await database.execute(sql`
-      SELECT ${AppointmentModel.appointmentTime} AS time, COUNT(*) AS cnt
+      SELECT ${knownTimeOfDay} AS time, COUNT(*) AS cnt
       FROM ${AppointmentModel}
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate}::date BETWEEN ${from}::date AND ${today}::date
-        AND ${AppointmentModel.appointmentStatus} <> 'Cancelled'
-        AND ${AppointmentModel.appointmentTime} IS NOT NULL
-        AND NOT (
-          ${AppointmentModel.tokenNo} IS NOT NULL
-          AND TRIM(${AppointmentModel.appointmentTime}) IN ('23:59', '23:59:00')
-        )
-      GROUP BY ${AppointmentModel.appointmentTime}
+        AND NOT ${NOT_ATTENDED}
+      GROUP BY 1
     `)) as unknown as { time: string | null; cnt: string }[];
 
     return topBusiestHours(rows);
@@ -166,7 +171,7 @@ export class ClinicInsightsService {
       FROM ${AppointmentModel}
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate}::date BETWEEN ${from}::date AND ${today}::date
-        AND ${AppointmentModel.appointmentStatus} <> 'Cancelled'
+        AND NOT ${NOT_ATTENDED}
       GROUP BY dow
     `)) as unknown as { dow: string; cnt: string }[];
 

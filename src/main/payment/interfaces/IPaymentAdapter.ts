@@ -1,5 +1,3 @@
-import { IReconciledTransaction } from './reconciliation.types';
-
 export interface ITransferSplit {
   account: string; // Sub-merchant linked account ID
   amount: number; // in Rupees (will be converted to paise in adapter if gateway requires it)
@@ -85,9 +83,4 @@ export interface IPaymentAdapter {
    * Process a refund back to patient/customer.
    */
   processRefund(payload: IRefundPayload): Promise<IRefundResponse>;
-
-  /**
-   * Retrieve daily settlement and transaction reconciliation reports.
-   */
-  getReconciliationReport(date: Date): Promise<IReconciledTransaction[]>;
 }

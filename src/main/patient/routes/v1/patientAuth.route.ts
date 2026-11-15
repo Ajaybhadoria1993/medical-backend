@@ -20,7 +20,7 @@ import {
   otpRateLimit,
   strictRateLimit,
 } from '../../../../middlewear/rateLimit.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 
 const patientAuthRouter = Router();
 

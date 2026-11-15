@@ -29,6 +29,8 @@ export const UserProfessionalModel = pgTable(
     speciality: text('speciality'),
     specialization: text('specialization').array(),
     registrationNumber: varchar('registration_number', { length: 100 }),
+    // Up to 8 names from the fixed language list (English, Hindi, …), shown on the public profile.
+    languagesSpoken: text('languages_spoken').array(),
     about: varchar('about', { length: 1000 }),
     averageRating: numeric('average_rating', { precision: 3, scale: 2 })
       .default('0.00')

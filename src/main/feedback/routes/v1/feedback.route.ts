@@ -2,12 +2,13 @@
 import express from 'express';
 
 import {
-  requireAdmin,
+  CLINIC_STAFF_ROLES,
   requireAuth,
   requireClinic,
+  requireRole,
 } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   createFeedbackSchema,
   feedbackParamsSchema,
@@ -33,7 +34,7 @@ const feedbackRouter = express.Router();
 feedbackRouter.post(
   '/',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(createFeedbackSchema, 'body'),
   createFeedBackController
@@ -47,7 +48,7 @@ feedbackRouter.post(
 feedbackRouter.put(
   '/respond/:feedbackId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(respondFeedbackSchema, 'body'),
   validate(feedbackParamsSchema, 'params'),
@@ -62,7 +63,7 @@ feedbackRouter.put(
 feedbackRouter.put(
   '/update-feedback/:feedbackId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(updateFeedbackSchema, 'body'),
   validate(feedbackParamsSchema, 'params'),
@@ -77,7 +78,7 @@ feedbackRouter.put(
 feedbackRouter.delete(
   '/delete/:feedbackId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(feedbackParamsSchema, 'params'),
   deleteFeedBackController
@@ -91,7 +92,7 @@ feedbackRouter.delete(
 feedbackRouter.get(
   '/clinic/all',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getAllClinicFeedBackController
 );
@@ -104,7 +105,7 @@ feedbackRouter.get(
 feedbackRouter.get(
   '/user/all',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getAllUserFeedBackController
 );
@@ -117,7 +118,7 @@ feedbackRouter.get(
 feedbackRouter.get(
   '/get-feedback/:feedbackId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(feedbackParamsSchema, 'params'),
   getFeedBackByIdController

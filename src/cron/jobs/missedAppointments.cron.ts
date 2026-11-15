@@ -1,7 +1,5 @@
 // src/cron/jobs/missedAppointments.cron.ts
-import cron from 'node-cron';
 import { sql } from 'drizzle-orm';
-import logger from '../../utils/logger';
 import { database } from '../../configurations/dbConnection';
 import { istDayBoundsUtc } from '../../utils/istDateTime';
 import { invalidateClinicDashboardCaches } from '../../main/dashboard/utils/dashboardCache.utils';
@@ -58,26 +56,4 @@ export async function markPastDayAppointmentsNoShow(): Promise<number> {
     rows.map((r) => invalidateClinicDashboardCaches(r.clinic_id))
   );
   return rows.reduce((sum, r) => sum + Number(r.n), 0);
-}
-
-/**
- * Schedule: daily at 00:05 IST, plus once at boot to catch a missed night.
- * The first run also closes all older data, so no separate backfill is needed.
- */
-export function initMissedAppointments(): void {
-  const run = async () => {
-    try {
-      const count = await markPastDayAppointmentsNoShow();
-      logger.info(
-        `[Cron:MissedAppointments] Marked ${count} as No Show (system)`
-      );
-    } catch (error) {
-      logger.error('[Cron:MissedAppointments] Failed:', error);
-    }
-  };
-
-  cron.schedule('5 0 * * *', run, { timezone: 'Asia/Kolkata' });
-  void run();
-
-  logger.info('[Cron:MissedAppointments] Scheduled at 00:05 AM IST daily');
 }

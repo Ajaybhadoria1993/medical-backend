@@ -97,6 +97,6 @@ describe('PrescriptionSectionService on Quick Print', () => {
         showDiagnosis: false,
         showMedicineTable: false,
       })
-    ).toEqual(['diagnosis']);
+    ).toEqual(['diagnosis', 'habits']); // habits is off until switched on
   });
 });

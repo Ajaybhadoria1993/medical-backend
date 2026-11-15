@@ -3,7 +3,6 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ZodType, ZodError } from 'zod';
 import { asyncHandler } from './errorHandler'; // adjust path
-import { docsRegistry } from '../utils/docsRegistry';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -45,18 +44,6 @@ function mapZodIssues(zerr: ZodError) {
   });
 }
 
-function recordValidationError(req: Request, err: ZodError, target: string) {
-  docsRegistry.recordError({
-    path: req.originalUrl,
-    method: req.method,
-    message: `Invalid ${target}: ${err.issues
-      .map((i) => `${i.path.join('.') || '(root)'} → ${i.message}`)
-      .join('; ')}`,
-    status: 400,
-    stack: err.stack,
-  });
-}
-
 /**
  * Middleware factory: validate request body/params/query with a Zod schema
  * Returns rich error details (field path, message, expected/received types).
@@ -85,7 +72,6 @@ export const validate =
       return next();
     } catch (err: unknown) {
       if (err instanceof ZodError) {
-        recordValidationError(req, err, target);
         const details = mapZodIssues(err);
         return res.status(400).json({ success: false, errors: details });
       }
@@ -120,7 +106,6 @@ export const withValidation =
         return handler(req, res, next);
       } catch (err: unknown) {
         if (err instanceof ZodError) {
-          recordValidationError(req, err, target);
           const details = mapZodIssues(err);
           res.status(400).json({ success: false, errors: details });
         }

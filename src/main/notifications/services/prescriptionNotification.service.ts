@@ -45,8 +45,9 @@ export class PrescriptionNotificationService {
         whatsappEnabled,
         {
           key: 'appointmentCompleted',
-          params: { patientName, doctorName, clinicName },
-        }
+          params: { patientName, doctorName, clinicName, appointmentId },
+        },
+        clinicId
       );
 
       // Schedule follow-up reminder if followUpInDays is provided

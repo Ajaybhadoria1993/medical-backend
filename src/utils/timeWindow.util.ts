@@ -59,6 +59,23 @@ export function formatDurationMinutes(totalMinutes: number): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 }
 
+/** One weekday's shift windows: its span cut by the active gap rows (callers
+ *  filter status) and the legacy breaks_start/breaks_end pair. */
+export function shiftWindowsForDay(
+  day: {
+    startTime?: string | null;
+    endTime?: string | null;
+    breaksStart?: string | null;
+    breaksEnd?: string | null;
+  },
+  activeBreaks: { startTime?: string | null; endTime?: string | null }[]
+): { start: number; end: number }[] {
+  return subtractBreaksFromWindow(day.startTime, day.endTime, [
+    { startTime: day.breaksStart, endTime: day.breaksEnd },
+    ...activeBreaks,
+  ]);
+}
+
 export function subtractBreaksFromWindow(
   startTime: string | null | undefined,
   endTime: string | null | undefined,

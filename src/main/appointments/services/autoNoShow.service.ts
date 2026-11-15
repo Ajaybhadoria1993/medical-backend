@@ -1,5 +1,6 @@
 // src/main/appointments/services/autoNoShow.service.ts
 import { Queue, Worker } from 'bullmq';
+import { queueConnection } from '../../notifications/queues/queueConnection';
 import { database } from '../../../configurations/dbConnection';
 import { AppointmentModel } from '../models/appointment.model';
 import { eq, and } from 'drizzle-orm';
@@ -38,27 +39,11 @@ class AutoNoShowQueue {
   private worker: Worker;
 
   constructor() {
-    const connection = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-    };
-
-    this.queue = new Queue('auto-no-show', { connection });
+    this.queue = new Queue('auto-no-show', { connection: queueConnection });
 
     this.worker = new Worker('auto-no-show', this.processJob.bind(this), {
-      connection,
+      connection: queueConnection,
     });
-
-    // Without an 'error' listener, BullMQ's internal errors (Redis blips,
-    // connection limits) surface as unhandled EventEmitter errors and crash
-    // the process.
-    this.queue.on('error', (err) =>
-      logger.warn(`[AutoNoShowQueue] Queue error: ${err.message}`)
-    );
-    this.worker.on('error', (err) =>
-      logger.warn(`[AutoNoShowQueue] Worker error: ${err.message}`)
-    );
   }
 
   private async processJob(job: { data: AutoNoShowJobData }) {

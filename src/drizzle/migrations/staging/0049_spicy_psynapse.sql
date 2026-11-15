@@ -1,0 +1,1 @@
+ALTER TABLE "doctor_qualifications" ADD COLUMN "notes" varchar(300);

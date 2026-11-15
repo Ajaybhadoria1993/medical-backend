@@ -1,30 +1,40 @@
 import { z } from 'zod';
+import { compareVersions } from '../utils/version.utils';
 
 const platformEnum = z.enum(['ios', 'android']);
 
-export const createUpdateConfigSchema = z.object({
-  app_name: z.string().min(1, 'app_name is required'),
-  platform: platformEnum,
-  force_update: z.boolean(),
-  store_url: z.string().default(''),
-  latest_version: z.string().min(1, 'latest_version is required'),
-  minimum_version: z
+// Same rule as the admin form: 1.0, 1.0.0.
+const version = (label: string) =>
+  z
     .string()
-    .min(1, 'minimum_version is required')
-    .default('1.0.0'),
-});
+    .trim()
+    .regex(/^\d+\.\d+(\.\d+)?$/, `${label} must look like 1.0.0 or 2.1`);
 
-export const updateUpdateConfigSchema = z.object({
-  app_name: z.string().min(1, 'app_name is required'),
-  platform: platformEnum,
-  force_update: z.boolean(),
-  store_url: z.string().default(''),
-  latest_version: z.string().min(1, 'latest_version is required'),
-  minimum_version: z
-    .string()
-    .min(1, 'minimum_version is required')
-    .default('1.0.0'),
-});
+// Create and update take the same body; app + platform identify the row.
+export const updateConfigBodySchema = z
+  .object({
+    app_name: z.string().trim().min(1, 'app_name is required'),
+    platform: platformEnum,
+    force_update: z.boolean(),
+    store_url: z
+      .string()
+      .trim()
+      .refine(
+        (url) => url === '' || /^https:\/\/\S+\.\S+/.test(url),
+        'Store URL must start with https://'
+      )
+      .default(''),
+    latest_version: version('Latest version'),
+    minimum_version: version('Minimum version').default('1.0.0'),
+  })
+  // A minimum above latest would force-block every user of the app.
+  .refine((b) => compareVersions(b.minimum_version, b.latest_version) <= 0, {
+    message: 'Minimum version cannot be higher than the latest version',
+    path: ['minimum_version'],
+  });
+
+export const createUpdateConfigSchema = updateConfigBodySchema;
+export const updateUpdateConfigSchema = updateConfigBodySchema;
 
 export const getUpdateConfigSchema = z.object({
   app_name: z.string().min(1, 'app_name is required'),

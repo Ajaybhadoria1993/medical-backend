@@ -12,7 +12,7 @@ import { HttpError } from '../../../middlewear/errorHandler';
 import { pagination } from '../../../utils/utils';
 import { UpdatePharmacyInput } from '../schemas/pharmacy.schemas';
 import logger from '../../../utils/logger';
-import { LimitationService } from '../../subscription/services/limitation.service';
+import { LimitationService } from '../../subscription';
 type DbTransaction = Parameters<Parameters<typeof database.transaction>[0]>[0];
 
 export type CreatePharmacyPayload = {
@@ -128,7 +128,7 @@ export class PharmacyService {
           if (adminUser && adminUser.email) {
             await sendEmail(
               adminUser.email,
-              `Infinity Medisetu - Pharmacy Created: ${pharmacy.name} at ${clinic?.clinicName || 'Clinic'}`,
+              `MediArogya - Pharmacy Created: ${pharmacy.name} at ${clinic?.clinicName || 'Clinic'}`,
               pharmacyCreationNotificationTemplate({
                 adminName: adminUser.name ?? '',
                 pharmacyName: pharmacy.name,
@@ -525,7 +525,7 @@ export class PharmacyService {
         // Use the same template as user service
         await sendEmail(
           result.user.email ?? '',
-          `Infinity Medisetu - Welcome to ${result.pharmacy?.name || 'Pharmacy'} at ${result.clinic?.clinicName || 'Clinic'}`,
+          `MediArogya - Welcome to ${result.pharmacy?.name || 'Pharmacy'} at ${result.clinic?.clinicName || 'Clinic'}`,
           welcomeSetPasswordTemplate({
             name: result.user.name ?? '',
             clinicName: `${result.pharmacy?.name || 'Pharmacy'} - ${result.clinic?.clinicName || 'Clinic'}`,

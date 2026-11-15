@@ -66,7 +66,7 @@ function buildService(opts: {
   breaks?: Array<{ startMinutes: number; endMinutes: number }>;
   slotMinutes?: number;
   sessionStartMinutes?: number;
-  /** Omitted by default: without it the last sitting has no closing minute. */
+  /** Day's end; it never makes a sitting missed, since the last one never closes early. */
   sessionEndMinutes?: number;
 }) {
   const service = new DelayTrackerService();

@@ -8,6 +8,8 @@ import {
 } from '../main/notifications/types/whatsappTemplate.types';
 import {
   buildTemplateBodyParams,
+  buildTemplateUrlButtonParams,
+  resolveTemplateHeaderImage,
   normalizeWhatsAppNumber,
   resolveTemplateName,
 } from '../main/notifications/utils/whatsappTemplate.utils';
@@ -42,7 +44,7 @@ export async function sendSMS(to: string, body: string): Promise<void> {
 
 /**
  * Every business-initiated WhatsApp message goes through a pre-approved Meta
- * template with per-field placeholders — see docs/WHATSAPP_META_SETUP.md for the
+ * template with per-field placeholders — see docs/notifications/WHATSAPP_META_SETUP.md for the
  * template bodies and `whatsappTemplate.utils.ts` for the parameter order.
  *
  * There is deliberately no Direct Send fallback: Meta returns 200 + a message id
@@ -50,24 +52,27 @@ export async function sendSMS(to: string, body: string): Promise<void> {
  * the message, which turns every failure into a false "sent successfully" log.
  *
  * Gated by WHATSAPP_SENDING_ENABLED (defaults to off outside production).
+ * Returns Meta's message id; undefined when sending is disabled, so nothing is recorded.
  */
 export async function sendWhatsAppTemplate<K extends WhatsAppTemplateKey>(
   to: string,
   key: K,
   params: WhatsAppTemplateParams[K]
-): Promise<void> {
+): Promise<string | undefined> {
   if (!envConfig.WHATSAPP_SENDING_ENABLED) {
     logger.warn(
       `WhatsApp sending disabled for this environment (WHATSAPP_SENDING_ENABLED=false) — skipping "${key}" to ${to}`
     );
-    return;
+    return undefined;
   }
 
-  await WhatsAppService.sendTemplateMessage(
+  return WhatsAppService.sendTemplateMessage(
     normalizeWhatsAppNumber(to),
     resolveTemplateName(key),
     WHATSAPP_LANGUAGE_CODE,
-    buildTemplateBodyParams(key, params)
+    buildTemplateBodyParams(key, params),
+    buildTemplateUrlButtonParams(key, params),
+    resolveTemplateHeaderImage(key)
   );
 }
 
@@ -91,7 +96,9 @@ export async function sendAppointmentNotification(
   mobile: string,
   body: string,
   whatsappEnabled: boolean,
-  whatsappTemplate?: WhatsAppTemplateMessage
+  whatsappTemplate?: WhatsAppTemplateMessage,
+  /** The clinic the message is counted against. */
+  clinicId?: string
 ): Promise<void> {
   const promises = [];
 
@@ -104,7 +111,9 @@ export async function sendAppointmentNotification(
         // sendWhatsAppTemplate below.
         import('../main/notifications/queues/whatsappOutbox.queue').then(
           ({ enqueueWhatsAppTemplate }) =>
-            enqueueWhatsAppTemplate(formattedMobile, whatsappTemplate)
+            enqueueWhatsAppTemplate(formattedMobile, whatsappTemplate, {
+              clinicId: clinicId ?? null,
+            })
         )
       );
     } else {

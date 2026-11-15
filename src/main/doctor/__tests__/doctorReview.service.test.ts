@@ -20,6 +20,7 @@ describe('DoctorReviewService Unit Tests', () => {
       'limit',
       'offset',
       'orderBy',
+      'groupBy',
       'returning',
       'set',
       'values',
@@ -347,6 +348,110 @@ describe('DoctorReviewService Unit Tests', () => {
 
       expect(database.update).toHaveBeenCalled();
       expect(result).toEqual({ id: 'review-1', replyText: 'Thank you!' });
+    });
+  });
+
+  describe('getMyReviews', () => {
+    it('builds the summary from all approved reviews and pages the list', async () => {
+      const ratingRows = [
+        { rating: 5, count: 3 },
+        { rating: 2, count: 1 },
+      ];
+      const reviews = [{ id: 'review-1', rating: 5 }];
+      (database.select as jest.Mock)
+        .mockReturnValueOnce(createChain(ratingRows))
+        .mockReturnValueOnce(createChain(reviews));
+
+      const result = await DoctorReviewService.getMyReviews('doctor-1', {
+        pageNumber: 1,
+        pageSize: 2,
+      });
+
+      expect(result.summary).toEqual({
+        averageRating: 4.3,
+        totalReviews: 4,
+        breakdown: { 1: 0, 2: 1, 3: 0, 4: 0, 5: 3 },
+      });
+      expect(result.reviews).toEqual(reviews);
+      expect(result.pagination).toEqual({
+        totalItems: 4,
+        pageNumber: 1,
+        pageSize: 2,
+        totalPages: 2,
+      });
+    });
+
+    it('counts only the filtered rating for pagination', async () => {
+      (database.select as jest.Mock)
+        .mockReturnValueOnce(
+          createChain([
+            { rating: 5, count: 3 },
+            { rating: 2, count: 1 },
+          ])
+        )
+        .mockReturnValueOnce(createChain([]));
+
+      const result = await DoctorReviewService.getMyReviews('doctor-1', {
+        pageNumber: 1,
+        pageSize: 10,
+        rating: 2,
+      });
+
+      expect(result.pagination.totalItems).toBe(1);
+      expect(result.summary.totalReviews).toBe(4);
+    });
+  });
+
+  describe('getMyReviewForAppointment', () => {
+    it('returns the review when one exists', async () => {
+      (database.select as jest.Mock).mockReturnValueOnce(
+        createChain([{ id: 'review-1', rating: 4 }])
+      );
+      const result = await DoctorReviewService.getMyReviewForAppointment(
+        'doctor-1',
+        'appt-1'
+      );
+      expect(result).toEqual({ id: 'review-1', rating: 4 });
+    });
+
+    it('returns null when the appointment is unreviewed', async () => {
+      (database.select as jest.Mock).mockReturnValueOnce(createChain([]));
+      const result = await DoctorReviewService.getMyReviewForAppointment(
+        'doctor-1',
+        'appt-1'
+      );
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getPatientReviews', () => {
+    it('pages the list and counts the patient reviews', async () => {
+      (database.select as jest.Mock)
+        .mockReturnValueOnce(createChain([{ id: 'review-1' }]))
+        .mockReturnValueOnce(createChain([{ count: 5 }]));
+      const result = await DoctorReviewService.getPatientReviews('patient-1', {
+        pageNumber: 2,
+        pageSize: 2,
+      });
+      expect(result.reviews).toEqual([{ id: 'review-1' }]);
+      expect(result.pagination).toEqual({
+        totalItems: 5,
+        pageNumber: 2,
+        pageSize: 2,
+        totalPages: 3,
+      });
+    });
+
+    it('returns an empty page when the patient has no reviews', async () => {
+      (database.select as jest.Mock)
+        .mockReturnValueOnce(createChain([]))
+        .mockReturnValueOnce(createChain([]));
+      const result = await DoctorReviewService.getPatientReviews('patient-1', {
+        pageNumber: 1,
+        pageSize: 10,
+      });
+      expect(result.pagination.totalItems).toBe(0);
+      expect(result.pagination.totalPages).toBe(0);
     });
   });
 });

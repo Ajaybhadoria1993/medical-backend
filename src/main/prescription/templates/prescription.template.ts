@@ -1,3 +1,4 @@
+import { brandLogoHtml } from '../../../htmltamplates/brandLogo';
 // import type { PrescriptionData } from "../types/prescription.types";
 import type { HtmlTemplateResult } from '../types/prescription.types';
 
@@ -400,9 +401,7 @@ export const sampleTemplate = (): HtmlTemplateResult => {
     
     <!-- Logo in Light Green Strip (below date/time) -->
     <div class="logo-strip">
-        <img src="https://infinitymedisetu.com/app/assets/images/new-logo.svg" 
-             alt="Infinity Medisetu" 
-             style="height: 30px; width: auto; object-fit: contain;" />
+        ${brandLogoHtml(30)}
     </div>
 
     <div class="main-layout">
@@ -583,6 +582,13 @@ export const sampleTemplate = (): HtmlTemplateResult => {
                     <div class="vital-item">
                         <span class="vital-title">SpO2</span>
                         <span class="vital-reading">{{vitals.spo2}}%</span>
+                    </div>
+                    {{/if}}
+
+                    {{#if vitals.respiratoryRate}}
+                    <div class="vital-item">
+                        <span class="vital-title">RR</span>
+                        <span class="vital-reading">{{vitals.respiratoryRate}}/min</span>
                     </div>
                     {{/if}}
                     

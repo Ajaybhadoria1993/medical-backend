@@ -1,0 +1,1 @@
+CREATE INDEX "prescriptions_report_card_idx" ON "prescriptions" USING btree ("report_card_id");

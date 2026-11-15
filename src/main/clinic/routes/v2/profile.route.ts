@@ -16,7 +16,7 @@ import {
 } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
 import { uploadClinicFormV2 } from '../../../../middlewear/upload.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import { updateClinicSchema } from '../../schemas/clinic.schemas';
 import { updateClinicProfileController } from '../../controllers/v2/clinic.controller';
 import { parseMultipartClinicProfileData } from '../../middlewares/parseMultipartClinicProfileData';

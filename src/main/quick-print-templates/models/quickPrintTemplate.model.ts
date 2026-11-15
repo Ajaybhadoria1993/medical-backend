@@ -108,4 +108,14 @@ export type ElementConfig = {
   blockLayout?: ElementBlockLayout[];
   pageSize?: string;
   tableStyle?: string;
+  layoutMode?: 'flow' | 'exact';
+  design?: 'original' | 'modern';
+  bottomMarginMm?: number;
+  textScale?: number;
+  /** Which design share and print use; see `templateUsages` in the schema. */
+  templateUsage?: 'separate' | 'prescription' | 'quickPrint';
+  /** Row created only to store shared settings; it holds no Quick Print design yet. */
+  usageOnly?: boolean;
+  /** Printed above the footer of every prescription; missing means the default note. */
+  footerNotes?: string[];
 };

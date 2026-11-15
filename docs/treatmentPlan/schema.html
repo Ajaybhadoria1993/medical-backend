@@ -1,0 +1,621 @@
+<title>Treatment Plan Schema</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: data dictionary — ER diagram, relationship register, then one card per table with every column */
+:root{
+  --bg:#f3f6f6; --surface:#ffffff; --surface-2:#f7faf9; --fg:#16282a; --muted:#516568; --line:#d3dfe0;
+  --accent:#0a6c74; --accent-soft:#e1f0f0;
+  --pk:#7a4b00; --pk-soft:#fbecd2; --fk:#0a6c74; --fk-soft:#e1f0f0;
+  --ref:#6a5310; --ref-soft:#f8f0d9; --fut:#5d43a0; --fut-soft:#eee8fa;
+  --idx:#3c5560; --idx-soft:#e8eef0; --req:#16282a; --opt:#7a8b8d;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'Cascadia Mono',Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1819; --surface:#162426; --surface-2:#1b2c2e; --fg:#e2eded; --muted:#9bb0b2; --line:#2a3e41;
+  --accent:#5cc3c9; --accent-soft:#163a3d;
+  --pk:#f3b867; --pk-soft:#3a2a12; --fk:#5cc3c9; --fk-soft:#163a3d;
+  --ref:#e4c56f; --ref-soft:#33290f; --fut:#b9a3ec; --fut-soft:#2a2340;
+  --idx:#a9c0c6; --idx-soft:#22353a; --req:#e2eded; --opt:#83999b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1819; --surface:#162426; --surface-2:#1b2c2e; --fg:#e2eded; --muted:#9bb0b2; --line:#2a3e41;
+  --accent:#5cc3c9; --accent-soft:#163a3d;
+  --pk:#f3b867; --pk-soft:#3a2a12; --fk:#5cc3c9; --fk-soft:#163a3d;
+  --ref:#e4c56f; --ref-soft:#33290f; --fut:#b9a3ec; --fut-soft:#2a2340;
+  --idx:#a9c0c6; --idx-soft:#22353a; --req:#e2eded; --opt:#83999b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.5}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:20px;padding-block:32px 72px;display:flex;flex-direction:column;gap:40px}
+header{display:flex;flex-direction:column;gap:10px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{margin:0;font-size:32px;line-height:1.15;text-wrap:balance}
+h2{margin:0;font-size:21px;text-wrap:balance}
+h3{margin:0}
+.lead{margin:0;color:var(--muted);max-width:72ch}
+.stats{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:14px;color:var(--muted)}
+.stats b{color:var(--fg);font-variant-numeric:tabular-nums}
+section{display:flex;flex-direction:column;gap:14px}
+.sub{margin:0;color:var(--muted);font-size:14px;max-width:80ch}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.diagram{padding:16px;overflow-x:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;color:var(--muted);align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.k{display:inline-flex;align-items:center;justify-content:center;min-width:30px;padding:1px 6px;border-radius:4px;font-family:var(--mono);font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap}
+.k-pk{background:var(--pk-soft);color:var(--pk)}
+.k-fk{background:var(--fk-soft);color:var(--fk)}
+.k-ref{background:var(--ref-soft);color:var(--ref)}
+.k-uq,.k-idx{background:var(--idx-soft);color:var(--idx)}
+.k-fut{background:var(--fut-soft);color:var(--fut)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+caption{text-align:left;position:absolute;left:-9999px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap}
+td{padding:7px 12px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:first-child td{border-top:0}
+.mono{font-family:var(--mono);font-size:13px}
+.col{font-family:var(--mono);font-size:13px;font-weight:500;white-space:nowrap}
+.typ{font-family:var(--mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.req{font-size:12.5px;white-space:nowrap}
+.req.y{color:var(--req);font-weight:600}
+.req.n{color:var(--opt)}
+.keys{white-space:nowrap}
+.keys .k+.k{margin-left:4px}
+.purpose{color:var(--muted);min-width:220px}
+tr.base td{background:var(--surface-2)}
+.card-rel td:first-child,.card-rel td:nth-child(2){white-space:nowrap}
+.card{scroll-margin-top:16px;min-width:0}
+.card-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.card-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px}
+.tname{font-family:var(--mono);font-size:16px;font-weight:600;color:var(--accent)}
+.tag{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.purpose-line{margin:0;font-size:14px}
+.row-is{margin:0;font-size:13.5px;color:var(--muted)}
+.row-is b{color:var(--fg);font-weight:600}
+.card-foot{padding:10px 16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.card-foot b{color:var(--fg);font-weight:600}
+.group{display:flex;flex-direction:column;gap:14px}
+.group-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:6px}
+.group-head span{color:var(--muted);font-size:13.5px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.toolbar label{font-size:13px;font-weight:600}
+.toolbar input{flex:1 1 240px;max-width:420px;height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font:inherit;font-size:14px;background:var(--surface);color:var(--fg)}
+.toolbar input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.toc{display:flex;flex-wrap:wrap;gap:6px}
+.toc a{font-family:var(--mono);font-size:12.5px;color:var(--fg);text-decoration:none;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.toc a:hover,.toc a:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
+.empty{color:var(--muted);font-size:14px}
+.enums{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:10px}
+.enum{padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.enum b{font-family:var(--mono);font-weight:600;font-size:13.5px}
+.enum p{margin:0;font-size:13px;color:var(--muted)}
+.vals{display:flex;flex-wrap:wrap;gap:5px}
+.vals code{font-family:var(--mono);font-size:12px;padding:1px 6px;border-radius:4px;background:var(--fk-soft);color:var(--fk)}
+.vals code.r{background:var(--fut-soft);color:var(--fut)}
+.rules{padding:14px 18px;font-size:14px}
+.rules ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+code.i{font-family:var(--mono);font-size:13px}
+.flow{display:flex;flex-direction:column;gap:0;position:relative}
+.stage{display:grid;grid-template-columns:44px 1fr;gap:14px;position:relative;padding-bottom:18px}
+.stage::before{content:"";position:absolute;left:21px;top:44px;bottom:0;width:2px;background:var(--line)}
+.stage:last-child::before{display:none}
+.num{width:44px;height:44px;border-radius:999px;background:var(--accent);color:var(--bg);font-weight:700;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.stage-body{min-width:0;display:flex;flex-direction:column;gap:8px}
+.stage-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.stage-head h3{font-size:17px}
+.who{font-size:12.5px;color:var(--muted)}
+.tx{font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--pk-soft);color:var(--pk)}
+.stage-body p{margin:0;font-size:14px}
+.ops td{font-size:13px}
+.op{display:inline-block;min-width:62px;text-align:center;padding:1px 6px;border-radius:4px;font-family:var(--mono);font-size:11px;font-weight:600}
+.op-INSERT{background:var(--fk-soft);color:var(--fk)}
+.op-UPDATE{background:var(--pk-soft);color:var(--pk)}
+.op-READ{background:var(--idx-soft);color:var(--idx)}
+.op-CALL{background:var(--fut-soft);color:var(--fut)}
+.tbl-ext{color:var(--ref)}
+.ledger-sum td:not(:first-child),.ledger-sum th:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+.ledger-sum tfoot td{font-weight:700;border-top:2px solid var(--line)}
+mark{background:var(--pk-soft);color:inherit;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Infinity Medisetu · treatmentPlan module · Phase 1 data model</div>
+  <h1>Treatment plan database schema</h1>
+  <p class="lead">Every table, every column and every relationship in the module. Read the diagram for the shape, the relationship register for the rules, and the table cards for each column's purpose.</p>
+  <div class="stats" id="stats"></div>
+</header>
+
+<section aria-labelledby="h-rules">
+  <h2 id="h-rules">Design rules behind this model</h2>
+  <div class="box rules">
+    <ol>
+      <li><b>One table per real thing</b>: template, plan, step, step-to-visit link, money entry.</li>
+      <li><b>Store facts, calculate states.</b> "Booked" and "Arrived" come from the linked appointment; balance comes from ledger rows; "late" comes from dates.</li>
+      <li><b>Money and history are append-only.</b> They have no <code class="i">updated_at</code>; corrections are new rows.</li>
+      <li><b>A plan copies its template.</b> Editing a template never changes an existing patient's plan.</li>
+      <li><b>Configurable, not hard-coded.</b> Steps, gaps, sessions, fees and specialty fields are rows, never code.</li>
+      <li><b>Module boundary.</b> Links to existing tables are stored IDs with no foreign key, so the module can be separated later.</li>
+    </ol>
+  </div>
+</section>
+
+<section aria-labelledby="h-flow">
+  <h2 id="h-flow">How data moves: one patient, start to finish</h2>
+  <p class="sub">Example: Rahul Sharma, root canal on tooth 36, ₹11,000, 5 steps. Each stage lists the rows written. <span class="tbl-ext mono">Gold table names</span> are existing tables owned by other modules; the plan module never writes them directly.</p>
+  <div class="legend" aria-label="Operation legend">
+    <span><span class="op op-INSERT">INSERT</span> new row</span>
+    <span><span class="op op-UPDATE">UPDATE</span> change a row</span>
+    <span><span class="op op-READ">READ</span> read only</span>
+    <span><span class="op op-CALL">CALL</span> another module does it</span>
+    <span><span class="tx">One transaction</span> all rows save together, or none do</span>
+  </div>
+  <div class="flow" id="flow"></div>
+  <h3 style="font-size:17px">Rahul's ledger, row by row</h3>
+  <div class="box scroll">
+    <table class="ledger-sum">
+      <caption>Rahul's ledger rows and running balance</caption>
+      <thead><tr><th scope="col">treatment_ledger row</th><th scope="col">Charge (₹)</th><th scope="col">Paid (₹)</th><th scope="col">Balance after (₹)</th></tr></thead>
+      <tbody id="ledger"></tbody>
+      <tfoot><tr><td>Totals when the plan closes</td><td>11,000</td><td>11,000</td><td>0 · settled</td></tr></tfoot>
+    </table>
+  </div>
+  <p class="sub">Negative balance = credit the patient still has. The balance is never stored; it is calculated from these rows each time.</p>
+</section>
+
+<section aria-labelledby="h-er">
+  <h2 id="h-er">Entity relationship diagram</h2>
+  <p class="sub">Crow's foot notation: <span class="mono">||</span> exactly one, <span class="mono">o|</span> zero or one, <span class="mono">|{</span> one or more, <span class="mono">o{</span> zero or more. Existing tables are shown with only the key the module stores.</p>
+  <div class="box diagram">
+<pre class="mermaid">
+erDiagram
+  treatment_specialty_configs ||..o{ treatment_templates : "defines fields for"
+  treatment_templates o|--o{ treatment_templates : "copied into"
+  treatment_templates ||--o{ treatment_template_steps : "has"
+  treatment_templates o|--o{ treatment_plans : "used to create"
+  treatment_templates o|--o{ treatment_plan_history : "edit logged in"
+  treatment_plans ||--|{ treatment_plan_steps : "has"
+  treatment_plans ||--o{ treatment_plan_versions : "snapshotted as"
+  treatment_plans ||--o{ treatment_ledger : "has money entries"
+  treatment_plans ||--o{ treatment_instalments : "has schedule"
+  treatment_plans o|--o{ treatment_plan_history : "logged in"
+  treatment_plan_steps ||--o{ treatment_step_appointments : "booked through"
+  treatment_plan_steps o|--o{ treatment_ledger : "charged as"
+  treatment_instalments o|--o{ treatment_ledger : "paid by"
+  appointments ||..o{ treatment_step_appointments : "covers"
+  users ||..o{ treatment_plans : "patient / doctor of"
+  appointments ||..o{ treatment_plans : "consultation for"
+  appointments ||..o| report_cards : "diagnosis in"
+  clinics ||..o| treatment_plan_settings : "configured by"
+
+  treatment_templates {
+    uuid id PK
+    uuid source_template_id FK
+    varchar specialty
+  }
+  treatment_template_steps {
+    uuid id PK
+    uuid template_id FK
+  }
+  treatment_plans {
+    uuid id PK
+    uuid template_id FK
+    uuid patient_id "ID"
+    uuid doctor_id "ID"
+    uuid consultation_appointment_id "ID"
+  }
+  treatment_plan_steps {
+    uuid id PK
+    uuid plan_id FK
+  }
+  treatment_plan_versions {
+    uuid id PK
+    uuid plan_id FK
+  }
+  treatment_step_appointments {
+    uuid id PK
+    uuid step_id FK
+    uuid plan_id FK
+    uuid appointment_id "ID"
+  }
+  treatment_plan_history {
+    uuid id PK
+    uuid plan_id FK
+    uuid template_id FK
+  }
+  treatment_ledger {
+    uuid id PK
+    uuid plan_id FK
+    uuid step_id FK
+    uuid instalment_id FK
+  }
+  treatment_instalments {
+    uuid id PK
+    uuid plan_id FK
+  }
+  treatment_plan_settings {
+    uuid id PK
+    uuid clinic_id "ID, unique"
+  }
+  treatment_specialty_configs {
+    uuid id PK
+    varchar specialty "unique"
+  }
+  appointments {
+    uuid id PK
+  }
+  users {
+    uuid id PK
+  }
+  report_cards {
+    uuid id PK
+  }
+  clinics {
+    uuid id PK
+  }
+</pre>
+  </div>
+  <p class="sub">Solid lines are foreign keys inside the module. Dotted lines are stored IDs of existing tables (or a match on <span class="mono">specialty</span>), with no foreign key.</p>
+</section>
+
+<section aria-labelledby="h-rel">
+  <h2 id="h-rel">Relationship register</h2>
+  <p class="sub">Each row reads: one <b>parent</b> has this many <b>children</b>, joined by the column shown.</p>
+  <div class="box scroll">
+    <table class="card-rel">
+      <caption>Relationships between tables</caption>
+      <thead><tr><th scope="col">Parent (one)</th><th scope="col">Child</th><th scope="col">Cardinality</th><th scope="col">Join column</th><th scope="col">Enforced by</th><th scope="col">Meaning</th></tr></thead>
+      <tbody id="rels"></tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="h-tables">
+  <h2 id="h-tables">Tables</h2>
+  <div class="legend" aria-label="Column key legend">
+    <span><span class="k k-pk">PK</span> primary key</span>
+    <span><span class="k k-fk">FK</span> foreign key inside the module</span>
+    <span><span class="k k-ref">ID</span> ID of an existing table, no FK</span>
+    <span><span class="k k-uq">UQ</span> part of a unique rule</span>
+    <span><span class="k k-idx">IDX</span> indexed</span>
+      </div>
+  <div class="toolbar">
+    <label for="q">Find a column or table</label>
+    <input id="q" type="search" placeholder="e.g. fee, appointment_id, ledger" autocomplete="off">
+  </div>
+  <nav class="toc" id="toc" aria-label="Jump to table"></nav>
+  <p class="empty" id="noHits" hidden>No column or table matches. Try a shorter word.</p>
+  <div id="groups" style="display:flex;flex-direction:column;gap:36px"></div>
+</section>
+
+<section aria-labelledby="h-enum">
+  <h2 id="h-enum">Enums</h2>
+  <p class="sub">Fixed value lists stored as Postgres enums. Purple values are reserved for later phases and refused in Phase 1.</p>
+  <div class="enums" id="enums"></div>
+</section>
+
+<section aria-labelledby="h-out">
+  <h2 id="h-out">Outside the module</h2>
+  <div class="box rules">
+    <ol>
+      <li>No existing table changes. <code class="i">'Treatment'</code> is a new value of the free-text <code class="i">appointments.appointment_type</code>.</li>
+      <li>Outside work (lab, scan) tracking is not in Phase 1; it comes with Dental in Phase 2.</li>
+      <li>No branches in Phase 1; a nullable <code class="i">branch_id</code> is added to templates and plans with the branch feature.</li>
+      <li>Migrations are generated by the repo owner from these models.</li>
+    </ol>
+  </div>
+</section>
+</div>
+
+<script>
+// Column tuple: [name, type, required, keys[], purpose]
+const R=true, O=false;
+const id=()=>['id','uuid',R,['PK'],'Row identity, random UUID'];
+const clinic=(note)=>['clinic_id','uuid',R,['ID','IDX'],note||'Owning clinic; every query filters by it (tenancy)'];
+const created=()=>['created_at','timestamptz',R,[],'When the row was written'];
+const updated=()=>['updated_at','timestamptz',R,[],'Last change'];
+const groups=[
+ {name:'Configuration',sub:'Set once, reused for every patient',tables:[
+  {n:'treatment_specialty_configs',kind:'Configuration',purpose:'Extra fields a specialty needs, defined as data so a new specialty needs no code.',row:'one specialty’s field definitions (platform default or a clinic override)',
+   cols:[id(),
+    ['clinic_id','uuid',O,['ID','UQ'],'Null = platform default set by Super Admin; set = clinic override'],
+    ['specialty','varchar(100)',R,['UQ'],'Specialty name, matched to templates and the doctor’s specialization list'],
+    ['plan_fields','jsonb',R,[],'FieldDef[] asked once per plan, e.g. tooth number'],
+    ['step_fields','jsonb',R,[],'FieldDef[] asked at each step, e.g. machine settings'],
+    ['widget','varchar(50)',O,[],'Name of a special UI widget, e.g. tooth_chart'],
+    ['is_active','bool',R,[],'Inactive configs are ignored'],
+    created(),updated()],
+   rules:['Unique (clinic_id, specialty).','FieldDef = { key, label, type, options, unit, min, max, required }; validated at runtime.','Phase 1 seeds no rows.']},
+  {n:'treatment_plan_settings',kind:'Configuration',purpose:'Each clinic’s choices for how plans are paid, booked and reminded.',row:'one clinic’s settings',
+   cols:[id(),
+    ['clinic_id','uuid',R,['ID','UQ'],'The clinic these settings belong to'],
+    ['billing_modes','tp_billing_mode[]',R,[],'Billing modes the clinic offers patients'],
+    ['invoice_timing','varchar(10)',R,[],'per_step or at_end'],
+    ['discount_cap_percent','int',R,[],'Discounts above this need Admin or Doctor approval'],
+    ['booking_mode','tp_booking_mode',R,[],'normal (default) or dedicated treatment time'],
+    ['booking_horizon_days','int',O,[],'How far ahead steps may be booked'],
+    ['recall_reminder_days','int',R,[],'Default 7: days before the recall date'],
+    ['instalment_reminder_days','int',R,[],'Default 2: days before an instalment is due'],
+    ['package_expiry_reminder_days','int',R,[],'Default 7: days before a package expires'],
+    created(),updated()],
+   rules:['Created with defaults on first read.']}
+ ]},
+ {name:'Templates',sub:'What a clinic offers',tables:[
+  {n:'treatment_templates',kind:'Master data',purpose:'A reusable treatment recipe: plan type, pricing and the defaults a plan copies.',row:'one template: a ready-made library template, a clinic copy, or a doctor’s own version',
+   cols:[id(),
+    ['clinic_id','uuid',O,['ID','IDX'],'Null = ready-made library template (Super Admin)'],
+    ['owner_doctor_id','uuid',O,['ID'],'Set = a doctor’s own version, shown first to that doctor'],
+    ['source_template_id','uuid',O,['FK'],'The template this was copied from'],
+    ['code','varchar(64)',O,['UQ'],'Stable key of a library template, e.g. dental.root_canal; the seed inserts by it only when missing'],
+    ['name','varchar(150)',R,['IDX'],'Shown to doctors; trigram index for search'],
+    ['specialty','varchar(100)',R,['IDX'],'Filters templates by the doctor’s specialization'],
+    ['category','varchar(100)',O,[],'Grouping, e.g. Endodontics'],
+    ['plan_type','tp_plan_type',R,[],'Which timing rule calculates dates'],
+    ['status','tp_template_status',R,['IDX'],'Only active templates are offered'],
+    ['pricing_mode','tp_pricing_mode',R,[],'Fee per step, or one package price'],
+    ['package_price','decimal(12,2)',O,[],'Used when pricing_mode = package'],
+    ['session_count','int',O,[],'Package plans: number of sessions'],
+    ['interval_days','int',O,[],'Package plans: days between sessions'],
+    ['package_expiry_days','int',O,[],'Package plans: days until unused sessions expire'],
+    ['consent_required','bool',R,[],'Plan cannot be accepted without consent'],
+    ['taxable','bool',R,[],'Stored now; GST rule decided in D4'],
+    ['instalments_allowed','bool',R,[],'Whether patients may pay in instalments'],
+    ['recall_after_days','int',O,[],'Sets the recall date when a plan completes'],
+    ['diagnosis_keywords','text[]',R,['IDX'],'Words matched against the diagnosis to suggest this template (GIN index)'],
+    ['checked_by','uuid',O,['ID'],'Doctor who confirmed the template before activation'],
+    ['checked_at','timestamptz',O,[],'When it was confirmed'],
+    ['created_by','uuid',R,['ID'],'Who created it'],
+    created(),updated()],
+   rules:['Index (clinic_id, specialty, status).','Unique code where clinic_id is null, so re-running the seed never duplicates or overwrites a library template.','Edited in place; plans keep their own copy, and each edit writes a history row.','A template used by a plan can be archived but not deleted.']},
+  {n:'treatment_template_steps',kind:'Master data',purpose:'The ordered steps of a Staged template, with their default gap, duration and fee.',row:'one step of one template',
+   cols:[id(),
+    ['clinic_id','uuid',O,['ID'],'Same as the parent template'],
+    ['template_id','uuid',R,['FK','UQ'],'Parent template'],
+    ['seq','int',R,['UQ'],'Order of the step, from 1'],
+    ['name','varchar(150)',R,[],'Step name, e.g. Cleaning & shaping'],
+    ['gap_days','int',R,[],'Minimum days after the previous step'],
+    ['max_gap_days','int',O,[],'Reminder if exceeded; not enforced'],
+    ['duration_minutes','int',O,[],'Chair time. Blank = the doctor\u2019s normal slot length; set only for longer steps (used by D2)'],
+    ['fee','decimal(12,2)',O,[],'Default fee for this step'],
+    ['options','jsonb',R,[],'Priced choices: [{ label, extraFee }], e.g. crown material'],
+    created(),updated()],
+   rules:['Unique (template_id, seq).','Package templates have no rows here; sessions are generated when a plan is created.']}
+ ]},
+ {name:'Plans',sub:'One patient’s course of treatment',tables:[
+  {n:'treatment_plans',kind:'Transaction',purpose:'One patient’s treatment plan: who, why, status, the agreed price and how it ends.',row:'one plan (option A and option B are two rows sharing a proposal group)',
+   cols:[id(),clinic(),
+    ['patient_id','uuid',R,['ID','IDX'],'The patient (users table)'],
+    ['doctor_id','uuid',R,['ID'],'Responsible doctor; drives staff scope'],
+    ['template_id','uuid',O,['FK'],'Template used; null = custom plan'],
+    ['consultation_appointment_id','uuid',O,['ID'],'The visit where the plan was made'],
+    ['proposal_group_id','uuid',R,[],'Shared by option A and B; accepting one declines the other'],
+    ['option_label','varchar(10)',O,[],'A, B'],
+    ['title','varchar(150)',R,[],'Shown in lists, e.g. Root canal · tooth 36'],
+    ['diagnosis','text',R,[],'Copied from the consultation at creation'],
+    ['plan_type','tp_plan_type',R,[],'Copied from the template'],
+    ['status','tp_plan_status',R,['IDX'],'Where the plan is in its lifecycle'],
+    ['billing_mode','tp_billing_mode',O,[],'How the plan is billed; chosen on accept'],
+    ['total_amount','decimal(12,2)',R,[],'Agreed price; the steps total is calculated, not stored'],
+    ['discount_amount','decimal(12,2)',R,[],'Discount given'],
+    ['advance_amount','decimal(12,2)',R,[],'Advance agreed on accept'],
+    ['consent_file_url','text',O,[],'S3 key of the consent file (never a signed link)'],
+    ['accepted_at','timestamptz',O,[],'When the patient accepted and gave consent (one action)'],
+    ['completed_at','timestamptz',O,[],'When the plan closed'],
+    ['follow_up_date','date',O,['IDX'],'Next call for a patient thinking it over or who declined'],
+    ['end_reason','varchar(255)',O,[],'Why the plan ended early'],
+    ['end_reason_sensitive','bool',R,[],'True stops every message for this plan'],
+    ['recall_date','date',O,['IDX'],'Next check-up after completion'],
+    ['consent_required','bool',R,[],'Copied from the template at creation; accept needs a consent file when true'],
+    ['package_expires_on','date',O,[],'Package plans: accept date + expiry days; moved when the doctor extends the package'],
+    ['specialty_data','jsonb',R,[],'Plan-level specialty values, e.g. tooth 36; checked against the specialty config'],
+    ['created_by','uuid',R,['ID'],'Who created it'],
+    created(),updated()],
+   rules:['Checks: total, discount and advance are never negative.','Edits are rejected with 409 if someone else saved first (updated_at check).','Indexes: (clinic_id, doctor_id, status) for staff scope · (clinic_id, status) · (clinic_id, patient_id) · (clinic_id, follow_up_date) · (clinic_id, recall_date).']},
+  {n:'treatment_plan_steps',kind:'Transaction',purpose:'Each step of a plan, or each session of a package, with its own editable copy of the template values.',row:'one step or one session of one plan',
+   cols:[id(),clinic(),
+    ['plan_id','uuid',R,['FK','UQ'],'Parent plan'],
+    ['seq','int',R,['UQ'],'Order in the plan'],
+    ['name','varchar(150)',R,[],'Copied from the template, editable'],
+    ['gap_days','int',R,[],'Copied from the template, editable'],
+    ['duration_minutes','int',O,[],'Copied from the template, editable; blank = appointment slot length'],
+    ['fee','decimal(12,2)',R,[],'Charged to the ledger when the step is done'],
+    ['selected_option','jsonb',O,[],'The priced option chosen, e.g. Zirconia crown'],
+    ['specialty_data','jsonb',R,[],'Step-level specialty values, e.g. machine settings'],
+    ['status','tp_step_status',R,['IDX'],'The step’s own outcome; booked/arrived come from the appointment'],
+    ['earliest_date','date',O,['IDX'],'First allowed booking date; recalculated on book, move and miss'],
+    ['gap_override_reason','varchar(255)',O,[],'Why it was booked before the gap'],
+    ['done_at','timestamptz',O,[],'When the step was completed'],
+    ['done_appointment_id','uuid',O,['ID'],'The visit that completed it'],
+    ['notes','text',O,[],'Doctor’s notes for this step'],
+    created(),updated()],
+   rules:['Unique (plan_id, seq); reordering runs in one transaction.','Checks: seq >= 1, gap_days >= 0, duration_minutes > 0 when set, fee >= 0.','Partial index on (clinic_id, earliest_date) where status = pending, for the Need booking list.']},
+  {n:'treatment_plan_versions',kind:'Snapshot',purpose:'A frozen copy of the plan each time the accepted version changes, for patient re-approval.',row:'one version of one plan',
+   cols:[id(),clinic(),
+    ['plan_id','uuid',R,['FK','UQ'],'Parent plan'],
+    ['version','int',R,['UQ'],'1 on accept, then 2, 3…'],
+    ['snapshot','jsonb',R,[],'Steps, fees and totals at that version'],
+    ['change_reason','varchar(255)',O,[],'Why it changed'],
+    ['needs_patient_approval','bool',R,[],'True when cost or steps changed'],
+    ['patient_approved_at','timestamptz',O,[],'When the patient approved it'],
+    ['created_by','uuid',R,['ID'],'Who made the change'],
+    created()],
+   rules:['Unique (plan_id, version).','Immutable: no updated_at, except patient_approved_at set once.']}
+ ]},
+ {name:'Booking',sub:'The bridge to the existing appointment flow',tables:[
+  {n:'treatment_step_appointments',kind:'Link',purpose:'Connects plan steps to existing appointments without changing the appointments table.',row:'one step linked to one appointment',
+   cols:[id(),clinic(),
+    ['step_id','uuid',R,['FK','UQ'],'The plan step'],
+    ['plan_id','uuid',R,['FK','IDX'],'Copied from the step so lists need no extra join'],
+    ['appointment_id','uuid',R,['ID','UQ','IDX'],'The existing appointment'],
+    ['linked_by','uuid',R,['ID'],'Who linked it'],
+    ['unlinked_at','timestamptz',O,[],'Set on unlink; the row is kept for history'],
+    created()],
+   rules:['Unique (step_id, appointment_id) where unlinked_at is null, so an unlinked appointment can be linked again.','Many-to-many: one visit can cover two steps, one step can need two visits.']}
+ ]},
+ {name:'Money',sub:'Separate from appointment payments',tables:[
+  {n:'treatment_ledger',kind:'Ledger',purpose:'Every money event of a plan. The balance is always calculated from these rows.',row:'one money event: a charge, advance, payment, refund, write-off or credit note',
+   cols:[id(),clinic(),
+    ['plan_id','uuid',R,['FK','IDX'],'Parent plan'],
+    ['entry_type','tp_ledger_entry',R,[],'What kind of event'],
+    ['amount','decimal(12,2)',R,[],'Always positive; entry_type gives the direction'],
+    ['step_id','uuid',O,['FK'],'The step charged; null on a package-extension charge (reason required)'],
+    ['instalment_id','uuid',O,['FK'],'Set when a payment settles an instalment'],
+    ['payment_mode','varchar(20)',O,[],'Cash, UPI or Card: same values as appointment payments'],
+    ['reason','varchar(255)',O,[],'Required for refund, write-off and credit note'],
+    ['approved_by','uuid',O,['ID'],'Required for write-off'],
+    ['request_id','uuid',O,['UQ'],'Sent by the screen with every money action; a repeat returns the first entry, so nothing is paid twice'],
+    ['created_by','uuid',R,['ID'],'Who recorded it'],
+    created()],
+   rules:['Append-only: never updated or deleted, so no updated_at.','No double payment: unique (clinic_id, request_id); a retried or double-clicked request returns the first entry.','One charge per step: unique (step_id) where entry_type = charge, so a double click cannot charge twice.','Checks: amount > 0; refund, write-off, credit note and a charge with no step need a reason; write-off needs approved_by.','Index (clinic_id, created_at) for reports.','Balance = charges − (advance + payments) + refunds − write-offs − credit notes.']},
+  {n:'treatment_instalments',kind:'Schedule',purpose:'When the patient has agreed to pay, for plans paid in instalments.',row:'one instalment due date and amount',
+   cols:[id(),clinic(),
+    ['plan_id','uuid',R,['FK','UQ'],'Parent plan'],
+    ['seq','int',R,['UQ'],'Instalment number'],
+    ['amount','decimal(12,2)',R,[],'Amount due'],
+    ['due_date','date',R,['IDX'],'When it is due'],
+    ['paid_at','timestamptz',O,[],'When it was fully paid'],
+    ['reminded_at','timestamptz',O,[],'Last reminder sent'],
+    created(),updated()],
+   rules:['Unique (plan_id, seq).','Check: amount > 0. Partial index (due_date) where paid_at is null, for the reminder job.','Sum must equal total_amount − advance_amount, also after a price change or package extension fee; paid instalments never change.']}
+ ]},
+ {name:'Tracking',sub:'The audit trail',tables:[
+  {n:'treatment_plan_history',kind:'Audit',purpose:'Who did what and why: status changes, overrides, approvals, refunds, template edits and follow-up calls.',row:'one recorded event',
+   cols:[id(),clinic(),
+    ['plan_id','uuid',O,['FK','IDX'],'The plan; null for a template edit'],
+    ['template_id','uuid',O,['FK','IDX'],'The template; null for a plan event'],
+    ['actor_id','uuid',R,['ID'],'Who did it'],
+    ['action','varchar(64)',R,['IDX'],'e.g. status_change, gap_override, follow_up_call, template_edit'],
+    ['from_value','varchar(64)',O,[],'Value before'],
+    ['to_value','varchar(64)',O,[],'Value after; call outcome on a follow-up call'],
+    ['reason','varchar(255)',O,[],'Why, when a reason is required'],
+    ['notes','text',O,[],'Call notes'],
+    ['meta','jsonb',O,[],'Extra detail whose shape is fixed per action (DEV_PLAN §3.4); ids and numbers only, never patient details'],
+    created()],
+   rules:['Append-only: no updated_at.','Kept with the plan, unlike the shared audit_log (purged after 90 days); sensitive plan actions also go to audit_log.','Check: exactly one of plan_id and template_id is set.','Indexes: (plan_id, action, created_at) · (template_id, created_at).']}
+ ]}
+];
+const rels=[
+ ['treatment_templates','treatment_template_steps','1 → 0..N','template_id','FK','A Staged template has its steps'],
+ ['treatment_templates','treatment_templates','0..1 → 0..N','source_template_id','FK','A clinic or doctor copy points to its source'],
+ ['treatment_templates','treatment_plans','0..1 → 0..N','template_id','FK','Plans made from a template; null for a custom plan'],
+ ['treatment_specialty_configs','treatment_templates','1 → 0..N','specialty (value match)','Service','Field definitions apply to every template of that specialty'],
+ ['treatment_plans','treatment_plan_steps','1 → 1..N','plan_id','FK','Every plan has at least one step'],
+ ['treatment_plans','treatment_plan_versions','1 → 0..N','plan_id','FK','Snapshots from acceptance onwards'],
+ ['treatment_plan_steps','treatment_step_appointments','1 → 0..N','step_id','FK','A step can need more than one visit'],
+ ['appointments (existing)','treatment_step_appointments','1 → 0..N','appointment_id','ID only','A visit can cover more than one step'],
+ ['treatment_plans','treatment_ledger','1 → 0..N','plan_id','FK','All money for the plan'],
+ ['treatment_plan_steps','treatment_ledger','0..1 → 0..N','step_id','FK','The charge for a completed step'],
+ ['treatment_plans','treatment_instalments','1 → 0..N','plan_id','FK','The instalment schedule'],
+ ['treatment_instalments','treatment_ledger','0..1 → 0..N','instalment_id','FK','Payments that settle an instalment'],
+ ['treatment_plans','treatment_plan_history','0..1 → 0..N','plan_id','FK','Events on the plan'],
+ ['treatment_templates','treatment_plan_history','0..1 → 0..N','template_id','FK','Template edits'],
+ ['users (existing)','treatment_plans','1 → 0..N','patient_id, doctor_id','ID only','The patient and the responsible doctor'],
+ ['appointments (existing)','treatment_plans','0..1 → 0..N','consultation_appointment_id','ID only','The consultation visit; its report card holds the diagnosis']
+ ['clinics (existing)','treatment_plan_settings','1 → 0..1','clinic_id','ID only, unique','One settings row per clinic']
+];
+const enums=[
+ ['tp_plan_type','How a plan’s dates are calculated',['staged','package'],['timeline','review','cycle']],
+ ['tp_template_status','Whether doctors can use a template',['draft','active','inactive','archived'],[]],
+ ['tp_plan_status','Plan lifecycle',['proposed','accepted','in_treatment','completed','declined','paused','ended_early'],[]],
+ ['tp_step_status','A step’s own outcome',['pending','in_progress','done','missed','skipped'],['window_missed']],
+ ['tp_pricing_mode','How a template is priced',['per_step','package'],[]],
+ ['tp_billing_mode','How the plan is billed',['per_visit','advance_per_visit','package_full','package_instalments'],[]],
+ ['tp_ledger_entry','Kind of money event',['charge','advance','payment','refund','write_off','credit_note'],[]],
+ ['tp_booking_mode','How treatment visits are booked',['normal','dedicated'],[]]
+];
+const KC={PK:'k-pk',FK:'k-fk',ID:'k-ref',UQ:'k-uq',IDX:'k-idx',LATER:'k-fut'};
+const KT={PK:'Primary key',FK:'Foreign key inside the module',ID:'ID of an existing table, no foreign key',UQ:'Part of a unique rule',IDX:'Indexed',LATER:'Empty in Phase 1'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const base=new Set(['id','clinic_id','created_at','updated_at']);
+let nTables=0,nCols=0;
+function render(q){
+  q=(q||'').trim().toLowerCase();
+  let html='',toc='',hits=0;
+  groups.forEach(g=>{
+    let gh='';
+    g.tables.forEach(t=>{
+      const tableHit=!q||t.n.includes(q)||t.purpose.toLowerCase().includes(q);
+      const rows=t.cols.filter(c=>tableHit||c[0].includes(q)||c[4].toLowerCase().includes(q)||c[1].includes(q));
+      if(!rows.length)return;
+      hits++;
+      toc+=`<a href="#${t.n}">${t.n}</a>`;
+      const body=rows.map(([c,ty,req,keys,p])=>`<tr class="${base.has(c)?'base':''}"><td class="col">${esc(c)}</td><td class="typ">${esc(ty)}</td><td class="req ${req?'y':'n'}">${req?'Required':'Optional'}</td><td class="keys">${keys.map(k=>`<span class="k ${KC[k]}" title="${KT[k]}">${k}</span>`).join('')}</td><td class="purpose">${esc(p)}</td></tr>`).join('');
+      const shown=rows.length<t.cols.length?` · showing ${rows.length} of ${t.cols.length} columns`:'';
+      gh+=`<article class="box card" id="${t.n}"><div class="card-head"><div class="card-title"><h3 class="tname">${t.n}</h3><span class="tag">${esc(t.kind)} · ${t.cols.length} columns${shown}</span></div><p class="purpose-line">${esc(t.purpose)}</p><p class="row-is"><b>One row =</b> ${esc(t.row)}</p></div><div class="scroll"><table><caption>${t.n} columns</caption><thead><tr><th scope="col">Column</th><th scope="col">Type</th><th scope="col">Null?</th><th scope="col">Keys</th><th scope="col">Purpose</th></tr></thead><tbody>${body}</tbody></table></div>${t.rules.length?`<div class="card-foot">${t.rules.map(r=>`<span><b>Rule:</b> ${esc(r)}</span>`).join('')}</div>`:''}</article>`;
+    });
+    if(gh)html+=`<section class="group" aria-label="${esc(g.name)}"><div class="group-head"><h2>${esc(g.name)}</h2><span>${esc(g.sub)}</span></div>${gh}</section>`;
+  });
+  document.getElementById('groups').innerHTML=html;
+  document.getElementById('toc').innerHTML=toc;
+  document.getElementById('noHits').hidden=hits>0;
+}
+groups.forEach(g=>g.tables.forEach(t=>{nTables++;nCols+=t.cols.length}));
+document.getElementById('stats').innerHTML=`<span><b>${nTables}</b> tables</span><span><b>${nCols}</b> columns</span><span><b>${rels.length}</b> relationships</span><span><b>${enums.length}</b> enums</span><span><b>0</b> changes to existing tables</span>`;
+document.getElementById('rels').innerHTML=rels.map(([p,c,card,col,enf,m])=>`<tr><td class="mono">${esc(p)}</td><td class="mono">${esc(c)}</td><td class="mono">${esc(card)}</td><td class="mono">${esc(col)}</td><td>${esc(enf)}</td><td class="purpose">${esc(m)}</td></tr>`).join('');
+document.getElementById('enums').innerHTML=enums.map(([n,d,v,r])=>`<div class="box enum"><b>${n}</b><p>${esc(d)}</p><div class="vals">${v.map(x=>`<code>${x}</code>`).join('')}${r.map(x=>`<code class="r" title="Reserved for a later phase">${x}</code>`).join('')}</div></div>`).join('');
+render('');
+const flow=[
+ {t:'Super Admin seeds the library',who:'Super Admin · once per environment',d:'The seed file is loaded because no library row has the code dental.root_canal yet.',ops:[
+  ['INSERT','treatment_templates','clinic_id = null, code = dental.root_canal, plan_type = staged, status = active'],
+  ['INSERT','treatment_template_steps','5 rows: Access cavity (gap 0, ₹2,000) … Crown fitting (gap 3, ₹3,000)']]},
+ {t:'Clinic copies the template',who:'Clinic Admin · "Use for my clinic"',tx:1,d:'The clinic gets its own editable copy and sets its own fees.',ops:[
+  ['INSERT','treatment_templates','clinic_id = Sharma Clinic, source_template_id = the library row'],
+  ['INSERT','treatment_template_steps','5 rows copied from the library steps'],
+  ['INSERT','treatment_plan_history','action = template_copy']]},
+ {t:'Consultation',who:'Doctor · existing consultation screen',d:'The consultation is saved by the existing flow. The plan module only reads it to suggest a template.',ops:[
+  ['READ','report_cards',"final_diagnosis = 'Irreversible pulpitis'",1],
+  ['READ','treatment_templates',"diagnosis_keywords contains 'pulpitis' → Root canal suggested"]]},
+ {t:'Doctor proposes the plan',who:'Doctor · Create plan',tx:1,d:'Template values are copied into the plan, so a later template edit never changes Rahul’s plan.',ops:[
+  ['INSERT','treatment_plans','status = proposed, total_amount = 11000, specialty_data = { tooth: 36 }'],
+  ['INSERT','treatment_plan_steps','5 rows, status = pending, fees and gaps copied'],
+  ['INSERT','treatment_plan_history','action = plan_created']]},
+ {t:'Rahul wants to think',who:'Reception · decision screen',d:'The plan stays proposed and shows in the Suggested list.',ops:[
+  ['UPDATE','treatment_plans','follow_up_date = 15 Oct'],
+  ['INSERT','treatment_plan_history',"action = follow_up_call, to_value = 'wants to think'"]]},
+ {t:'Rahul accepts and pays an advance',who:'Reception · decision screen',tx:1,d:'Version 1 is frozen and the advance becomes credit.',ops:[
+  ['UPDATE','treatment_plans','status = accepted, billing_mode = advance_per_visit, advance_amount = 3000, consent_file_url set'],
+  ['INSERT','treatment_plan_versions','version = 1, snapshot of steps and fees'],
+  ['INSERT','treatment_ledger','entry_type = advance, amount = 3000 (receipt TP-2026-…, built from the row id)'],
+  ['INSERT','treatment_plan_history','action = status_change, proposed → accepted']]},
+ {t:'Reception books all 5 visits',who:'Reception · Book all',d:'Each step is booked through the existing appointment module, then linked. Each booking is the anchor for the next step’s earliest date.',ops:[
+  ['CALL','appointments','5 appointments created by the appointments module, type = Treatment',1],
+  ['INSERT','treatment_step_appointments','5 rows linking each step to its appointment'],
+  ['UPDATE','treatment_plan_steps','earliest_date set for steps 2 to 5']]},
+ {t:'Visit 1: step done',who:'Doctor · today’s visit',tx:1,d:'Check-in and completion run in the existing flow. The doctor then marks the step done, which adds its charge.',ops:[
+  ['CALL','appointments','Patient Arrived → Completed (existing flow)',1],
+  ['UPDATE','treatment_plan_steps','step 1: status = done, done_at, done_appointment_id'],
+  ['UPDATE','treatment_plans','status = in_treatment (first step done)'],
+  ['INSERT','treatment_ledger','entry_type = charge, amount = 2000, step_id = step 1']]},
+ {t:'Visit 3: Rahul does not come',who:'System · existing no-show flow',d:'The appointments module marks the no-show, then tells the plan module after it commits.',ops:[
+  ['CALL','appointments','status = NoShow (existing flow)',1],
+  ['UPDATE','treatment_plan_steps','step 3: status = missed; steps 4 and 5 earliest_date recalculated'],
+  ['UPDATE','treatment_plan_steps','steps 4 and 5 now break the gap → flagged into Need booking'],
+  ['INSERT','treatment_plan_history','action = step_missed']]},
+ {t:'Payments along the way',who:'Reception · payments panel',d:'Each payment is a new row with its own receipt. Nothing is edited.',ops:[
+  ['INSERT','treatment_ledger','entry_type = payment, amount = 4000, payment_mode = UPI'],
+  ['INSERT','treatment_ledger','entry_type = payment, amount = 4000, payment_mode = Cash']]},
+ {t:'Last step done, plan closes',who:'Doctor · step complete',tx:1,d:'All steps are done and the balance is zero, so the plan completes and gets a recall date.',ops:[
+  ['UPDATE','treatment_plan_steps','step 5: status = done'],
+  ['INSERT','treatment_ledger','entry_type = charge, amount = 3000, step_id = step 5'],
+  ['UPDATE','treatment_plans','status = completed, completed_at, recall_date = today + 180 days'],
+  ['INSERT','treatment_plan_history','action = status_change, in_treatment → completed']]},
+ {t:'Recall reminder',who:'System · daily job',d:'Seven days before the recall date (clinic setting), the patient is reminded through the existing notification system.',ops:[
+  ['READ','treatment_plans','recall_date = today + recall_reminder_days'],
+  ['CALL','notifications',"notify('treatment.recall_due')",1]]}
+];
+const ledgerRows=[
+ ['advance (on accept)','','3,000','−3,000'],
+ ['charge · step 1','2,000','','−1,000'],
+ ['charge · step 2','2,000','','1,000'],
+ ['payment · UPI','','4,000','−3,000'],
+ ['charge · steps 3 and 4 (after rebooking)','4,000','','1,000'],
+ ['payment · cash','','4,000','−3,000'],
+ ['charge · step 5','3,000','','0']
+];
+document.getElementById('flow').innerHTML=flow.map((s,i)=>`<div class="stage"><div class="num" aria-hidden="true">${i+1}</div><div class="stage-body"><div class="stage-head"><h3>${esc(s.t)}</h3><span class="who">${esc(s.who)}</span>${s.tx?'<span class="tx">One transaction</span>':''}</div><p>${esc(s.d)}</p><div class="box scroll"><table class="ops"><caption>Stage ${i+1} database operations</caption><thead><tr><th scope="col">Operation</th><th scope="col">Table</th><th scope="col">What changes</th></tr></thead><tbody>${s.ops.map(([op,tb,w,ext])=>`<tr><td><span class="op op-${op}">${op}</span></td><td class="mono${ext?' tbl-ext':''}">${esc(tb)}</td><td>${esc(w)}</td></tr>`).join('')}</tbody></table></div></div></div>`).join('');
+document.getElementById('ledger').innerHTML=ledgerRows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('');
+
+const qi=document.getElementById('q');
+let t0;qi.addEventListener('input',()=>{clearTimeout(t0);t0=setTimeout(()=>render(qi.value),150)});
+</script>

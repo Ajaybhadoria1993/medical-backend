@@ -7,7 +7,6 @@ import {
   requireLabAssistant,
   requireRole,
 } from '../../../../middlewear/auth.middleware';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
 import {
   requireFeature,
   FEATURE_KEYS,
@@ -49,15 +48,26 @@ import {
   getLabCatalogTestCustomFieldsController,
   getMyLabCatalogController,
   getLabDepartmentsByLabIdController,
+  updateDepartmentController,
   updateLabDepartmentsController,
   syncLabCatalogController,
 } from '../../controllers/lab.controller';
+import {
+  createLabTestPackageController,
+  getLabTestPackageByIdController,
+  getLabTestPackagesController,
+  updateLabTestPackageController,
+} from '../../controllers/labTestPackage.controller';
 import {
   addLabCustomFieldSchema,
   createLabDepartmentSchema,
   createLabSchema,
   createMyLabTestSchema,
+  createLabTestPackageSchema,
+  getLabDepartmentsQuerySchema,
+  getLabTestPackagesQuerySchema,
   hideLabDefaultFieldSchema,
+  labDepartmentIdParamSchema,
   labCustomFieldIdParamSchema,
   labIdParamSchema,
   labIdRouteParamSchema,
@@ -70,12 +80,15 @@ import {
   resetLabDefaultFieldOverrideSchema,
   saveLabResultSchema,
   unhideLabDefaultFieldSchema,
+  updateLabDepartmentSchema,
   updateLabCatalogTestSchema,
   updateLabCustomFieldSchema,
   updateLabResultSchema,
   updateLabSchema,
   updateLabDepartmentsSchema,
+  updateLabTestPackageSchema,
   getMyLabCatalogQuerySchema,
+  labTestPackageIdParamSchema,
   labReportTemplateSchema,
 } from '../../schemas/lab.schemas';
 import {
@@ -84,6 +97,7 @@ import {
   listLabReportTemplatesController,
 } from '../../controllers/labReportTemplate.controller';
 import {
+  approveAppointmentTestController,
   createIndependentLabTestController,
   getAppointmentTestBarcodeController,
   getBarcodeLookupController,
@@ -115,6 +129,7 @@ import {
   updateSampleStatusSchema,
 } from '../../../test/schemas/appointmentTest.schema';
 import { uploadPatientTest } from '../../../../middlewear/upload.middleware';
+import labDashboardRouter from './labDashboard.route';
 const labRouter = Router();
 
 const requireLabForLabAssistant: RequestHandler = (req, res, next) => {
@@ -123,6 +138,22 @@ const requireLabForLabAssistant: RequestHandler = (req, res, next) => {
     req.user?.userType === 'Receptionist'
   ) {
     return requireLab(req, res, next);
+  }
+
+  return next();
+};
+
+const skipNonUuidLabIdRoute: RequestHandler = (req, res, next) => {
+  if (!labIdRouteParamSchema.safeParse(req.params).success) {
+    return next('route');
+  }
+
+  return next();
+};
+
+const skipNonUuidLabIdParamRoute: RequestHandler = (req, res, next) => {
+  if (!labIdParamSchema.safeParse(req.params).success) {
+    return next('route');
   }
 
   return next();
@@ -148,7 +179,9 @@ labRouter.get(
   requireAuth,
   requireClinic,
   requireRole(['Admin', 'Lab_Assistant', 'Super_Admin']),
+  requireLab,
   requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
+  validate(getLabDepartmentsQuerySchema, 'query'),
   getDepartmentsController
 );
 
@@ -161,6 +194,18 @@ labRouter.post(
   requireLab,
   requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   createDepartmentController
+);
+
+labRouter.patch(
+  '/departments/:departmentId',
+  validate(labDepartmentIdParamSchema, 'params'),
+  validate(updateLabDepartmentSchema, 'body'),
+  requireAuth,
+  requireClinic,
+  requireLabAssistant,
+  requireLab,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
+  updateDepartmentController
 );
 
 labRouter.get(
@@ -216,8 +261,46 @@ labRouter.delete(
   deactivateLabCatalogTestController
 );
 
+labRouter.post(
+  '/packages',
+  validate(createLabTestPackageSchema, 'body'),
+  requireAuth,
+  requireRole(['Admin', 'Super_Admin', 'Lab_Assistant']),
+  requireLab,
+  createLabTestPackageController
+);
+
+labRouter.get(
+  '/packages',
+  validate(getLabTestPackagesQuerySchema, 'query'),
+  requireAuth,
+  requireRole(['Admin', 'Super_Admin', 'Lab_Assistant']),
+  requireLab,
+  getLabTestPackagesController
+);
+
+labRouter.get(
+  '/packages/:packageId',
+  validate(labTestPackageIdParamSchema, 'params'),
+  requireAuth,
+  requireRole(['Admin', 'Super_Admin', 'Lab_Assistant']),
+  requireLab,
+  getLabTestPackageByIdController
+);
+
+labRouter.put(
+  '/packages/:packageId',
+  validate(labTestPackageIdParamSchema, 'params'),
+  validate(updateLabTestPackageSchema, 'body'),
+  requireAuth,
+  requireRole(['Admin', 'Super_Admin', 'Lab_Assistant']),
+  requireLab,
+  updateLabTestPackageController
+);
+
 labRouter.get(
   '/:labId/tests',
+  skipNonUuidLabIdParamRoute,
   validate(labIdParamSchema, 'params'),
   requireAuth,
   requireClinic,
@@ -228,6 +311,7 @@ labRouter.get(
 
 labRouter.get(
   '/:labId/departments',
+  skipNonUuidLabIdParamRoute,
   validate(labIdParamSchema, 'params'),
   requireAuth,
   requireClinic,
@@ -238,6 +322,7 @@ labRouter.get(
 
 labRouter.patch(
   '/:labId/departments',
+  skipNonUuidLabIdParamRoute,
   validate(labIdParamSchema, 'params'),
   validate(updateLabDepartmentsSchema, 'body'),
   requireAuth,
@@ -249,6 +334,7 @@ labRouter.patch(
 
 labRouter.post(
   '/:labId/catalog/sync',
+  skipNonUuidLabIdParamRoute,
   validate(labIdParamSchema, 'params'),
   requireAuth,
   requireClinic,
@@ -261,8 +347,8 @@ labRouter.get(
   '/appointment-tests',
   validate(labAppointmentTestsQuerySchema, 'query'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant', 'Receptionist']),
   requirePermission(PERMISSION_KEYS.LAB_TEST_VIEW, ['Receptionist']),
   requireLab,
@@ -272,8 +358,8 @@ labRouter.get(
 labRouter.post(
   '/appointment-tests/independent',
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Super_Admin', 'Lab_Assistant', 'Receptionist']),
   requirePermission(PERMISSION_KEYS.LAB_TEST_CREATE, ['Receptionist']),
   requireLab,
@@ -286,11 +372,22 @@ labRouter.patch(
   validate(appointmentTestIdParamSchema, 'params'),
   validate(onHoldAppointmentTestSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   markAppointmentTestOnHoldController
+);
+
+labRouter.patch(
+  '/appointment-tests/:appointmentTestId/approve-test',
+  validate(appointmentTestIdParamSchema, 'params'),
+  requireAuth,
+  requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
+  requireLabAssistant,
+  requireLab,
+  approveAppointmentTestController
 );
 
 labRouter.patch(
@@ -298,8 +395,8 @@ labRouter.patch(
   validate(appointmentTestIdParamSchema, 'params'),
   validate(rejectAppointmentTestSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   rejectAppointmentTestController
@@ -340,8 +437,8 @@ labRouter.get(
   '/appointment-tests/barcode/:barcodeValue',
   validate(labSampleBarcodeValueParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   getSampleTrackingDetailByBarcodeController
@@ -361,8 +458,8 @@ labRouter.get(
   '/appointment-tests/:appointmentTestId/tracking',
   validate(appointmentTestIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant', 'Receptionist']),
   requirePermission(PERMISSION_KEYS.LAB_TEST_VIEW, ['Receptionist']),
   requireLab,
@@ -373,8 +470,8 @@ labRouter.get(
   '/appointment-tests/:appointmentTestId/invoice',
   validate(appointmentTestIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant', 'Receptionist']),
   requirePermission(PERMISSION_KEYS.LAB_TEST_VIEW, ['Receptionist']),
   requireLab,
@@ -385,8 +482,8 @@ labRouter.get(
   '/invoices/:invoiceId',
   validate(labInvoiceIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   getLabInvoiceByIdController
@@ -397,8 +494,8 @@ labRouter.patch(
   validate(appointmentTestIdParamSchema, 'params'),
   validate(markPaymentPaidSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant', 'Receptionist']),
   requirePermission(PERMISSION_KEYS.LAB_TEST_MARK_PAID, ['Receptionist']),
   requireLab,
@@ -421,8 +518,8 @@ labRouter.patch(
   validate(appointmentTestIdParamSchema, 'params'),
   validate(updateSampleStatusSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   updateAppointmentTestSampleStatusController
@@ -431,8 +528,8 @@ labRouter.patch(
 labRouter.get(
   '/report-templates',
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   getActiveReportTemplatesController
@@ -442,8 +539,8 @@ labRouter.get(
   '/report-templates/:templateId/parameters',
   validate(labTemplateIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   getManageableTemplateParametersController
@@ -453,8 +550,8 @@ labRouter.get(
   '/orders/:labOrderId/result-template',
   validate(labOrderIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole([
     'Admin',
     'Doctor',
@@ -472,8 +569,8 @@ labRouter.post(
   validate(labOrderIdParamSchema, 'params'),
   validate(saveLabResultSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   saveLabResultController
@@ -484,8 +581,8 @@ labRouter.post(
   validate(labTemplateIdParamSchema, 'params'),
   validate(addLabCustomFieldSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   addLabCustomFieldController
@@ -496,8 +593,8 @@ labRouter.put(
   validate(labCustomFieldIdParamSchema, 'params'),
   validate(updateLabCustomFieldSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   updateLabCustomFieldController
@@ -507,8 +604,8 @@ labRouter.delete(
   '/custom-fields/:fieldId',
   validate(labCustomFieldIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   deleteLabCustomFieldController
@@ -519,8 +616,8 @@ labRouter.put(
   validate(labTemplateParameterIdParamSchema, 'params'),
   validate(overrideLabDefaultFieldSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   overrideLabDefaultFieldController
@@ -531,8 +628,8 @@ labRouter.patch(
   validate(labTemplateParameterIdParamSchema, 'params'),
   validate(hideLabDefaultFieldSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   hideLabDefaultFieldController
@@ -543,8 +640,8 @@ labRouter.patch(
   validate(labTemplateParameterIdParamSchema, 'params'),
   validate(unhideLabDefaultFieldSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   unhideLabDefaultFieldController
@@ -555,8 +652,8 @@ labRouter.delete(
   validate(labTemplateParameterIdParamSchema, 'params'),
   validate(resetLabDefaultFieldOverrideSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Lab_Assistant']),
   requireLab,
   resetLabDefaultFieldOverrideController
@@ -566,8 +663,8 @@ labRouter.get(
   '/results/:resultId/report',
   validate(labResultIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Doctor', 'Lab_Assistant', 'Receptionist']),
   requireLabForLabAssistant,
   getLabResultReportController
@@ -577,8 +674,8 @@ labRouter.post(
   '/results/:resultId/report-upload',
   validate(labResultIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   uploadPatientTest.single('reportPdf'),
@@ -589,8 +686,8 @@ labRouter.get(
   '/results/:resultId',
   validate(labResultIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Doctor', 'Lab_Assistant', 'Receptionist']),
   requireLabForLabAssistant,
   getSavedLabResultController
@@ -601,8 +698,8 @@ labRouter.put(
   validate(labResultIdParamSchema, 'params'),
   validate(updateLabResultSchema, 'body'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLabAssistant,
   requireLab,
   updateLabResultController
@@ -612,8 +709,8 @@ labRouter.patch(
   '/results/:resultId/verify',
   validate(labResultIdParamSchema, 'params'),
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireRole(['Admin', 'Doctor', 'Lab_Assistant', 'Receptionist']),
   requireLabForLabAssistant,
   verifyLabResultController
@@ -622,8 +719,8 @@ labRouter.patch(
 labRouter.post(
   '/lab-report-template',
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLab,
   validate(labReportTemplateSchema, 'body'),
   upsertLabReportTemplateController
@@ -632,8 +729,8 @@ labRouter.post(
 labRouter.get(
   '/lab-report-template',
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLab,
   getLabReportTemplateController
 );
@@ -641,8 +738,8 @@ labRouter.get(
 labRouter.get(
   '/lab-report-templates/list',
   requireAuth,
-  requireUserSubscription,
   requireClinic,
+  requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   requireLab,
   listLabReportTemplatesController
 );
@@ -669,6 +766,7 @@ labRouter.put(
  */
 labRouter.get(
   '/:id',
+  skipNonUuidLabIdRoute,
   requireAuth,
   requireClinic,
   requireAdmin,
@@ -711,12 +809,20 @@ labRouter.get(
  */
 labRouter.get(
   '/:labId/users',
+  skipNonUuidLabIdParamRoute,
   requireAuth,
   requireClinic,
   requireRole(['Admin', 'Lab_Assistant']),
   requireFeature(FEATURE_KEYS.LAB_INTEGRATION),
   getUsersByLabIdController
 );
+
+/**
+ * @route GET /api/v1/lab/dashboard
+ * @desc Get dashboard cards for the current lab
+ * @access Private (Admin, Super Admin, Lab Assistant, Receptionist)
+ */
+labRouter.use('/dashboard', labDashboardRouter);
 
 /**
  * @route GET /api/v1/lab/dashboard/:labAssistent

@@ -1,18 +1,34 @@
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, sql, inArray, desc } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { database } from '../../../configurations/dbConnection';
 import { HttpError } from '../../../middlewear/errorHandler';
 import { DoctorReviewsModel } from '../models/doctorReview.model';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
+import { ClinicModel } from '../../clinic/models/clinic.model';
 import { UserModel } from '../../users/models/user.model';
 import { UserProfessionalModel } from '../../users/models/userProfessional.model';
 import { UserProfileModel } from '../../users/models/userProfile.model';
 import {
   CreateDoctorReviewInput,
+  DoctorMyReviewsQueryInput,
+  PatientReviewsQueryInput,
   UpdateDoctorReviewInput,
 } from '../schemas/doctorReview.schemas';
 import { PatientFamilyLinksModel } from '../../patient/models/patientFamilyLinks.model';
+import type { ReviewRating } from '../types/doctorReview.types';
+import {
+  buildPagination,
+  buildReviewsSummary,
+} from '../utils/doctorReview.utils';
+import { CacheKeys, invalidateCacheMany } from '../../../utils/cache.util';
 
 export class DoctorReviewService {
+  // Cached profiles embed rating and reviews; clear only after the commit, or
+  // a concurrent read can re-cache the old values.
+  private static async invalidateProfile(doctorId: string) {
+    await invalidateCacheMany(CacheKeys.doctorPublicProfileAll(doctorId));
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static async recalculateDoctorStats(doctorId: string, tx?: any) {
     const db = tx || database;
@@ -104,7 +120,7 @@ export class DoctorReviewService {
     }
 
     // 3. Insert and recalculate stats inside transaction
-    return await database.transaction(async (tx) => {
+    const created = await database.transaction(async (tx) => {
       const [review] = await tx
         .insert(DoctorReviewsModel)
         .values({
@@ -121,6 +137,8 @@ export class DoctorReviewService {
 
       return review;
     });
+    await this.invalidateProfile(payload.doctorId);
+    return created;
   }
 
   static async updateReview(
@@ -149,7 +167,7 @@ export class DoctorReviewService {
       setObj.reviewText = payload.reviewText;
     setObj.updatedAt = sql`NOW()`;
 
-    return await database.transaction(async (tx) => {
+    const updated = await database.transaction(async (tx) => {
       const [updatedReview] = await tx
         .update(DoctorReviewsModel)
         .set(setObj)
@@ -160,6 +178,8 @@ export class DoctorReviewService {
 
       return updatedReview;
     });
+    await this.invalidateProfile(review.doctorId);
+    return updated;
   }
 
   static async deleteReview(reviewId: string, patientId: string) {
@@ -177,14 +197,15 @@ export class DoctorReviewService {
       throw new HttpError(403, 'You are not authorized to delete this review');
     }
 
-    return await database.transaction(async (tx) => {
+    await database.transaction(async (tx) => {
       await tx
         .delete(DoctorReviewsModel)
         .where(eq(DoctorReviewsModel.id, reviewId));
 
       await this.recalculateDoctorStats(review.doctorId, tx);
-      return { success: true };
     });
+    await this.invalidateProfile(review.doctorId);
+    return { success: true };
   }
 
   static async replyToReview(
@@ -218,6 +239,9 @@ export class DoctorReviewService {
       })
       .where(eq(DoctorReviewsModel.id, reviewId))
       .returning();
+
+    // The full public profile embeds recent reviews with their replyText.
+    await this.invalidateProfile(doctorId);
 
     return updatedReview;
   }
@@ -276,6 +300,144 @@ export class DoctorReviewService {
         pageSize: query.pageSize,
         totalPages: Math.ceil((countResult?.count || 0) / query.pageSize),
       },
+    };
+  }
+
+  private static readonly myReviewColumns = {
+    id: DoctorReviewsModel.id,
+    appointmentId: DoctorReviewsModel.appointmentId,
+    rating: DoctorReviewsModel.rating,
+    reviewText: DoctorReviewsModel.reviewText,
+    replyText: DoctorReviewsModel.replyText,
+    replyAt: DoctorReviewsModel.replyAt,
+    createdAt: DoctorReviewsModel.createdAt,
+    appointmentDate: AppointmentModel.appointmentDate,
+    patient: {
+      id: UserModel.id,
+      name: UserModel.name,
+      profileImage: UserProfileModel.profileImage,
+    },
+  };
+
+  private static readonly reviewerJoinsSelect = () =>
+    database
+      .select(this.myReviewColumns)
+      .from(DoctorReviewsModel)
+      .innerJoin(UserModel, eq(DoctorReviewsModel.patientId, UserModel.id))
+      .innerJoin(
+        AppointmentModel,
+        eq(DoctorReviewsModel.appointmentId, AppointmentModel.id)
+      )
+      .leftJoin(UserProfileModel, eq(UserModel.id, UserProfileModel.userId));
+
+  // Summary always covers every approved review; only the list honours `rating`.
+  static async getMyReviews(
+    doctorId: string,
+    query: DoctorMyReviewsQueryInput
+  ) {
+    const approved = and(
+      eq(DoctorReviewsModel.doctorId, doctorId),
+      eq(DoctorReviewsModel.status, 'approved')
+    );
+    const listFilter = query.rating
+      ? and(approved, eq(DoctorReviewsModel.rating, query.rating))
+      : approved;
+
+    const [ratingRows, reviews] = await Promise.all([
+      database
+        .select({
+          rating: DoctorReviewsModel.rating,
+          count: sql<number>`count(*)::integer`,
+        })
+        .from(DoctorReviewsModel)
+        .where(approved)
+        .groupBy(DoctorReviewsModel.rating),
+      this.reviewerJoinsSelect()
+        .where(listFilter)
+        .orderBy(desc(DoctorReviewsModel.createdAt))
+        .limit(query.pageSize)
+        .offset((query.pageNumber - 1) * query.pageSize),
+    ]);
+
+    const summary = buildReviewsSummary(ratingRows);
+    const totalItems = query.rating
+      ? summary.breakdown[query.rating as ReviewRating]
+      : summary.totalReviews;
+
+    return {
+      summary,
+      reviews,
+      pagination: buildPagination(totalItems, query.pageNumber, query.pageSize),
+    };
+  }
+
+  // Null (not 404) when unreviewed, so the appointment screen can probe cheaply.
+  static async getMyReviewForAppointment(
+    doctorId: string,
+    appointmentId: string
+  ) {
+    const [review] = await this.reviewerJoinsSelect()
+      .where(
+        and(
+          eq(DoctorReviewsModel.appointmentId, appointmentId),
+          eq(DoctorReviewsModel.doctorId, doctorId),
+          eq(DoctorReviewsModel.status, 'approved')
+        )
+      )
+      .limit(1);
+
+    return review ?? null;
+  }
+
+  // No status filter: the patient can still edit or delete a moderated review.
+  static async getPatientReviews(
+    patientId: string,
+    query: PatientReviewsQueryInput
+  ) {
+    const doctorUser = alias(UserModel, 'review_doctor');
+    const doctorProfile = alias(UserProfileModel, 'review_doctor_profile');
+    const owned = eq(DoctorReviewsModel.patientId, patientId);
+
+    const [reviews, [countRow]] = await Promise.all([
+      database
+        .select({
+          id: DoctorReviewsModel.id,
+          appointmentId: DoctorReviewsModel.appointmentId,
+          rating: DoctorReviewsModel.rating,
+          reviewText: DoctorReviewsModel.reviewText,
+          replyText: DoctorReviewsModel.replyText,
+          replyAt: DoctorReviewsModel.replyAt,
+          createdAt: DoctorReviewsModel.createdAt,
+          appointmentDate: AppointmentModel.appointmentDate,
+          clinicImage: ClinicModel.clinicLogo,
+          doctor: {
+            id: doctorUser.id,
+            name: doctorUser.name,
+            profileImage: doctorProfile.profileImage,
+          },
+        })
+        .from(DoctorReviewsModel)
+        .innerJoin(doctorUser, eq(DoctorReviewsModel.doctorId, doctorUser.id))
+        .innerJoin(
+          AppointmentModel,
+          eq(DoctorReviewsModel.appointmentId, AppointmentModel.id)
+        )
+        .leftJoin(doctorProfile, eq(doctorUser.id, doctorProfile.userId))
+        .leftJoin(ClinicModel, eq(AppointmentModel.clinicId, ClinicModel.id))
+        .where(owned)
+        .orderBy(desc(DoctorReviewsModel.createdAt))
+        .limit(query.pageSize)
+        .offset((query.pageNumber - 1) * query.pageSize),
+      database
+        .select({ count: sql<number>`count(*)::integer` })
+        .from(DoctorReviewsModel)
+        .where(owned),
+    ]);
+
+    const totalItems = countRow?.count ?? 0;
+    return {
+      reviews,
+      pagination: buildPagination(totalItems, query.pageNumber, query.pageSize),
     };
   }
 }

@@ -3,9 +3,9 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ZodError } from 'zod';
 import multer from 'multer';
-import { docsRegistry } from '../utils/docsRegistry';
 import logger from '../utils/logger';
 import { envConfig } from '../utils/envConfig';
+import { logPath } from './requestLogger';
 
 /**
  * HttpError - throw this in controllers/services for predictable HTTP responses
@@ -241,12 +241,6 @@ function buildClientPayload(err: unknown) {
  * Central JSON-only error handler for Express.
  * Place this LAST in your middleware stack.
  */
-const skipPaths = [
-  '/.well-known/appspecific/com.chrome.devtools.json',
-  '/favicon.ico',
-  // add more if needed
-];
-
 export function errorHandler(
   err: unknown,
   req: Request,
@@ -256,33 +250,21 @@ export function errorHandler(
 ) {
   const { status, message, details } = buildClientPayload(err);
 
-  // Log server-side using winston logger
+  // requestId ties this line to the request line from requestLogger; path drops the query string and ids.
+  const { requestId } = res.locals;
+  const path = logPath(req);
   if (status >= 500) {
-    logger.error(`${req.method} ${req.originalUrl} - Internal Error:`, err);
+    logger.error({
+      message: `${req.method} ${path} - Internal Error: ${err instanceof Error ? err.message : String(err)}`,
+      requestId,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
   } else {
     logger.warn(
-      `${req.method} ${req.originalUrl} - Client Error (${status}): ${message}`,
-      { details }
+      `${req.method} ${path} - Client Error (${status}): ${message}`,
+      { requestId, details }
     );
   }
-
-  // --- RECORD THE ERROR TO docsRegistry (safe / non-blocking) ---
-  try {
-    if (!skipPaths.includes(req.path)) {
-      docsRegistry.recordError({
-        path: req.originalUrl || req.url,
-        method: req.method,
-        message: message ?? (err as any)?.message ?? String(err),
-        stack:
-          envConfig.NODE_ENV === 'production' ? undefined : (err as any)?.stack,
-        status,
-      });
-    }
-  } catch (e) {
-    // do not throw from logger/registry
-    logger.error('[ERROR] Failed to record error in docsRegistry', e);
-  }
-  // --- end record ---
 
   const payload: any = {
     success: false,
@@ -304,21 +286,6 @@ export function errorHandler(
  * 404 JSON handler — place before errorHandler
  */
 export function notFoundHandler(req: Request, res: Response) {
-  // record 404 into docsRegistry as well (optional, useful for visibility)
-  try {
-    if (!skipPaths.includes(req.path)) {
-      docsRegistry.recordError({
-        path: req.originalUrl || req.url,
-        method: req.method,
-        message: `Route ${req.method} ${req.originalUrl} not found`,
-        status: 404,
-      });
-    }
-  } catch (e) {
-    // ignore registry failure
-    logger.error('[ERROR] Failed to record 404 in docsRegistry', e);
-  }
-
   res.status(404).json({
     success: false,
     status: 404,

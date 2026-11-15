@@ -13,23 +13,19 @@ import {
 import logger from '../../../utils/logger';
 import { sendOk } from '../../../utils/response.utils';
 import redisClient from '../../../configurations/redisConfig';
-import { ReferralService } from '../../../utils/referralEncodeDecode';
-import { ReferralModel } from '../models/referral.model';
+import { CacheKeys } from '../../../utils/cache.util';
+import { recordReferralSignup } from '../../referral';
 import { UserModel } from '../models/user.model';
 import { PermissionService } from '../../permissions/services/permission.service';
 import { StaffAssignmentService } from '../../permissions/services/staffAssignment.service';
 import { StaffScopeService } from '../../permissions/services/staffScope.service';
 import { database } from '../../../configurations/dbConnection';
-import { desc, eq, sql } from 'drizzle-orm';
-import {
-  SubscriptionPlanModel,
-  ClinicSubscriptionModel,
-} from '../../subscription/models/subscription.model';
-import { SubscriptionService } from '../../subscription/services/subscription.service';
+import { eq, sql } from 'drizzle-orm';
 import { sendNoContent } from '../../../utils/response.utils';
 import { TokenService } from '../services/token.service';
 import { ClinicAssignModel } from '../../clinic/models/clinic.model';
 import { notifyClinicAdminsOfStaffAction } from '../../../utils/notificationHelpers';
+import { getISTDateString } from '../../../utils/istDateTime';
 
 export const requestRegistrationVerificationController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -69,31 +65,8 @@ export const registerController = asyncHandler(
   async (req: Request, res: Response) => {
     const payload = req.validatedBody;
     const result = await UserService.register(payload);
-
     if (payload.referralCode) {
-      try {
-        const referrerId = ReferralService.decodeReferralCode(
-          payload.referralCode
-        );
-
-        if (typeof referrerId === 'string' && referrerId.length > 0) {
-          const [referrer] = await database
-            .select({ id: UserModel.id })
-            .from(UserModel)
-            .where(sql`${UserModel.id} = ${referrerId}`)
-            .limit(1);
-
-          if (referrer) {
-            await database.insert(ReferralModel).values({
-              referredTo: result.user.id,
-              referredBy: referrerId,
-              referralCode: payload.referralCode,
-            });
-          }
-        }
-      } catch {
-        console.error('Referral record failed');
-      }
+      await recordReferralSignup(payload.referralCode, result.user.id);
     }
 
     res.status(201).json({
@@ -146,6 +119,8 @@ export const loginController = asyncHandler(
         resetFailedAttempts(emailKey),
       ]);
 
+      // Read by the auditLog middleware: this request has no req.user.
+      res.locals.auditUserId = user.id;
       res.json({
         success: true,
         user,
@@ -187,6 +162,8 @@ export const socialLoginController = asyncHandler(
       device as 'web' | 'ios' | 'android'
     );
 
+    // Read by the auditLog middleware: this request has no req.user.
+    res.locals.auditUserId = user.id;
     res.json({
       success: true,
       user,
@@ -346,85 +323,6 @@ export const getChangePasswordVisibilityController = asyncHandler(
   }
 );
 
-export const generateReferralCodeController = asyncHandler(
-  async (req: Request, res: Response) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) throw new HttpError(401, 'Authentication required');
-
-      const referralCode = ReferralService.generateReferralCode(userId);
-      const referralLink = `${process.env.FRONTEND_URL}/signup-email?rfc=${referralCode}`;
-
-      const userReferrals = await database
-        .select({
-          id: ReferralModel.id,
-          referredTo: ReferralModel.referredTo,
-          referredToName: sql<string>`COALESCE(${UserModel.name}, 'Unknown User')`,
-          referredBy: ReferralModel.referredBy,
-          referralCode: ReferralModel.referralCode,
-          status: ReferralModel.status,
-          comments: ReferralModel.comments,
-          createdAt: ReferralModel.createdAt,
-          updatedAt: ReferralModel.updatedAt,
-        })
-        .from(ReferralModel)
-        .orderBy(desc(ReferralModel.createdAt))
-        .leftJoin(UserModel, eq(ReferralModel.referredTo, UserModel.id))
-        .where(eq(ReferralModel.referredBy, userId));
-
-      const totalReferrals = userReferrals.length;
-      const approvedReferrals = userReferrals.filter(
-        (r: any) => r.status === 'approved'
-      ).length;
-      const pendingReferrals = userReferrals.filter(
-        (r: any) => r.status === 'pending'
-      ).length;
-      const rejectedReferrals = userReferrals.filter(
-        (r: any) => r.status === 'rejected'
-      ).length;
-
-      res.json({
-        success: true,
-        referralCode,
-        referralLink,
-        totalReferrals,
-        approvedReferrals,
-        pendingReferrals,
-        rejectedReferrals,
-        allData: userReferrals,
-      });
-    } catch {
-      throw new HttpError(500, 'Failed to generate referral code');
-    }
-  }
-);
-
-export const updateReferralController = asyncHandler(
-  async (req: Request, res: Response) => {
-    try {
-      const referralId = req.params.referralId as string;
-      const { status, comments } = req.body;
-
-      if (!referralId) {
-        throw new HttpError(400, 'Referral ID is required');
-      }
-
-      const result = await UserService.updateReferralStatus(referralId, {
-        status,
-        comments,
-      });
-
-      res.json({
-        success: true,
-        message: result.message,
-        data: result.referral,
-      });
-    } catch {
-      throw new HttpError(500, 'Failed to update referral');
-    }
-  }
-);
-
 export const sendVerificationController = asyncHandler(
   async (req: Request, res: Response) => {
     const { user } = req;
@@ -549,7 +447,7 @@ export const createCreatePetientController = asyncHandler(
 export const updatePetientController = asyncHandler(
   async (req: Request, res: Response) => {
     const payload = req.validatedBody;
-    const result = await UserService.updatePatient(payload);
+    const result = await UserService.updatePatient(payload, req.clinicId!);
     res.json({ success: true, result });
   }
 );
@@ -560,7 +458,8 @@ export const getPetientController = asyncHandler(
     const includeFamilyDetails = req.validatedQuery?.familyDetails === 'true';
     const result = await UserService.getPeteintById(
       petientId,
-      includeFamilyDetails
+      includeFamilyDetails,
+      req.clinicId
     );
     if (!result) throw new HttpError(404, 'User not found');
     res.json({ success: true, result });
@@ -586,7 +485,7 @@ export const addUserController = asyncHandler(
     const result = await UserService.addUser(clinicId, payload);
 
     // Invalidate overview cache when any staff or doctor is added
-    await redisClient.del(`clinic_limits_overview:${clinicId}`);
+    await redisClient.del(CacheKeys.clinicLimitsOverview(clinicId));
 
     // Lab_Assistant: assign to the specified lab
     if (payload.userType === 'Lab_Assistant') {
@@ -726,7 +625,7 @@ export const UpdateUserController = asyncHandler(
 
     // Invalidate limits cache when user is updated (userType may change)
     if (clinicId) {
-      await redisClient.del(`clinic_limits_overview:${clinicId}`);
+      await redisClient.del(CacheKeys.clinicLimitsOverview(clinicId));
     }
 
     // Notify Clinic Admin if a staff member's or doctor's email or mobile was updated
@@ -806,7 +705,7 @@ export const updateUserStatusController = asyncHandler(
 
     // Invalidate limits cache when user status changes (Active/Inactive affects counts)
     if (clinicId) {
-      await redisClient.del(`clinic_limits_overview:${clinicId}`);
+      await redisClient.del(CacheKeys.clinicLimitsOverview(clinicId));
     }
 
     // Notify Clinic Admin when a staff member's or doctor's account status changes
@@ -880,7 +779,7 @@ export const archiveController = asyncHandler(
 
     // Invalidate limits cache when user is archived/unarchived
     if (clinicId) {
-      await redisClient.del(`clinic_limits_overview:${clinicId}`);
+      await redisClient.del(CacheKeys.clinicLimitsOverview(clinicId));
     }
 
     const action = user.isArchive ? 'archived' : 'unarchived';
@@ -898,16 +797,14 @@ export const GetDoctorServiceController = asyncHandler(
     const patientId = req.params.patientId as string;
     const doctorId = req.params.doctorId as string;
 
-    const services = await UserService.clinicService({
+    const services = await UserService.serviceOptionsForPatient({
       patientId,
       doctorId,
-      date: new Date().toISOString().split('T')[0],
+      // The IST day: toISOString() gave yesterday between 00:00 and 05:30 IST.
+      date: getISTDateString(),
     });
 
-    res.status(200).json({
-      message: 'Services fetched successfully',
-      data: services,
-    });
+    return sendOk(res, 'Services fetched successfully', services);
   }
 );
 
@@ -927,7 +824,7 @@ export const updateAdminPermissionToDoctorController = asyncHandler(
 
     // Invalidate limits cache — toggling isAdminDoctorAccess affects doctor counts
     if (clinicId) {
-      await redisClient.del(`clinic_limits_overview:${clinicId}`);
+      await redisClient.del(CacheKeys.clinicLimitsOverview(clinicId));
     }
 
     res.json({
@@ -970,23 +867,6 @@ export const getDoctorListController = asyncHandler(
   }
 );
 
-export const referralsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    try {
-      const query = req.validatedQuery;
-      const result = await UserService.referrals(query);
-
-      res.json({
-        success: true,
-        message: 'Referral data fetched successfully',
-        result,
-      });
-    } catch {
-      throw new HttpError(500, 'Failed to fetch referral data');
-    }
-  }
-);
-
 export const searchPatientController = asyncHandler(
   async (req: Request, res: Response) => {
     const clinicId = req.clinicId;
@@ -999,7 +879,7 @@ export const searchPatientController = asyncHandler(
 export const checkPatientByMobileController = asyncHandler(
   async (req: Request, res: Response) => {
     const { mobile } = req.validatedQuery;
-    const result = await UserService.checkPatientByMobile(mobile);
+    const result = await UserService.checkPatientByMobile(mobile, req.clinicId);
     return sendOk(res, 'Patient lookup successful', result);
   }
 );
@@ -1075,7 +955,7 @@ export const updateUsernameController = asyncHandler(
     // Invalidate caches
     if (clinicId) {
       await Promise.all([
-        redisClient.del(`clinic_limits_overview:${clinicId}`),
+        redisClient.del(CacheKeys.clinicLimitsOverview(clinicId)),
         redisClient.del(`user_profile:${userId}`),
         redisClient.del(`doctor_profile:${userId}`),
       ]);
@@ -1083,92 +963,6 @@ export const updateUsernameController = asyncHandler(
 
     sendOk(res, 'Username updated successfully', {
       username: result.username,
-    });
-  }
-);
-
-/**
- * Activate the free trial subscription (configured in seeds / DB)
- * @route POST /api/v1/users/verify-subscription
- */
-export const verifySubscriptionController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic ID is required');
-    }
-
-    // Find the configured trial plan (with fallback to 'CareHub' if not explicitly flagged)
-    let [trialPlan] = await database
-      .select({
-        id: SubscriptionPlanModel.id,
-        price: SubscriptionPlanModel.price,
-        trialDays: SubscriptionPlanModel.trialDays,
-        name: SubscriptionPlanModel.name,
-      })
-      .from(SubscriptionPlanModel)
-      .where(eq(SubscriptionPlanModel.isTrialPlan, true))
-      .limit(1);
-
-    if (!trialPlan) {
-      [trialPlan] = await database
-        .select({
-          id: SubscriptionPlanModel.id,
-          price: SubscriptionPlanModel.price,
-          trialDays: SubscriptionPlanModel.trialDays,
-          name: SubscriptionPlanModel.name,
-        })
-        .from(SubscriptionPlanModel)
-        .where(eq(SubscriptionPlanModel.name, 'CareHub'))
-        .limit(1);
-    }
-
-    if (!trialPlan) {
-      throw new HttpError(404, 'Trial subscription plan not found');
-    }
-
-    const durationDays = trialPlan.trialDays ?? 30;
-    const startsAt = new Date();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + durationDays);
-
-    // Deactivate previous active subscriptions for this clinic
-    await database
-      .update(ClinicSubscriptionModel)
-      .set({ active: false })
-      .where(eq(ClinicSubscriptionModel.clinicId, clinicId));
-
-    // Insert new subscription
-    const [newSubscription] = await database
-      .insert(ClinicSubscriptionModel)
-      .values({
-        clinicId,
-        planId: trialPlan.id,
-        startsAt,
-        expiresAt,
-        active: true,
-        price: '0',
-        transactionId: 'TRIAL',
-        paymentStatus: 'success',
-      })
-      .returning();
-
-    // Redis cache invalidate for clinic active subscription
-    await redisClient.del(`clinic_active_subscription:${clinicId}`);
-    await redisClient.del(`clinic_plan:${clinicId}`);
-    await redisClient.del(`clinic_details:${clinicId}`);
-    await redisClient.del(`clinic_limits_overview:${clinicId}`);
-
-    // Call updateUserSubscriptionExpiryCache
-    await SubscriptionService.updateUserSubscriptionExpiryCache(
-      clinicId,
-      expiresAt
-    );
-
-    res.json({
-      success: true,
-      message: `Free trial for ${trialPlan.name} plan activated successfully (${durationDays} days)`,
-      data: newSubscription,
     });
   }
 );

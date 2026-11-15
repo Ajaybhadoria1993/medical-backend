@@ -55,6 +55,7 @@ const event = {
               clinicName: 'Sunrise Clinic',
               date: '12 Sep 2026',
               timeOrToken: 'Time: 4:30 PM',
+              appointmentId: 'appt-1',
             },
           }
         : null,
@@ -96,10 +97,13 @@ it('sends nothing while the template is not switched to the registry', async () 
 it('sends once per recipient, performer included, with no bell row', async () => {
   await run();
   expect(enqueue).toHaveBeenCalledTimes(1); // de-duped; no-mobile skipped
-  const [, message, appointmentId, jobId] = enqueue.mock.calls[0];
+  const [, message, options] = enqueue.mock.calls[0];
   expect((message as { key: string }).key).toBe('appointmentBooked');
-  expect(appointmentId).toBe('a1');
-  expect(jobId).toBe('wa-job7-pat-1'); // stable, so a job retry cannot resend
+  expect(options).toEqual({
+    clinicId: 'c1', // the clinic tenant is who the message is counted against
+    appointmentId: 'a1',
+    jobId: 'wa-job7-pat-1', // stable, so a job retry cannot resend
+  });
 });
 
 it('honours the clinic opt-out, and WHATSAPP_FORCE_ENABLED overrides it', async () => {

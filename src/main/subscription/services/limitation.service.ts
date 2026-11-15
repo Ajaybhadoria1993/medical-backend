@@ -1,21 +1,22 @@
 // src/main/subscription/services/limitation.service.ts
-import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
-import { AddOnModel, ClinicAddOnModel } from '../models/addon.model';
+import { and, asc, eq, gte, inArray, lte, ne, or, sql } from 'drizzle-orm';
+import { AddOnModel, PlanAddOnLimitsModel } from '../models/addon.model';
 
-// Placeholder for AddOnService - actual implementation will be linked
-// import { AddOnService } from './addon.service'
 import { database } from '../../../configurations/dbConnection';
 import redisClient from '../../../configurations/redisConfig';
+import { CacheKeys } from '../../../utils/cache.util';
 import { ClinicAssignModel } from '../../clinic/models/clinic.model';
-import {
-  ClinicSubscriptionModel,
-  SubscriptionPlanModel,
-} from '../models/subscription.model';
+import { SubscriptionPlanModel } from '../models/subscription.model';
 import { ClinicUsageModel } from '../models/clinicUsage.model';
 import { PlanFeaturesModel } from '../models/planFeatures.model';
 import { UserModel } from '../../users/models/user.model';
 import { LabsModel } from '../../lab/models/lab.model';
 import { PharmacyModel } from '../../pharmacy/models/pharmacy.model';
+import { capAddOnRenewalQuantity } from '../utils/addOnQuantity.utils';
+import { SubscriptionAddOnModel } from '../models/ownerSubscription.model';
+import { OwnerSubscriptionService } from './core/ownerSubscription.service';
+import { PlansService } from './core/plans.service';
+import { ofPlanVersion } from '../utils/planVersionScope';
 
 /** Feature keys used across the system */
 export const FEATURE_KEYS = {
@@ -37,6 +38,7 @@ export const FEATURE_KEYS = {
   ADD_ONS: 'add_ons',
   WAITING_ROOM_QUEUE: 'waiting_room_queue',
   PUBLIC_BOOKING_PAGE: 'public_booking_page',
+  WHATSAPP_CREDIT_PACKS: 'whatsapp_credit_packs',
 } as const;
 
 export type StorageCategory = 'prescriptions' | 'records' | 'scans' | 'reports';
@@ -98,167 +100,102 @@ export interface FeatureCheckResult {
   message?: string;
 }
 
+export interface ActivePlan {
+  planId: string;
+  planSlug: string;
+  planName: string;
+  planVersionId: string;
+}
+
 export class LimitationService {
   private static CACHE_TTL = 300; // 5 minutes
 
-  /**
-   * Get the active plan for a clinic
-   */
   static async getClinicActivePlan(
     clinicId: string
-  ): Promise<{ planId: string; planSlug: string } | null> {
-    const cacheKey = `clinic_plan:${clinicId}`;
+  ): Promise<ActivePlan | null> {
+    const cacheKey = CacheKeys.clinicPlan(clinicId);
     const cached = await redisClient.get(cacheKey);
-
     if (cached) {
-      return JSON.parse(cached);
+      const plan = JSON.parse(cached) as ActivePlan;
+      // An old-shape entry (no planVersionId) is read again.
+      if (plan.planVersionId) return plan;
     }
 
     const now = new Date();
+    const current = await OwnerSubscriptionService.getCurrent(
+      'clinic',
+      clinicId,
+      now
+    );
+    const isValid = current?.state.isValid ?? false;
 
-    const [sub] = await database
-      .select({
-        planId: ClinicSubscriptionModel.planId,
-        planSlug: SubscriptionPlanModel.slug,
-      })
-      .from(ClinicSubscriptionModel)
-      .innerJoin(
-        SubscriptionPlanModel,
-        eq(SubscriptionPlanModel.id, ClinicSubscriptionModel.planId)
-      )
+    const plan: ActivePlan | null =
+      current && isValid
+        ? {
+            planId: current.plan.id,
+            planSlug: current.plan.slug,
+            planName: current.plan.name,
+            planVersionId: current.version.id,
+          }
+        : await this.freePlan();
+    if (!plan) return null;
+
+    // Cached no longer than the plan lasts, so an end at IST midnight applies at once.
+    const validUntil = isValid ? current?.state.validUntil : null;
+    const ttl = validUntil
+      ? Math.max(
+          1,
+          Math.min(
+            this.CACHE_TTL,
+            Math.floor((validUntil.getTime() - now.getTime()) / 1000)
+          )
+        )
+      : this.CACHE_TTL;
+    await redisClient.setex(cacheKey, ttl, JSON.stringify(plan));
+    return plan;
+  }
+
+  private static async freePlan(): Promise<ActivePlan | null> {
+    const [free] = await database
+      .select()
+      .from(SubscriptionPlanModel)
       .where(
         and(
-          eq(ClinicSubscriptionModel.clinicId, clinicId),
-          eq(ClinicSubscriptionModel.active, true)
+          eq(SubscriptionPlanModel.ownerType, 'clinic'),
+          eq(SubscriptionPlanModel.kind, 'free'),
+          eq(SubscriptionPlanModel.isDefaultFallback, true)
         )
       )
       .limit(1);
-
-    if (!sub) {
-      // No active subscription → treat as default fallback / free plan
-      let [fallbackPlan] = await database
-        .select({
-          id: SubscriptionPlanModel.id,
-          slug: SubscriptionPlanModel.slug,
-        })
-        .from(SubscriptionPlanModel)
-        .where(eq(SubscriptionPlanModel.isDefaultFallback, true))
-        .limit(1);
-
-      if (!fallbackPlan) {
-        [fallbackPlan] = await database
-          .select({
-            id: SubscriptionPlanModel.id,
-            slug: SubscriptionPlanModel.slug,
-          })
-          .from(SubscriptionPlanModel)
-          .where(inArray(SubscriptionPlanModel.slug, ['solo', 'Free']))
-          .limit(1);
-      }
-
-      if (fallbackPlan) {
-        const result = { planId: fallbackPlan.id, planSlug: fallbackPlan.slug };
-        await redisClient.setex(
-          cacheKey,
-          this.CACHE_TTL,
-          JSON.stringify(result)
-        );
-        return result;
-      }
-      return null;
-    }
-
-    // Check expiry
-    if (sub.planSlug !== 'solo' && sub.planSlug !== 'Free') {
-      const activeSub = await database
-        .select()
-        .from(ClinicSubscriptionModel)
-        .where(
-          and(
-            eq(ClinicSubscriptionModel.clinicId, clinicId),
-            eq(ClinicSubscriptionModel.active, true)
-          )
-        )
-        .limit(1);
-
-      if (activeSub.length > 0 && activeSub[0].expiresAt) {
-        if (new Date(activeSub[0].expiresAt) < now) {
-          // Expired → fall back to default fallback / free plan
-          let [fallbackPlan] = await database
-            .select({
-              id: SubscriptionPlanModel.id,
-              slug: SubscriptionPlanModel.slug,
-            })
-            .from(SubscriptionPlanModel)
-            .where(eq(SubscriptionPlanModel.isDefaultFallback, true))
-            .limit(1);
-
-          if (!fallbackPlan) {
-            [fallbackPlan] = await database
-              .select({
-                id: SubscriptionPlanModel.id,
-                slug: SubscriptionPlanModel.slug,
-              })
-              .from(SubscriptionPlanModel)
-              .where(inArray(SubscriptionPlanModel.slug, ['solo', 'Free']))
-              .limit(1);
-          }
-
-          if (fallbackPlan) {
-            const result = {
-              planId: fallbackPlan.id,
-              planSlug: fallbackPlan.slug,
-            };
-            await redisClient.setex(
-              cacheKey,
-              this.CACHE_TTL,
-              JSON.stringify(result)
-            );
-
-            // Trigger staff enforcement ONCE on expiry detection.
-            // Use a Redis flag to avoid running enforcement on every request.
-            const enforcementKey = `staff_enforcement_done:${clinicId}`;
-            const alreadyEnforced = await redisClient.get(enforcementKey);
-
-            if (!alreadyEnforced) {
-              // Mark as enforced (24h TTL — enforcement will re-run if key expires and plan is still expired)
-              await redisClient.setex(enforcementKey, 86400, '1');
-
-              // Run enforcement asynchronously to not block the current request
-              setImmediate(() => {
-                this.enforceStaffLimitsOnExpiry(clinicId).catch(() => {
-                  // If enforcement fails, remove the flag so it retries next time
-                  redisClient.del(enforcementKey).catch(() => {});
-                });
-              });
-            }
-
-            return result;
-          }
-          return null;
-        }
-      }
-    }
-
-    const result = { planId: sub.planId, planSlug: sub.planSlug };
-    await redisClient.setex(cacheKey, this.CACHE_TTL, JSON.stringify(result));
-    return result;
+    const version = free && (await PlansService.currentVersion(free.id));
+    if (!version) return null;
+    return {
+      planId: free.id,
+      planSlug: free.slug,
+      planName: free.name,
+      planVersionId: version.id,
+    };
   }
 
   /**
    * Get the limit configuration for a specific feature on a plan
    */
+  /** The limit on the clinic's own version; without one, the plan's current version. */
   static async getPlanLimit(
     planId: string,
-    featureKey: FeatureKey
+    featureKey: FeatureKey,
+    planVersionId?: string
   ): Promise<PlanLimit | null> {
-    const cacheKey = `plan_limit:${planId}:${featureKey}`;
+    const versionId =
+      planVersionId ?? (await PlansService.currentVersion(planId))?.id;
+    const cacheKey = CacheKeys.planLimit(planId, featureKey, versionId);
     const cached = await redisClient.get(cacheKey);
 
     if (cached) {
       return JSON.parse(cached);
     }
 
+    if (!versionId) return null;
     const [limit] = await database
       .select({
         featureKey: PlanFeaturesModel.featureKey,
@@ -269,7 +206,7 @@ export class LimitationService {
       .from(PlanFeaturesModel)
       .where(
         and(
-          eq(PlanFeaturesModel.planId, planId),
+          eq(PlanFeaturesModel.planVersionId, versionId),
           eq(PlanFeaturesModel.featureKey, featureKey)
         )
       )
@@ -295,20 +232,24 @@ export class LimitationService {
       return { allowed: true };
     }
 
-    const limit = await this.getPlanLimit(plan.planId, featureKey);
+    const limit = await this.getPlanLimit(
+      plan.planId,
+      featureKey,
+      plan.planVersionId
+    );
 
     if (!limit) {
       // If no limit is defined, feature is not available
       return {
         allowed: false,
-        message: `This feature is not available on your current plan (${plan.planSlug}).`,
+        message: `This feature is not available on your current plan (${plan.planName}).`,
       };
     }
 
     if (!limit.enabled) {
       return {
         allowed: false,
-        message: `This feature is not available on the ${plan.planSlug} plan. Please upgrade to access this feature.`,
+        message: `This feature is not available on the ${plan.planName} plan. Please upgrade to access this feature.`,
       };
     }
 
@@ -378,7 +319,11 @@ export class LimitationService {
       };
     }
 
-    const limit = await this.getPlanLimit(plan.planId, featureKey);
+    const limit = await this.getPlanLimit(
+      plan.planId,
+      featureKey,
+      plan.planVersionId
+    );
 
     if (!limit) {
       // Limit not configured → allow
@@ -398,7 +343,7 @@ export class LimitationService {
         limit: 0,
         isUnlimited: false,
         remaining: 0,
-        message: `This feature is not available on the ${plan.planSlug} plan.`,
+        message: `This feature is not available on the ${plan.planName} plan.`,
       };
     }
 
@@ -424,7 +369,7 @@ export class LimitationService {
         limit: limitValue,
         isUnlimited: false,
         remaining: 0,
-        message: `You have reached your ${plan.planSlug} plan limit of ${limitValue} for this feature. Please upgrade your plan.`,
+        message: `You have reached your ${plan.planName} plan limit of ${limitValue} for this feature. Please upgrade your plan.`,
       };
     }
 
@@ -469,36 +414,35 @@ export class LimitationService {
       });
   }
 
-  /**
-   * Get additional limit from active add-ons for a feature
-   */
+  /** Units of these add-on feature keys on the current plan; an ended plan's add-ons give nothing. */
   static async getAddOnLimit(
     clinicId: string,
-    featureKey: string
+    featureKeys: string | string[]
   ): Promise<number> {
-    const now = new Date();
+    const keys = Array.isArray(featureKeys) ? featureKeys : [featureKeys];
+    const current = await OwnerSubscriptionService.getCurrent(
+      'clinic',
+      clinicId
+    );
+    if (!current?.state.isValid) return 0;
 
     const addOns = await database
       .select({
         unitValue: AddOnModel.unitValue,
-        quantity: ClinicAddOnModel.quantity,
+        quantity: SubscriptionAddOnModel.quantity,
       })
-      .from(ClinicAddOnModel)
-      .innerJoin(AddOnModel, eq(ClinicAddOnModel.addOnId, AddOnModel.id))
+      .from(SubscriptionAddOnModel)
+      .innerJoin(AddOnModel, eq(SubscriptionAddOnModel.addOnId, AddOnModel.id))
       .where(
         and(
-          eq(ClinicAddOnModel.clinicId, clinicId),
-          eq(AddOnModel.featureKey, featureKey),
-          eq(ClinicAddOnModel.isActive, true),
-          or(
-            isNull(ClinicAddOnModel.expiresAt),
-            gte(ClinicAddOnModel.expiresAt, now)
-          )
+          eq(SubscriptionAddOnModel.subscriptionId, current.subscription.id),
+          eq(SubscriptionAddOnModel.status, 'active'),
+          inArray(AddOnModel.featureKey, keys)
         )
       );
 
     return addOns.reduce(
-      (sum, addOn) => sum + (addOn.unitValue ?? 0) * (addOn.quantity ?? 0),
+      (sum, addOn) => sum + addOn.unitValue * addOn.quantity,
       0
     );
   }
@@ -526,11 +470,7 @@ export class LimitationService {
     ],
   };
 
-  /**
-   * Get the combined add-on limit for an account-based plan feature, summing
-   * across every add-on feature key that maps to it. Falls back to a direct
-   * lookup for features without a mapping.
-   */
+  /** Add-on units for a plan feature, across every add-on key mapped to it; the Set stops double counting. */
   static async getAccountAddOnLimit(
     clinicId: string,
     planFeatureKey: string
@@ -538,15 +478,7 @@ export class LimitationService {
     const addOnKeys = this.ACCOUNT_ADDON_KEYS[planFeatureKey] ?? [
       planFeatureKey,
     ];
-
-    // De-duplicate to avoid double counting if keys overlap
-    const uniqueKeys = Array.from(new Set(addOnKeys));
-
-    const limits = await Promise.all(
-      uniqueKeys.map((key) => this.getAddOnLimit(clinicId, key))
-    );
-
-    return limits.reduce((sum, value) => sum + value, 0);
+    return this.getAddOnLimit(clinicId, [...new Set(addOnKeys)]);
   }
 
   /**
@@ -561,7 +493,11 @@ export class LimitationService {
     let baseLimit = 0;
 
     if (plan) {
-      const limit = await this.getPlanLimit(plan.planId, featureKey);
+      const limit = await this.getPlanLimit(
+        plan.planId,
+        featureKey,
+        plan.planVersionId
+      );
       if (limit && limit.enabled && !limit.isUnlimited) {
         baseLimit = limit.limitValue ?? 0;
       }
@@ -596,7 +532,8 @@ export class LimitationService {
 
     const limit = await this.getPlanLimit(
       plan.planId,
-      FEATURE_KEYS.DOCTOR_ACCOUNTS
+      FEATURE_KEYS.DOCTOR_ACCOUNTS,
+      plan.planVersionId
     );
 
     if (!limit) {
@@ -648,7 +585,7 @@ export class LimitationService {
       remaining,
       message:
         currentCount >= totalLimit
-          ? `You have reached the maximum of ${totalLimit} doctor(s) on your ${plan.planSlug} plan. Please upgrade to add more doctors.`
+          ? `You have reached the maximum of ${totalLimit} doctor(s) on your ${plan.planName} plan. Please upgrade to add more doctors.`
           : undefined,
     };
   }
@@ -773,7 +710,8 @@ export class LimitationService {
 
     const limit = await this.getPlanLimit(
       plan.planId,
-      FEATURE_KEYS.STAFF_ACCOUNTS
+      FEATURE_KEYS.STAFF_ACCOUNTS,
+      plan.planVersionId
     );
 
     if (!limit) {
@@ -828,7 +766,7 @@ export class LimitationService {
       remaining,
       message:
         currentCount >= totalLimit
-          ? `You have reached the maximum of ${totalLimit} staff member(s) on your ${plan.planSlug} plan. Please upgrade or purchase an add-on to add more staff.`
+          ? `You have reached the maximum of ${totalLimit} staff member(s) on your ${plan.planName} plan. Please upgrade or purchase an add-on to add more staff.`
           : undefined,
     };
   }
@@ -897,7 +835,8 @@ export class LimitationService {
 
     const limit = await this.getPlanLimit(
       plan.planId,
-      FEATURE_KEYS.STORAGE_MONTHS
+      FEATURE_KEYS.STORAGE_MONTHS,
+      plan.planVersionId
     );
 
     if (!limit || !limit.enabled) return 3;
@@ -915,7 +854,8 @@ export class LimitationService {
 
     const limit = await this.getPlanLimit(
       plan.planId,
-      FEATURE_KEYS.PAYMENT_HISTORY_MONTHS
+      FEATURE_KEYS.PAYMENT_HISTORY_MONTHS,
+      plan.planVersionId
     );
 
     if (!limit || !limit.enabled) return 3;
@@ -972,7 +912,8 @@ export class LimitationService {
     if (plan) {
       const limit = await this.getPlanLimit(
         plan.planId,
-        FEATURE_KEYS.CLOUD_STORAGE
+        FEATURE_KEYS.CLOUD_STORAGE,
+        plan.planVersionId
       );
       if (limit && limit.enabled && !limit.isUnlimited) {
         baseLimit = limit.limitValue ?? 100;
@@ -1083,7 +1024,7 @@ export class LimitationService {
       });
 
     // Invalidate cached overview
-    await redisClient.del(`clinic_limits_overview:${clinicId}`);
+    await redisClient.del(CacheKeys.clinicLimitsOverview(clinicId));
   }
 
   /**
@@ -1113,7 +1054,7 @@ export class LimitationService {
       );
 
     // Invalidate cached overview
-    await redisClient.del(`clinic_limits_overview:${clinicId}`);
+    await redisClient.del(CacheKeys.clinicLimitsOverview(clinicId));
   }
 
   /**
@@ -1122,7 +1063,7 @@ export class LimitationService {
    */
   static async getClinicLimitsOverview(clinicId: string) {
     // Check Redis cache first
-    const cacheKey = `clinic_limits_overview:${clinicId}`;
+    const cacheKey = CacheKeys.clinicLimitsOverview(clinicId);
     const cached = await redisClient.get(cacheKey);
 
     if (cached) {
@@ -1138,7 +1079,7 @@ export class LimitationService {
     const limits = await database
       .select()
       .from(PlanFeaturesModel)
-      .where(eq(PlanFeaturesModel.planId, plan.planId));
+      .where(ofPlanVersion(PlanFeaturesModel, plan.planVersionId));
 
     const { start, end } = this.getCurrentPeriod();
 
@@ -1270,8 +1211,10 @@ export class LimitationService {
    * Invalidate cached plan data for a clinic (call when subscription changes)
    */
   static async invalidateClinicCache(clinicId: string): Promise<void> {
-    await redisClient.del(`clinic_plan:${clinicId}`);
-    await redisClient.del(`clinic_limits_overview:${clinicId}`);
+    await redisClient.del(
+      CacheKeys.clinicPlan(clinicId),
+      CacheKeys.clinicLimitsOverview(clinicId)
+    );
   }
 
   /**
@@ -1285,6 +1228,8 @@ export class LimitationService {
     overQuota: boolean;
     excessDoctors: number;
     excessStaff: number;
+    doctorAddOnLimit: number;
+    staffAddOnLimit: number;
     doctorLimit: number | null;
     staffLimit: number | null;
     doctors: {
@@ -1323,22 +1268,106 @@ export class LimitationService {
       FEATURE_KEYS.STAFF_ACCOUNTS
     );
 
-    const docAddOnLimit = await this.getAccountAddOnLimit(
-      clinicId,
-      FEATURE_KEYS.DOCTOR_ACCOUNTS
-    );
-    const staffAddOnLimit = await this.getAccountAddOnLimit(
-      clinicId,
-      FEATURE_KEYS.STAFF_ACCOUNTS
+    // Add-ons belong to the current subscription and end with it, so no expiry check is needed.
+    const current = await OwnerSubscriptionService.getCurrent(
+      'clinic',
+      clinicId
     );
 
-    const doctorLimit = docLimitObj?.isUnlimited
-      ? null
-      : (docLimitObj?.limitValue ?? 0) + docAddOnLimit;
+    // Add-ons contribute to the target plan's account limits only when that
+    // plan permits the add-on, and only for the renewable units that fit its
+    // configured cap. Current-plan add-on totals must not leak into this check.
+    const getTargetAccountAddOnLimit = async (
+      accountFeatureKey: string,
+      addOnFeatureKey: string
+    ): Promise<number> => {
+      const targetVersion = await PlansService.currentVersion(targetPlanId);
+      if (!targetVersion) return 0;
+      const allowedAddOns = await database
+        .select({
+          addOnId: PlanAddOnLimitsModel.addOnId,
+          featureKey: AddOnModel.featureKey,
+          unitValue: AddOnModel.unitValue,
+          maxCap: PlanAddOnLimitsModel.maxCap,
+        })
+        .from(PlanAddOnLimitsModel)
+        .innerJoin(AddOnModel, eq(PlanAddOnLimitsModel.addOnId, AddOnModel.id))
+        .where(
+          and(
+            eq(PlanAddOnLimitsModel.planVersionId, targetVersion.id),
+            inArray(AddOnModel.featureKey, [addOnFeatureKey, accountFeatureKey])
+          )
+        );
 
-    const staffLimit = staffLimitObj?.isUnlimited
-      ? null
-      : (staffLimitObj?.limitValue ?? 0) + staffAddOnLimit;
+      if (allowedAddOns.length === 0) return 0;
+
+      if (!current) return 0;
+      const rows = await database
+        .select({
+          addOnId: SubscriptionAddOnModel.addOnId,
+          quantity: SubscriptionAddOnModel.quantity,
+          scheduledQuantity: SubscriptionAddOnModel.scheduledQuantity,
+        })
+        .from(SubscriptionAddOnModel)
+        .innerJoin(
+          AddOnModel,
+          eq(SubscriptionAddOnModel.addOnId, AddOnModel.id)
+        )
+        .where(
+          and(
+            eq(SubscriptionAddOnModel.subscriptionId, current.subscription.id),
+            eq(SubscriptionAddOnModel.status, 'active'),
+            inArray(AddOnModel.featureKey, [addOnFeatureKey, accountFeatureKey])
+          )
+        );
+
+      const limitByAddOnId = new Map(
+        allowedAddOns.map((addOn) => [addOn.addOnId, addOn])
+      );
+      const quantityByAddOnId = new Map<string, number>();
+      for (const row of rows) {
+        if (!limitByAddOnId.has(row.addOnId)) continue;
+        // null = no change scheduled for the next period
+        const renewingQuantity = row.scheduledQuantity ?? row.quantity;
+        quantityByAddOnId.set(
+          row.addOnId,
+          (quantityByAddOnId.get(row.addOnId) ?? 0) + renewingQuantity
+        );
+      }
+
+      return allowedAddOns.reduce((total, addOn) => {
+        const quantity = quantityByAddOnId.get(addOn.addOnId) ?? 0;
+        const allowedQuantity = capAddOnRenewalQuantity(
+          quantity,
+          addOn.unitValue,
+          addOn.maxCap
+        );
+        return total + allowedQuantity * addOn.unitValue;
+      }, 0);
+    };
+
+    const [docAddOnLimit, staffAddOnLimit] = await Promise.all([
+      getTargetAccountAddOnLimit(
+        FEATURE_KEYS.DOCTOR_ACCOUNTS,
+        'additional_doctor'
+      ),
+      getTargetAccountAddOnLimit(
+        FEATURE_KEYS.STAFF_ACCOUNTS,
+        'additional_staff'
+      ),
+    ]);
+
+    const doctorLimit =
+      docLimitObj?.enabled && docLimitObj.isUnlimited
+        ? null
+        : (docLimitObj?.enabled ? (docLimitObj.limitValue ?? 0) : 0) +
+          docAddOnLimit;
+
+    const staffLimit =
+      staffLimitObj?.enabled && staffLimitObj.isUnlimited
+        ? null
+        : (staffLimitObj?.enabled ? (staffLimitObj.limitValue ?? 0) : 0) +
+          staffAddOnLimit;
 
     const doctors = await database
       .select({
@@ -1356,7 +1385,8 @@ export class LimitationService {
           eq(UserModel.userStatus, 'Active'),
           eq(UserModel.userType, 'Doctor')
         )
-      );
+      )
+      .orderBy(asc(ClinicAssignModel.createdAt));
 
     const staff = await database
       .select({
@@ -1380,12 +1410,18 @@ export class LimitationService {
             eq(UserModel.userType, 'Radiologist')
           )
         )
-      );
+      )
+      .orderBy(asc(ClinicAssignModel.createdAt));
 
+    // Match checkDoctorLimit(): an admin account with doctor access consumes
+    // a doctor slot even though it is kept separate from the selectable
+    // Doctor accounts returned above.
+    const currentDoctorUsage = await this.getDoctorCount(clinicId);
     const excessDoctors =
-      doctorLimit === null ? 0 : Math.max(0, doctors.length - doctorLimit);
+      doctorLimit === null ? 0 : Math.max(0, currentDoctorUsage - doctorLimit);
+    const currentStaffUsage = await this.getStaffCount(clinicId);
     const excessStaff =
-      staffLimit === null ? 0 : Math.max(0, staff.length - staffLimit);
+      staffLimit === null ? 0 : Math.max(0, currentStaffUsage - staffLimit);
     const overQuota = excessDoctors > 0 || excessStaff > 0;
 
     return {
@@ -1393,6 +1429,8 @@ export class LimitationService {
       overQuota,
       excessDoctors,
       excessStaff,
+      doctorAddOnLimit: docAddOnLimit,
+      staffAddOnLimit,
       doctorLimit,
       staffLimit,
       doctors,
@@ -1412,6 +1450,31 @@ export class LimitationService {
    * - Sets userStatus to 'Inactive' so they can't log in
    * - Does NOT delete any data — fully reversible if the clinic resubscribes
    */
+  /** Switches off the accounts a clinic chose to drop with a plan change; only its own, non-admin users. */
+  static async switchOff(clinicId: string, userIds: string[]) {
+    if (!userIds.length) return [];
+    const off = await database
+      .update(UserModel)
+      .set({ isArchive: true, userStatus: 'Inactive', updatedAt: new Date() })
+      .where(
+        and(
+          inArray(UserModel.id, userIds),
+          eq(UserModel.isArchive, false),
+          ne(UserModel.userType, 'Admin'),
+          inArray(
+            UserModel.id,
+            database
+              .select({ id: ClinicAssignModel.userId })
+              .from(ClinicAssignModel)
+              .where(eq(ClinicAssignModel.clinicId, clinicId))
+          )
+        )
+      )
+      .returning({ id: UserModel.id });
+    for (const u of off) await redisClient.del(`user:${u.id}`);
+    return off.map((u) => u.id);
+  }
+
   static async enforceStaffLimitsOnExpiry(
     clinicId: string,
     preferredActiveDoctorIds?: string[],
@@ -1601,9 +1664,6 @@ export class LimitationService {
   }> {
     let doctorsReactivated = 0;
     let staffReactivated = 0;
-
-    // Clear the enforcement flag so future expiry can re-trigger enforcement
-    await redisClient.del(`staff_enforcement_done:${clinicId}`);
 
     // --- Doctors ---
     const doctorCheck = await this.checkDoctorLimit(clinicId);

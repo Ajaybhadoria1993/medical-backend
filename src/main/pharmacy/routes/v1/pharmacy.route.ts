@@ -6,7 +6,7 @@ import {
   requireRole,
   requireReceptionist,
 } from '../../../../middlewear/auth.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   createPharmacyController,
   assignPharmacyUserController,
@@ -29,7 +29,10 @@ import {
   updatePharmacyStatusSchema,
   updatePharmacySchema,
 } from '../../schemas/pharmacy.schemas';
-import { requirePharmacySubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const pharmacyRouter = express.Router();
 
@@ -43,7 +46,7 @@ pharmacyRouter.post(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createPharmacySchema, 'body'),
   createPharmacyController
 );
@@ -58,7 +61,7 @@ pharmacyRouter.post(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(assignPharmacyUserSchema, 'body'),
   assignPharmacyUserController
 );
@@ -73,7 +76,7 @@ pharmacyRouter.put(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(updatePharmacySchema, 'body'),
   updatePharmacyController
 );
@@ -88,7 +91,7 @@ pharmacyRouter.post(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createPharmacyUserSchema, 'body'),
   createPharmacyUserController
 );
@@ -103,7 +106,7 @@ pharmacyRouter.post(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPharmacyByIdParamsSchema, 'params'),
   validate(createPharmacyMemberSchema, 'body'),
   createPharmacyMemberController
@@ -119,7 +122,7 @@ pharmacyRouter.get(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPharmaciesQuerySchema, 'query'),
   getAllPharmaciesController
 );
@@ -130,7 +133,7 @@ pharmacyRouter.put(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPharmacyByIdParamsSchema, 'params'),
   validate(updatePharmacyStatusSchema, 'body'),
   updatePharmacyStatusController
@@ -142,7 +145,7 @@ pharmacyRouter.delete(
   requireAuth,
   requireRole(['Admin', 'Super_Admin']),
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPharmacyByIdParamsSchema, 'params'),
   deletePharmacyController
 );
@@ -188,7 +191,7 @@ pharmacyRouter.get(
   requireAuth,
   requireReceptionist,
   requireClinic,
-  requirePharmacySubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPharmacyByIdParamsSchema, 'params'),
   validate(getPharmacyUsersQuerySchema, 'query'),
   getPharmacyByIdWithUsersController

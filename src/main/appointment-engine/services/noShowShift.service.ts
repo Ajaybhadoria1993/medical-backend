@@ -12,6 +12,7 @@ import {
 } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import logger from '../../../utils/logger';
+import { lockDoctorDay } from '../../../utils/doctorDayLock';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import {
   ClinicAvailability,
@@ -33,23 +34,21 @@ import {
   startOfDayIST,
 } from '../../../utils/istDateTime';
 
-/**
- * Rows whose stored time is a real slot. A token's '23:59' placeholder sorts
- * after every one, so a mixed day rewrote it into a bogus late-night time.
- */
+/** Rows with a real slot time; a token's '23:59' placeholder would be shifted into a bogus late time. */
 const TIME_BASED_ROW = or(
   isNull(AppointmentModel.tokenNo),
   notInArray(AppointmentModel.appointmentTime, ['23:59', '23:59:00'])
 );
 
+/** Pulls later time-based bookings earlier when a patient no-shows. */
 export class NoShowShiftService {
   private delayTrackerService: DelayTrackerService;
 
   constructor() {
     this.delayTrackerService = new DelayTrackerService();
   }
+  /** Moves every later shiftable booking earlier by the no-show's length, under the doctor-day lock. */
   async shiftForward(noShowAppointmentId: string): Promise<ShiftResult> {
-    // Step 1: Look up the no-show appointment
     const [noShowAppt] = await database
       .select({
         id: AppointmentModel.id,
@@ -83,76 +82,53 @@ export class NoShowShiftService {
 
     const date = getISTDateString(noShowAppt.appointmentDate);
 
-    // Step 2: Determine shiftAmount from the no-show appointment's duration
-    const slotMinutes = await this.resolveSlotMinutes(
-      noShowAppt.clinicId,
-      noShowAppt.doctorId,
-      date
-    );
-    const shiftAmount = resolveAppointmentDuration(
-      noShowAppt.appointmentDurationMinutes,
-      slotMinutes
-    );
-
-    const subsequentAppointments = await this.fetchSubsequentAppointments(
-      noShowAppt.clinicId,
-      noShowAppt.doctorId,
-      noShowAppt.appointmentDate,
-      effectiveAppointmentTime(noShowAppt),
-      noShowAppt.tokenNo,
-      noShowAppt.sessionIndex
-    );
-
-    // Filter to only shiftable statuses
-    const shiftableAppointments = subsequentAppointments.filter((appt) =>
-      isShiftableStatus(appt.appointmentStatus)
-    );
-
-    if (shiftableAppointments.length === 0) {
-      logger.info(
-        `[NoShowShift] No shiftable appointments found after appointment ${noShowAppointmentId}`
-      );
-      return { shiftedAppointments: [] };
-    }
-
-    // A token queue is identified by tokenNo alone. Testing appointmentTime
-    // for null never matched, because booking writes a '23:59' placeholder.
-    const isTokenBasedQueue = shiftableAppointments.every(
-      (appt) => effectiveAppointmentTime(appt) == null
-    );
-
-    if (isTokenBasedQueue) {
-      // Token-based handling: do NOT modify appointmentTime,
-      // recalculate Estimated_Wait_Time instead
-      logger.info(
-        `[NoShowShift] Token-based queue detected for appointment ${noShowAppointmentId}. ` +
-          `Skipping time shift; triggering delay recalculation for ${shiftableAppointments.length} token appointments.`
-      );
-
-      await this.delayTrackerService.recalculate(
-        noShowAppt.clinicId,
-        noShowAppt.doctorId,
-        date
-      );
-
-      return { shiftedAppointments: [] };
-    }
-
-    // Fetch active breaks for break avoidance
-    const activeBreaks = await this.fetchActiveBreaks(
-      noShowAppt.clinicId,
-      noShowAppt.doctorId,
-      date
-    );
-
-    // Step 4 & 5: Compute new times with break avoidance, execute in a single transaction
+    const doctorId = noShowAppt.doctorId;
+    let shiftAmount = 0;
     const shiftedAppointments: ShiftResult['shiftedAppointments'] = [];
+    let isTokenBasedQueue = false;
 
     try {
       await database.transaction(async (tx) => {
+        // Same lock as booking: two no-shows or a booking can't act on a stale schedule.
+        await lockDoctorDay(tx, doctorId, noShowAppt.appointmentDate);
+        const [current] = await tx
+          .select({ status: AppointmentModel.appointmentStatus })
+          .from(AppointmentModel)
+          .where(eq(AppointmentModel.id, noShowAppointmentId));
+        if (current?.status !== 'NoShow') return;
+
+        const shiftableAppointments = (
+          await this.fetchSubsequentAppointments(
+            noShowAppt.clinicId,
+            doctorId,
+            noShowAppt.appointmentDate,
+            effectiveAppointmentTime(noShowAppt),
+            noShowAppt.tokenNo,
+            noShowAppt.sessionIndex,
+            tx
+          )
+        ).filter((appt) => isShiftableStatus(appt.appointmentStatus));
+        if (shiftableAppointments.length === 0) return;
+
+        // A token queue is identified by tokenNo alone; booking writes a '23:59' placeholder time.
+        isTokenBasedQueue = shiftableAppointments.every(
+          (appt) => effectiveAppointmentTime(appt) == null
+        );
+        if (isTokenBasedQueue) return;
+
+        // Read only once there is something to move.
+        shiftAmount = resolveAppointmentDuration(
+          noShowAppt.appointmentDurationMinutes,
+          await this.resolveSlotMinutes(noShowAppt.clinicId, doctorId, date)
+        );
+        const activeBreaks = await this.fetchActiveBreaks(
+          noShowAppt.clinicId,
+          doctorId,
+          date
+        );
+
         for (const appt of shiftableAppointments) {
-          // Belt and braces: the fetch already drops placeholder rows, but a
-          // token's '23:59' must never be rewritten as though it were a slot.
+          // The fetch drops placeholders already; a token's '23:59' must still never be rewritten.
           const slotTime = effectiveAppointmentTime(appt);
           if (!slotTime) continue;
 
@@ -160,12 +136,10 @@ export class NoShowShiftService {
           let newMinutes = currentMinutes - shiftAmount;
           newMinutes = Math.max(0, newMinutes);
 
-          // Break avoidance: check if new time falls within any active break
           newMinutes = this.avoidBreaks(newMinutes, activeBreaks);
 
           const newTime = minutesToTimeString(newMinutes);
 
-          // Update the appointment time in the database
           await tx
             .update(AppointmentModel)
             .set({ appointmentTime: newTime })
@@ -192,8 +166,17 @@ export class NoShowShiftService {
       throw error;
     }
 
-    // Fire-and-forget notifications after successful shift
-    // Never fail the overall operation because of notification errors
+    // Token queue: times stay put, only the estimated wait is recalculated.
+    if (isTokenBasedQueue) {
+      await this.delayTrackerService.recalculate(
+        noShowAppt.clinicId,
+        doctorId,
+        date
+      );
+      return { shiftedAppointments: [] };
+    }
+
+    // Fire-and-forget: a failed notification must not undo a committed shift.
     if (shiftedAppointments.length > 0) {
       this.notifyShiftedAppointments(
         shiftedAppointments,
@@ -207,16 +190,16 @@ export class NoShowShiftService {
       });
     }
 
-    // Token rows on a mixed day are excluded from the fetch above; the
-    // orchestrator recalculates their wait right after this returns.
+    // Mixed-day token rows were skipped; the orchestrator recalculates their wait next.
     return { shiftedAppointments };
   }
+
+  /** Tells each moved patient their new time and refreshes clinic screens. */
   private async notifyShiftedAppointments(
     shiftedAppointments: ShiftResult['shiftedAppointments'],
     clinicId: string,
     doctorId: string | null
   ): Promise<void> {
-    // Send patient notifications via UniversalNotificationService
     // One lookup for the whole batch: every shifted appointment shares the doctor.
     const doctor = await getDoctorDisplayName(doctorId);
     const notificationPromises = shiftedAppointments.map((shifted) =>
@@ -247,7 +230,6 @@ export class NoShowShiftService {
 
     await Promise.allSettled(notificationPromises);
 
-    // Broadcast schedule shift to clinic room via broadcastAppointmentChange
     for (const shifted of shiftedAppointments) {
       broadcastAppointmentChange({
         appointmentId: shifted.appointmentId,
@@ -262,12 +244,9 @@ export class NoShowShiftService {
         },
       });
     }
-
-    logger.info(
-      `[NoShowShift] Notification dispatch completed for ${shiftedAppointments.length} shifted appointments in clinic=${clinicId}`
-    );
   }
 
+  /** A time inside a break moves to the break's end. */
   private avoidBreaks(
     timeMinutes: number,
     breaks: Array<{ startTime: string | null; endTime: string | null }>
@@ -276,7 +255,6 @@ export class NoShowShiftService {
       const breakStart = parseTimeToMinutes(brk.startTime);
       const breakEnd = parseTimeToMinutes(brk.endTime);
 
-      // Skip invalid break windows (startTime >= endTime)
       if (breakStart >= breakEnd) {
         logger.error(
           `[NoShowShift] Invalid break window detected: startTime=${brk.startTime} >= endTime=${brk.endTime}. Skipping break.`
@@ -285,10 +263,6 @@ export class NoShowShiftService {
       }
 
       if (timeMinutes >= breakStart && timeMinutes < breakEnd) {
-        logger.info(
-          `[NoShowShift] Shifted time ${minutesToTimeString(timeMinutes)} falls within break ` +
-            `(${brk.startTime}-${brk.endTime}). Placing at break end: ${brk.endTime}`
-        );
         return breakEnd;
       }
     }
@@ -296,15 +270,14 @@ export class NoShowShiftService {
     return timeMinutes;
   }
 
+  /** Breaks in the doctor's availability for that weekday. */
   private async fetchActiveBreaks(
     clinicId: string,
     doctorId: string,
     date: string
   ): Promise<Array<{ startTime: string | null; endTime: string | null }>> {
-    // Determine the day of week to find the ClinicAvailability record
     const dayOfWeek = getISTDayName(date);
 
-    // Find the ClinicAvailability record for this doctor/clinic/day
     const availabilityRecords = await database
       .select({
         id: ClinicAvailability.id,
@@ -324,7 +297,6 @@ export class NoShowShiftService {
 
     const availabilityIds = availabilityRecords.map((r) => r.id);
 
-    // Fetch active breaks for these availability records
     const breaks = await database
       .select({
         startTime: ClinicAvailabilityBreak.startTime,
@@ -343,13 +315,16 @@ export class NoShowShiftService {
 
     return breaks;
   }
+
+  /** Same-day bookings after the no-show: later slot times, or later tokens in its shift. */
   private async fetchSubsequentAppointments(
     clinicId: string,
     doctorId: string,
     appointmentDate: Date,
     appointmentTime: string | null,
     tokenNo: number | null,
-    sessionIndex: number | null
+    sessionIndex: number | null,
+    db: Pick<typeof database, 'select'> = database
   ) {
     const dateStr = getISTDateString(appointmentDate);
     const startOfDay = startOfDayIST(dateStr);
@@ -364,8 +339,7 @@ export class NoShowShiftService {
     ];
 
     if (appointmentTime) {
-      // Time-based: fetch appointments with time after the no-show's time
-      const appointments = await database
+      const appointments = await db
         .select({
           id: AppointmentModel.id,
           appointmentTime: AppointmentModel.appointmentTime,
@@ -391,8 +365,7 @@ export class NoShowShiftService {
 
       return appointments;
     } else if (tokenNo !== null) {
-      // Token-based: fetch appointments with tokenNo > noShowTokenNo
-      const appointments = await database
+      const appointments = await db
         .select({
           id: AppointmentModel.id,
           appointmentTime: AppointmentModel.appointmentTime,
@@ -421,23 +394,18 @@ export class NoShowShiftService {
       return appointments;
     }
 
-    // No time or token reference — return empty
     logger.warn(
       `[NoShowShift] No-show appointment has neither appointmentTime nor tokenNo. Cannot determine subsequent appointments.`
     );
     return [];
   }
 
-  /**
-   * Resolves the slot duration for this doctor/clinic/date.
-   * Uses DelayTrackerService.resolveSlotMinutes which checks Redis cache first.
-   */
+  /** Slot length for this doctor's day, cached in Redis by the delay tracker. */
   private async resolveSlotMinutes(
     clinicId: string,
     doctorId: string,
     date: string
   ): Promise<number | null> {
-    // Delegate to the shared delay tracker which has Redis caching
     return this.delayTrackerService.resolveSlotMinutes(
       clinicId,
       doctorId,
@@ -446,17 +414,11 @@ export class NoShowShiftService {
   }
 }
 
-// ─── Local Helper Functions ───────────────────────────────────────────────────
-
-/**
- * Parses a time string (e.g., "09:00", "9:00 AM", "14:30") into minutes since midnight.
- * Returns 0 if the time cannot be parsed.
- */
+/** "09:00" / "9:00 AM" to minutes since midnight; 0 when unparseable. */
 function parseTimeToMinutes(time: string | null | undefined): number {
   if (!time) return 0;
   const t = time.trim();
 
-  // Handle 12-hour format with AM/PM
   const ampmMatch = t.match(/^(\d{1,2})(?::(\d{2}))?\s*([AaPp][Mm])$/);
   if (ampmMatch) {
     let hour = Number(ampmMatch[1]);
@@ -467,7 +429,6 @@ function parseTimeToMinutes(time: string | null | undefined): number {
     return hour * 60 + min;
   }
 
-  // Handle 24-hour format HH:MM or HH:MM:SS
   const hhmmMatch = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (hhmmMatch) {
     const hour = Number(hhmmMatch[1]);
@@ -478,9 +439,7 @@ function parseTimeToMinutes(time: string | null | undefined): number {
   return 0;
 }
 
-/**
- * Converts minutes since midnight back to a "HH:MM" time string.
- */
+/** Minutes since midnight to "HH:MM". */
 function minutesToTimeString(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;

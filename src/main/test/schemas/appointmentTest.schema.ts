@@ -180,7 +180,7 @@ export const labAppointmentTestsQuerySchema = z
     tab: z
       .preprocess(
         emptyStringToUndefined,
-        z.enum(['all', 'assigned', 'my', 'new']).optional()
+        z.enum(['all', 'assigned', 'my', 'new', 'done', 'notTaken']).optional()
       )
       .default('all'),
     search: optionalTrimmedString(100),

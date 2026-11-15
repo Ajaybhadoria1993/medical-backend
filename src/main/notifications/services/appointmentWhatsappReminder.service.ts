@@ -10,11 +10,16 @@ import {
   formatTimeOrToken,
 } from '../utils/whatsappTemplate.utils';
 import { getAppointmentParticipants } from '../models/appointmentParticipants.model';
+import { AppointmentModel } from '../../appointments/models/appointment.model';
+
+// A reminder for any of these would point the patient at a visit that will not happen (or already did).
+const CLOSED_VISIT = ['Cancelled', 'NoShow', 'Missed', 'Completed'];
 import { queueConnection } from '../queues/queueConnection';
-import logger from '../../../utils/logger';
 
 interface WhatsAppReminderJobData {
   appointmentId: string;
+  /** Absent on reminders scheduled before messages were counted per clinic. */
+  clinicId?: string;
   patientMobile: string;
   clinicName: string;
   appointmentTime: string;
@@ -35,23 +40,34 @@ class AppointmentWhatsAppReminderQueue {
       this.processJob.bind(this),
       { connection: queueConnection }
     );
-
-    // Without an 'error' listener, BullMQ's internal errors (Redis blips,
-    // connection limits) surface as unhandled EventEmitter errors and crash
-    // the process.
-    this.queue.on('error', (err) =>
-      logger.warn(`[AppointmentWhatsAppReminderQueue] Queue error: ${err.message}`)
-    );
-    this.worker.on('error', (err) =>
-      logger.warn(`[AppointmentWhatsAppReminderQueue] Worker error: ${err.message}`)
-    );
   }
 
   private async processJob(job: Job) {
     await this.sendWhatsAppReminder(job.data);
   }
 
+  /** Same cached settings as GET /clinic/settings; dynamic import as clinic.service imports this file. */
+  private async isWhatsAppEnabled(clinicId: string): Promise<boolean> {
+    const { ClinicService } =
+      await import('../../clinic/services/clinic.service');
+    const { settings } = await ClinicService.getCachedSetting(clinicId);
+    return Boolean(settings?.whatsappEnabled);
+  }
+
   private async sendWhatsAppReminder(data: WhatsAppReminderJobData) {
+    // Re-checked at send time: the clinic may have switched WhatsApp off since booking.
+    if (data.clinicId && !(await this.isWhatsAppEnabled(data.clinicId))) return;
+    // A treatment plan ended for a sensitive reason (e.g. a death) silences its visits.
+    const { isSilencedTreatmentVisit } = await import('../../treatmentPlan');
+    if (await isSilencedTreatmentVisit(data.appointmentId)) return;
+    // Re-checked at send time too: not every cancel path removes the scheduled reminders.
+    const [visit] = await database
+      .select({ status: AppointmentModel.appointmentStatus })
+      .from(AppointmentModel)
+      .where(eq(AppointmentModel.id, data.appointmentId))
+      .limit(1);
+    if (!visit || CLOSED_VISIT.includes(visit.status ?? '')) return;
+
     const appointmentTime = new Date(data.appointmentTime);
     const { patientName, doctorName } = await getAppointmentParticipants(
       data.appointmentId
@@ -67,9 +83,10 @@ class AppointmentWhatsAppReminderQueue {
           clinicName: data.clinicName,
           date: formatAppointmentDate(appointmentTime),
           timeOrToken: formatTimeOrToken(appointmentTime, data.tokenNo),
+          appointmentId: data.appointmentId,
         },
       },
-      data.appointmentId
+      { clinicId: data.clinicId ?? null, appointmentId: data.appointmentId }
     );
   }
 
@@ -152,6 +169,7 @@ class AppointmentWhatsAppReminderQueue {
           `whatsapp_${appointmentId}_${reminder.timeValue}${reminder.timeUnit}`,
           {
             appointmentId,
+            clinicId,
             patientMobile,
             clinicName,
             appointmentTime: appointmentTime.toISOString(),

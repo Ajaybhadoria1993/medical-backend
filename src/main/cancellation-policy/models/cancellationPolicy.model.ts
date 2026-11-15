@@ -39,13 +39,13 @@ export const ApplicationCancellationPolicyModel = pgTable(
       .default(100)
       .notNull(),
     defaultRefundCooldownHours: integer('default_refund_cooldown_hours')
-      .default(24)
+      .default(6)
       .notNull(),
     partialRefundCooldownHours: integer('partial_refund_cooldown_hours')
-      .default(12)
+      .default(0)
       .notNull(),
     partialRefundPercentage: integer('partial_refund_percentage')
-      .default(50)
+      .default(0)
       .notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow(),

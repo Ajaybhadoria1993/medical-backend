@@ -23,11 +23,11 @@ export const welcomeSetPasswordTemplate = ({
 
   return renderEmailLayout({
     title: 'You Have Been Invited',
-    preview: `You've been invited to join ${clinicName} on Infinity Medisetu.`,
+    preview: `You've been invited to join ${clinicName} on MediArogya.`,
     greeting,
     headline: `You're invited to join ${clinicName}!`,
     message:
-      "You've been invited to join Infinity Medisetu. To accept your invitation and get started, please set your password using the button below.",
+      "You've been invited to join MediArogya. To accept your invitation and get started, please set your password using the button below.",
     bodyHtml: `
       ${renderValidityNotice('This invitation link will expire in <strong>24 hours</strong>.')}
       ${renderActionButton('Accept Invitation', resetUrl)}

@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  checkSpecializationLimits,
+  specialitySchema,
+  specializationSchema,
+} from '../../../utils/specialtyCatalog';
+import { doctorQualificationsSchema } from '../../doctor/schemas/doctor.schemas';
 
 const optionalYearsOfExperienceSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
@@ -82,17 +88,23 @@ const adminProfileSchema = z.object({
       if (val === false || val === 'false') return false;
       return false;
     }),
-  speciality: z.string().optional(),
-  specialization: z.array(z.string()).optional(),
+  speciality: specialitySchema.optional(),
+  specialization: specializationSchema.optional(),
   registrationNumber: z.string().optional(),
   yearsOfExperience: optionalYearsOfExperienceSchema,
 });
 
 // 📍 5. Final Schema Wrapper
-export const fullDoctorClinicSchema = z.object({
-  clinicDetails: clinicDetailsSchema,
-  adminProfile: adminProfileSchema.partial().optional(),
-});
+export const fullDoctorClinicSchema = z
+  .object({
+    clinicDetails: clinicDetailsSchema,
+    adminProfile: adminProfileSchema.partial().optional(),
+  })
+  .superRefine(
+    (data, ctx) =>
+      data.adminProfile &&
+      checkSpecializationLimits(data.adminProfile, ctx, ['adminProfile'])
+  );
 
 export type FullDoctorClinicDto = z.infer<typeof fullDoctorClinicSchema>;
 
@@ -116,17 +128,6 @@ const updateClinicDetailsSchema = z.object({
   longitude: z.coerce.number().optional(),
 });
 
-export const doctorQualificationSchema = z.object({
-  id: z.string().optional(),
-  qualificationType: z.string(),
-  qualificationTitle: z.string(),
-  // specialization: z.string().optional(),
-  boardOrUniversity: z.string().optional(),
-  yearOfCompletion: z.coerce.number().int().optional(),
-});
-
-export const doctorQualificationsSchema = z.array(doctorQualificationSchema);
-
 // // 📍 2. Doctor Profile
 const updateAdminProfileSchema = z.object({
   name: z.string().min(2).optional(),
@@ -134,19 +135,25 @@ const updateAdminProfileSchema = z.object({
   alternateMobile: z.string().optional().or(z.literal('')),
   profileImage: z.string().optional(),
   isAdminDoctorAccess: z.boolean().optional(),
-  speciality: z.string().optional(),
-  specialization: z.array(z.string()).optional(),
+  speciality: specialitySchema.optional(),
+  specialization: specializationSchema.optional(),
   registrationNumber: z.string().optional(),
   yearsOfExperience: optionalYearsOfExperienceSchema,
   upiIds: z.array(z.string()).optional(),
   qualifications: doctorQualificationsSchema.optional(),
 });
 
-export const updateClinicSchema = z.object({
-  clinicDetails: updateClinicDetailsSchema.partial().optional(),
-  adminProfile: updateAdminProfileSchema.partial().optional(),
-  qualifications: doctorQualificationsSchema.optional(),
-});
+export const updateClinicSchema = z
+  .object({
+    clinicDetails: updateClinicDetailsSchema.partial().optional(),
+    adminProfile: updateAdminProfileSchema.partial().optional(),
+    qualifications: doctorQualificationsSchema.optional(),
+  })
+  .superRefine(
+    (data, ctx) =>
+      data.adminProfile &&
+      checkSpecializationLimits(data.adminProfile, ctx, ['adminProfile'])
+  );
 
 export type FulUpdateClinicSchemaDto = z.infer<typeof updateClinicSchema>;
 
@@ -166,6 +173,19 @@ export const availableClinicsQuerySchema = z.object({
 export type AvailableClinicsQueryDto = z.infer<
   typeof availableClinicsQuerySchema
 >;
+
+// Light picker lookup: a few rows of id/name/code, by search text or by known ids.
+export const clinicLookupQuerySchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  ids: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(',').filter(Boolean) : undefined))
+    .pipe(z.array(z.string().uuid('Invalid clinic id')).max(50).optional()),
+  limit: z.coerce.number().int().min(1).max(20).optional().default(10),
+});
+
+export type ClinicLookupQueryDto = z.infer<typeof clinicLookupQuerySchema>;
 
 export const clinicDetailParamsSchema = z.object({
   clinicId: z.string().uuid('Invalid clinicId'),
@@ -313,63 +333,308 @@ export type GetClinicsWithDoctorsQuery = z.infer<
 >;
 
 // 📍 6. Razorpay Custom Onboarding Schema
-export const onboardRouteSchema = z.object({
-  legalBusinessName: z
-    .string()
-    .min(2, 'Legal business name must be at least 2 characters'),
-  businessType: z.enum([
-    'individual',
-    'partnership',
-    'proprietorship',
-    'public_limited',
-    'private_limited',
-  ]),
-  address: z.object({
-    street: z.string().min(5, 'Street address must be at least 5 characters'),
-    city: z.string().min(2, 'City must be at least 2 characters'),
-    state: z.string().min(2, 'State must be at least 2 characters'),
-    postalCode: z.coerce
-      .number()
-      .int()
-      .min(100000)
-      .max(999999, 'Pincode must be exactly 6 digits'),
-  }),
-  stakeholder: z.object({
-    name: z.string().min(2, 'Stakeholder name must be at least 2 characters'),
-    email: z.string().email('Invalid stakeholder email address'),
-    phone: z
+export const INDIAN_STATES_AND_UTS = [
+  'Andhra Pradesh',
+  'Arunachal Pradesh',
+  'Assam',
+  'Bihar',
+  'Chhattisgarh',
+  'Goa',
+  'Gujarat',
+  'Haryana',
+  'Himachal Pradesh',
+  'Jharkhand',
+  'Karnataka',
+  'Kerala',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'Manipur',
+  'Meghalaya',
+  'Mizoram',
+  'Nagaland',
+  'Odisha',
+  'Punjab',
+  'Rajasthan',
+  'Sikkim',
+  'Tamil Nadu',
+  'Telangana',
+  'Tripura',
+  'Uttar Pradesh',
+  'Uttarakhand',
+  'West Bengal',
+  'Andaman and Nicobar Islands',
+  'Chandigarh',
+  'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi',
+  'Jammu and Kashmir',
+  'Ladakh',
+  'Lakshadweep',
+  'Puducherry',
+] as const;
+
+const normalizedHumanText = (value: string) =>
+  value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+
+export const onboardRouteSchema = z
+  .object({
+    legalBusinessName: z
       .string()
-      .regex(
-        /^[6-9]\d{9}$/,
-        'Phone number must be a valid 10-digit mobile number starting with 6-9'
+      .transform(normalizedHumanText)
+      .pipe(
+        z
+          .string()
+          .min(4, 'Legal business name must be at least 4 characters')
+          .max(200, 'Legal business name cannot exceed 200 characters')
+          .regex(
+            /^[\p{L}\p{M}\p{N} .,&'()/-]+$/u,
+            'Use letters, numbers, spaces, and standard business punctuation only'
+          )
       ),
-    pan: z
+    businessType: z.enum([
+      'individual',
+      'partnership',
+      'proprietorship',
+      'llp',
+      'public_limited',
+      'private_limited',
+    ]),
+    businessPan: z
       .string()
-      .regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Invalid PAN card format'),
-    dob: z
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, 'Invalid business PAN format')
+      .optional(),
+    gstin: z
       .string()
+      .trim()
+      .toUpperCase()
       .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        'Date of Birth must be in YYYY-MM-DD format'
+        /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/,
+        'Invalid GSTIN format'
+      )
+      .optional(),
+    address: z.object({
+      street1: z
+        .string()
+        .transform(normalizedHumanText)
+        .pipe(
+          z
+            .string()
+            .min(2, 'Address line 1 must be at least 2 characters')
+            .max(100, 'Address line 1 cannot exceed 100 characters')
+        ),
+      street2: z
+        .string()
+        .transform(normalizedHumanText)
+        .pipe(
+          z
+            .string()
+            .min(2, 'Address line 2 must be at least 2 characters')
+            .max(100, 'Address line 2 cannot exceed 100 characters')
+        ),
+      city: z
+        .string()
+        .transform(normalizedHumanText)
+        .pipe(
+          z
+            .string()
+            .min(2, 'City must be at least 2 characters')
+            .max(100, 'City cannot exceed 100 characters')
+            .regex(
+              /^[\p{L}\p{M} -]+$/u,
+              'City can contain letters, spaces, and hyphens only'
+            )
+        ),
+      state: z
+        .string()
+        .transform((value) => {
+          const normalized = normalizedHumanText(value);
+          return (
+            INDIAN_STATES_AND_UTS.find(
+              (state) => state.toLowerCase() === normalized.toLowerCase()
+            ) ?? normalized
+          );
+        })
+        .pipe(z.enum(INDIAN_STATES_AND_UTS)),
+      postalCode: z.preprocess(
+        (value) => (typeof value === 'string' ? value.trim() : String(value)),
+        z
+          .string()
+          .regex(
+            /^[1-9]\d{5}$/,
+            'PIN code must be exactly 6 digits and cannot start with 0'
+          )
+          .transform(Number)
       ),
-  }),
-  bankDetails: z.object({
-    beneficiaryName: z
-      .string()
-      .min(2, 'Beneficiary name must be at least 2 characters'),
-    accountNumber: z
-      .string()
-      .min(5)
-      .max(35, 'Account number must be between 5 and 35 digits'),
-    ifscCode: z
-      .string()
-      .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code format'),
-    accountType: z.enum(['savings', 'current']),
-  }),
-  tncAccepted: z.literal(true, {
-    message: 'You must accept the terms and conditions',
-  }),
-});
+    }),
+    stakeholder: z.object({
+      name: z
+        .string()
+        .transform(normalizedHumanText)
+        .pipe(
+          z
+            .string()
+            .min(4, 'Stakeholder name must be at least 4 characters')
+            .max(255, 'Stakeholder name cannot exceed 255 characters')
+            .regex(
+              /^[\p{L}\p{M} .]+$/u,
+              'Stakeholder name can contain letters, spaces, and dots only; enter it as shown on PAN'
+            )
+        ),
+      email: z
+        .string()
+        .trim()
+        .toLowerCase()
+        .max(132, 'Stakeholder email cannot exceed 132 characters')
+        .email('Invalid stakeholder email address'),
+      phone: z
+        .string()
+        .trim()
+        .regex(
+          /^[6-9]\d{9}$/,
+          'Phone number must be a valid 10-digit mobile number starting with 6-9'
+        ),
+      pan: z
+        .string()
+        .trim()
+        .toUpperCase()
+        .regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Invalid PAN card format'),
+      relationship: z
+        .object({
+          director: z.boolean(),
+          executive: z.boolean(),
+        })
+        .default({ director: false, executive: true }),
+      percentageOwnership: z
+        .number()
+        .min(0)
+        .max(100)
+        .multipleOf(
+          0.01,
+          'Ownership percentage can have at most 2 decimal places'
+        )
+        .optional(),
+    }),
+    bankDetails: z
+      .object({
+        beneficiaryName: z
+          .string()
+          .trim()
+          .min(2, 'Beneficiary name must be at least 2 characters'),
+        accountNumber: z
+          .string()
+          .refine(
+            (value) => /^\d{5,35}$/.test(value.replace(/\s+/g, '')),
+            'Account number must be between 5 and 35 digits'
+          )
+          .transform((value) => value.replace(/\s+/g, '')),
+        ifscCode: z
+          .string()
+          .trim()
+          .toUpperCase()
+          .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code format'),
+        accountType: z.enum(['savings', 'current']),
+      })
+      .optional(),
+    // Payouts to a UPI ID instead of a bank account (Razorpay verifies it instantly).
+    upi: z
+      .object({
+        vpa: z
+          .string()
+          .trim()
+          .toLowerCase()
+          .regex(
+            /^[a-z0-9.-_]{2,256}@[a-z]{2,64}$/,
+            'Enter a UPI ID like name@bank'
+          ),
+        beneficiaryName: z
+          .string()
+          .trim()
+          .min(2, 'Name must be at least 2 characters'),
+      })
+      .optional(),
+    tncAccepted: z.literal(true, {
+      message: 'You must accept the terms and conditions',
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.bankDetails === !data.upi)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['bankDetails'],
+        message: 'Give either a bank account or a UPI ID',
+      });
+    if (
+      ['partnership', 'llp', 'public_limited', 'private_limited'].includes(
+        data.businessType
+      ) &&
+      !data.businessPan
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['businessPan'],
+        message: 'Business PAN is required for this legal entity type',
+      });
+    }
+
+    const isCompany = ['private_limited', 'public_limited'].includes(
+      data.businessType
+    );
+    const isFirm = ['partnership', 'llp'].includes(data.businessType);
+    const expectedBusinessPanType = isCompany ? 'C' : isFirm ? 'F' : undefined;
+    if (
+      expectedBusinessPanType &&
+      data.businessPan &&
+      data.businessPan[3] !== expectedBusinessPanType
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['businessPan'],
+        message: `PAN status character does not match ${data.businessType.replace('_', ' ')} business type`,
+      });
+    }
+    if (data.stakeholder.pan[3] !== 'P') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['stakeholder', 'pan'],
+        message: 'Stakeholder PAN must be a personal PAN (4th character P)',
+      });
+    }
+    if (
+      ['individual', 'proprietorship'].includes(data.businessType) &&
+      data.businessPan &&
+      data.businessPan !== data.stakeholder.pan
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['businessPan'],
+        message:
+          'Individual and proprietorship accounts use the proprietor’s personal PAN; it must match the stakeholder PAN',
+      });
+    }
+    if (data.gstin) {
+      const expectedPan = data.businessPan || data.stakeholder.pan;
+      if (data.gstin.slice(2, 12) !== expectedPan) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['gstin'],
+          message:
+            'GSTIN PAN must match the business PAN or proprietor PAN supplied here',
+        });
+      }
+    }
+    if (
+      data.businessType === 'proprietorship' &&
+      /\b(?:private\s+limited|pvt\.?\s*ltd\.?)\b/i.test(data.legalBusinessName)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['businessType'],
+        message:
+          'The legal name contains a Private Limited suffix; confirm the business type and legal PAN before continuing',
+      });
+    }
+  });
 
 export type OnboardRouteDto = z.infer<typeof onboardRouteSchema>;
 
@@ -377,13 +642,19 @@ export type OnboardRouteDto = z.infer<typeof onboardRouteSchema>;
 export const updateBankDetailsSchema = z.object({
   beneficiaryName: z
     .string()
+    .trim()
     .min(2, 'Beneficiary name must be at least 2 characters'),
   accountNumber: z
     .string()
-    .min(5)
-    .max(35, 'Account number must be between 5 and 35 digits'),
+    .refine(
+      (value) => /^\d{5,35}$/.test(value.replace(/\s+/g, '')),
+      'Account number must be between 5 and 35 digits'
+    )
+    .transform((value) => value.replace(/\s+/g, '')),
   ifscCode: z
     .string()
+    .trim()
+    .toUpperCase()
     .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code format'),
   accountType: z.enum(['savings', 'current']),
 });

@@ -7,6 +7,7 @@ jest.mock('../../../configurations/dbConnection');
 describe('PolicyEvaluationService Unit Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.ENABLE_REFUND_REVIEWS;
   });
 
   const createChain = (finalValue: any) => {
@@ -253,6 +254,56 @@ describe('PolicyEvaluationService Unit Tests', () => {
           'COOLDOWN_VIOLATION'
         )
       );
+    });
+
+    it('should allow a patient medical-emergency cancellation for manual review when enabled', async () => {
+      process.env.ENABLE_REFUND_REVIEWS = 'true';
+      const mockAppPolicy = [
+        {
+          cancellationFeatureEnabled: true,
+          refundFeatureEnabled: true,
+          rescheduleFeatureEnabled: true,
+        },
+      ];
+      const mockAppt = [
+        {
+          id: 'appt-id',
+          appointmentStatus: 'Upcoming',
+          doctorId: 'doctor-id',
+          clinicId: 'clinic-id',
+          clinicCancellationPolicyId: 'policy-id',
+          appointmentType: 'Online',
+          appointmentDate: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      ];
+      const mockClinicPolicy = [
+        {
+          id: 'policy-id',
+          clinicId: 'clinic-id',
+          allowPatientCancel: true,
+          windowOnlineHours: 24,
+          cooldownSecondsBetweenCancellations: 1800,
+          reasonMandatory: true,
+          allowAdditionalComments: true,
+          minCommentLength: 0,
+          maxCommentLength: 500,
+          isActive: true,
+        },
+      ];
+
+      (database.select as jest.Mock)
+        .mockReturnValueOnce(createChain(mockAppPolicy))
+        .mockReturnValueOnce(createChain(mockAppt))
+        .mockReturnValueOnce(createChain(mockClinicPolicy));
+
+      await expect(
+        PolicyEvaluationService.evaluateCancellation(
+          'appt-id',
+          'user-id',
+          'Patient',
+          { reasonCode: 'medical_emergency' }
+        )
+      ).resolves.toEqual({ allowed: true });
     });
   });
 

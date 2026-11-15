@@ -9,6 +9,8 @@
  * Interpolated into each template string with `${...}` so all six layouts stay
  * in sync; they use inline styles to remain layout-agnostic.
  */
+import { TREATMENT_PLAN_HTML } from '../../../htmltamplates/treatmentPlan';
+import { SPECIALTY_SECTIONS_HTML } from '../../../htmltamplates/specialtySections';
 
 /** Chief complaints / vitals / allergies — sits above the diagnosis line. */
 export const clinicalSummarySection = `
@@ -27,6 +29,7 @@ export const clinicalSummarySection = `
   {{#if vitals.rbs}} &middot; RBS: {{vitals.rbs}} mg/dL{{/if}}
   {{#if vitals.pulse}} &middot; Pulse: {{vitals.pulse}}/min{{/if}}
   {{#if vitals.spo2}} &middot; SpO2: {{vitals.spo2}}%{{/if}}
+  {{#if vitals.respiratoryRate}} &middot; RR: {{vitals.respiratoryRate}}/min{{/if}}
   {{#if vitals.temperatureC}} &middot; Temp: {{vitals.temperatureC}}&deg;C{{/if}}
   {{#if vitals.heightCm}} &middot; Ht: {{vitals.heightCm}} cm{{/if}}
   {{#if vitals.weightKg}} &middot; Wt: {{vitals.weightKg}} kg{{/if}}
@@ -42,13 +45,15 @@ export const clinicalSummarySection = `
 {{/if}}
 `;
 
-/** Tests / investigations advised — sits below the medicine table. */
+/** Tests / investigations advised, then the treatment plan and chart notes — all below the medicine table. */
 export const testsSection = `
 {{#if config.elements.showTests}}
 {{#if hasTests}}
 <div style="font-size:11px;margin-top:8px;"><strong>Tests / Investigations:</strong> {{testNames}}</div>
 {{/if}}
 {{/if}}
+${TREATMENT_PLAN_HTML}
+${SPECIALTY_SECTIONS_HTML}
 `;
 
 /** Free-text clinical notes — sits below the tests section. */

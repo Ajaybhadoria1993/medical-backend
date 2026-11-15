@@ -1,9 +1,17 @@
 import { Request, Response } from 'express';
 import { asyncHandler, HttpError } from '../../../middlewear/errorHandler';
 import { AppointmentService } from '../services/appointment.service';
+import { AppointmentPaymentsService } from '../services/appointmentPayments.service';
+import { AppointmentDocumentsService } from '../services/appointmentDocuments.service';
+import { AppointmentSlotsService } from '../services/appointmentSlots.service';
+import { AppointmentListsService } from '../services/appointmentLists.service';
+import { GalleryService } from '../services/gallery.service';
 import { AppointmentActivityHistoryService } from '../services/appointmentActivityHistory.service';
 import { NoShowService } from '../services/noShow.service';
 import { AppointmentMultipleServiceService } from '../services/appointmentMultipleService.service';
+import { MoveToTodayService } from '../services/moveToToday.service';
+import { AppointmentMoneySync } from '../services/appointmentMoneySync.service';
+import { LeaveMoveService } from '../services/leaveMove.service';
 import { sendCreated, sendOk } from '../../../utils/response.utils';
 import {
   ClinicNoShowQueryDto,
@@ -11,7 +19,6 @@ import {
 } from '../schemas/appointment.schemas';
 import { database } from '../../../configurations/dbConnection';
 import { eq } from 'drizzle-orm';
-import { AppointmentPaymentModel } from '../models/appointment-payment.model';
 import { AppointmentModel } from '../models/appointment.model';
 import { UserModel } from '../../users/models/user.model';
 import { notifyClinicAdminsOfStaffAction } from '../../../utils/notificationHelpers';
@@ -154,11 +161,12 @@ export const getAppointmentPaymentsController = asyncHandler(
   async (req: Request, res: Response) => {
     const { validatedQuery, clinicId } = req;
     const user = req.user; // Attached by requireAuth middleware
-    const result = await AppointmentService.getAppointmentPaymentTransactions(
-      validatedQuery,
-      user,
-      clinicId
-    );
+    const result =
+      await AppointmentPaymentsService.getAppointmentPaymentTransactions(
+        validatedQuery,
+        user,
+        clinicId
+      );
     return res.status(200).json({
       success: true,
       data: result.data,
@@ -179,6 +187,15 @@ export const getAppointmentHistoryController = asyncHandler(
   }
 );
 
+/** Money fields PUT /appointments/:id refuses: money moves only through the payments/refunds endpoints. */
+const LEGACY_MONEY_FIELDS = [
+  'paymentStatus',
+  'paymentMode',
+  'refundedAmount',
+  'refundMode',
+  'refundNotes',
+] as const;
+
 export const updateAppointmentController = asyncHandler(
   async (req: Request, res: Response) => {
     const {
@@ -196,35 +213,41 @@ export const updateAppointmentController = asyncHandler(
     ];
     const isStaff = staffRoles.includes(req.user?.userType);
 
-    let existingPayment: any = null;
-    if (isStaff) {
-      try {
-        const [pay] = await database
-          .select({
-            price: AppointmentPaymentModel.price,
-            primaryServicePrice: AppointmentPaymentModel.primaryServicePrice,
-            paymentStatus: AppointmentPaymentModel.paymentStatus,
-            paymentMode: AppointmentPaymentModel.paymentMode,
-            refundedAmount: AppointmentPaymentModel.refundedAmount,
-          })
-          .from(AppointmentPaymentModel)
-          .where(eq(AppointmentPaymentModel.appointmentId, appointmentId))
-          .limit(1);
-        existingPayment = pay;
-      } catch (err) {
-        logger.error(
-          '[Notification] Failed to query appointment payment before update:',
-          err
-        );
-      }
+    // Money moves only through POST /appointments/:id/payments and /refunds (ledger, capped, retry-safe).
+    // Old clients sending money fields are refused; the log shows who still needs updating.
+    const legacyMoneyFields = LEGACY_MONEY_FIELDS.filter(
+      (k) => (payload as Record<string, unknown>)[k] !== undefined
+    );
+    if (legacyMoneyFields.length) {
+      logger.warn('[Money] legacy payment fields on PUT /appointments/:id', {
+        appointmentId,
+        fields: legacyMoneyFields,
+        paymentStatus: (payload as Record<string, unknown>).paymentStatus,
+        userId: req.user?.id,
+        userType: req.user?.userType,
+        clinicId: req.clinicId,
+        userAgent: req.get('user-agent'),
+        appVersion: req.get('x-app-version') ?? null,
+      });
+      throw new HttpError(
+        422,
+        `Payments can no longer be changed here. To take a payment use POST /appointments/${appointmentId}/payments; to refund use POST /appointments/${appointmentId}/refunds. Please update the app.`,
+        { fields: legacyMoneyFields }
+      );
     }
 
+    // The service fills in the pre-update payment row, so no separate read is needed here.
+    const updateCtx: Parameters<
+      typeof AppointmentService.updateAppointment
+    >[4] = {};
     const result = await AppointmentService.updateAppointment(
       appointmentId,
       payload,
       req.user.id,
-      req.user.userType
+      req.user.userType,
+      updateCtx
     );
+    const existingPayment = updateCtx?.previousPayment ?? null;
 
     if (isStaff && result) {
       try {
@@ -270,8 +293,7 @@ export const updateAppointmentController = asyncHandler(
         const alreadyRefunded =
           existingPayment?.paymentStatus?.toLowerCase() === 'refunded';
         if (payload.paymentStatus === 'Refunded' && !alreadyRefunded) {
-          const amt =
-            payload.refundedAmount || existingPayment?.refundedAmount || '0';
+          const amt = payload.refundedAmount || '0';
           await notifyClinicAdminsOfStaffAction({
             clinicId: result.clinicId,
             title: 'Refund Initiated',
@@ -316,11 +338,12 @@ export const upsertDoctorManualPrescriptionController = asyncHandler(
     const appointmentId = req.params.appointmentId as string;
     const doctorManualPrescription = (req.file as any)?.location || null;
 
-    const template = await AppointmentService.upsertDoctorManualPrescription(
-      doctorId,
-      appointmentId,
-      doctorManualPrescription
-    );
+    const template =
+      await AppointmentDocumentsService.upsertDoctorManualPrescription(
+        doctorId,
+        appointmentId,
+        doctorManualPrescription
+      );
 
     return res.status(200).json({
       success: true,
@@ -336,7 +359,7 @@ export const sendManualPrescriptionLinkController = asyncHandler(
     const appointmentId = req.params.appointmentId as string;
     const otp = req.validatedBody.otp as string;
 
-    await AppointmentService.sendManualPrescriptionNotification(
+    await AppointmentDocumentsService.sendManualPrescriptionNotification(
       doctorId,
       appointmentId,
       otp
@@ -358,7 +381,7 @@ export const updateConsentFileController = asyncHandler(
       throw new HttpError(400, 'Consent file is required');
     }
 
-    const result = await AppointmentService.updateConsentFile(
+    const result = await AppointmentDocumentsService.updateConsentFile(
       appointmentId,
       consentFile,
       req.clinicId
@@ -376,7 +399,7 @@ export const getAllClinicAppointmentController = asyncHandler(
     const clinicId = req.clinicId;
     const user = req.user;
     const query = req.validatedQuery;
-    const result = await AppointmentService.getAllClinicAppointments(
+    const result = await AppointmentListsService.getAllClinicAppointments(
       clinicId,
       query,
       user
@@ -390,7 +413,7 @@ export const getClinicAppointmentDetailsController = asyncHandler(
     const clinicId = req.clinicId;
     const user = req.user;
     const query = req.validatedQuery;
-    const result = await AppointmentService.getClinicAppointmentDetails(
+    const result = await AppointmentListsService.getClinicAppointmentDetails(
       clinicId,
       query,
       user
@@ -403,7 +426,7 @@ export const getAllUserAppointmentController = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user.id;
     const query = req.validatedQuery;
-    const result = await AppointmentService.getALlUserAppountment(
+    const result = await AppointmentListsService.getAllUserAppointments(
       userId,
       query
     );
@@ -418,7 +441,7 @@ export const getAppointmentController = asyncHandler(
       userType: req.user.userType,
       clinicId: req.clinicId,
     };
-    const result = await AppointmentService.getAppointment(
+    const result = await AppointmentService.getAppointmentDetails(
       appointmentId,
       requestingUser
     );
@@ -429,7 +452,11 @@ export const getAppointmentController = asyncHandler(
 export const getPatientApppointmentController = asyncHandler(
   async (req: Request, res: Response) => {
     const patientId = req.validatedParams.patientId;
-    const result = await AppointmentService.getAppointmentByPatient(patientId);
+    const result = await AppointmentService.getPatientWithAppointment(
+      patientId,
+      req.clinicId,
+      req.user
+    );
     res.status(201).json({ success: true, result });
   }
 );
@@ -446,18 +473,10 @@ export const getLastPatientReportCardController = asyncHandler(
   }
 );
 
-export const getDcotorApppointmentController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const doctorId = req.validatedParams.doctorId;
-    const result = await AppointmentService.getAppointmentByDoctor(doctorId);
-    res.status(201).json({ success: true, result });
-  }
-);
-
 export const getAvailableSlotsForDateController = asyncHandler(
   async (req: Request, res: Response) => {
     const { clinicId, validatedQuery, validatedParams } = req;
-    const result = await AppointmentService.getAvailableSlotsForDate(
+    const result = await AppointmentSlotsService.getAvailableSlotsForDate(
       clinicId,
       validatedQuery,
       validatedParams
@@ -498,7 +517,7 @@ export const createPatientGalleryController = asyncHandler(
     // (req.file as any).location contains the S3 URL
     const imageUrl = (req.file as any).location;
 
-    const result = await AppointmentService.createGalleryImage(
+    const result = await GalleryService.createGalleryImage(
       doctorId,
       imageUrl,
       validatedData
@@ -528,11 +547,12 @@ export const getPatientGalleryController = asyncHandler(
       throw new HttpError(400, 'Either patientId or appointmentId is required');
     }
 
-    const result = await AppointmentService.getPatientGallery(
+    const result = await GalleryService.getPatientGallery(
       validatedData.patientId,
       validatedData.appointmentId,
       validatedData.page,
-      validatedData.limit
+      validatedData.limit,
+      req.clinicId
     );
 
     res.json({
@@ -548,7 +568,7 @@ export const deletePatientGalleryController = asyncHandler(
     const id = req.params.id as string;
     const doctorId = req.user.id;
 
-    const deleted = await AppointmentService.deleteGalleryImage(id, doctorId);
+    const deleted = await GalleryService.deleteGalleryImage(id, doctorId);
 
     if (!deleted) {
       throw new HttpError(404, 'Image not found');
@@ -567,7 +587,7 @@ export const deleteAppointmentGalleryController = asyncHandler(
     const appointmentId = req.params.appointmentId as string;
     const doctorId = req.user.id;
 
-    const deleted = await AppointmentService.deleteGalleryImagesByAppointment(
+    const deleted = await GalleryService.deleteGalleryImagesByAppointment(
       appointmentId,
       doctorId
     );
@@ -591,7 +611,7 @@ export const createDoctorGalleryController = asyncHandler(
 
     const imageUrl = (req.file as any).location;
 
-    const result = await AppointmentService.createDoctorGalleryImage(
+    const result = await GalleryService.createDoctorGalleryImage(
       doctorId,
       imageUrl
     );
@@ -614,7 +634,7 @@ export const getDoctorGalleryController = asyncHandler(
       limit: limit ? parseInt(limit as string) : 30,
     };
 
-    const result = await AppointmentService.getDoctorGallery(
+    const result = await GalleryService.getDoctorGallery(
       doctorId,
       validatedData.page,
       validatedData.limit
@@ -638,7 +658,7 @@ export const getDoctorGalleryBySpecialtyController = asyncHandler(
       limit: limit ? parseInt(limit as string) : 30,
     };
 
-    const result = await AppointmentService.getDoctorGalleryFromLocal(
+    const result = await GalleryService.getDoctorGalleryFromLocal(
       doctorId,
       validatedData.page,
       validatedData.limit
@@ -657,10 +677,7 @@ export const deleteDoctorGalleryController = asyncHandler(
     const id = req.params.id as string;
     const doctorId = req.user.id;
 
-    const deleted = await AppointmentService.deleteDoctorGalleryImage(
-      id,
-      doctorId
-    );
+    const deleted = await GalleryService.deleteDoctorGalleryImage(id, doctorId);
 
     if (!deleted) {
       throw new HttpError(404, 'Image not found');
@@ -678,7 +695,7 @@ export const getMedicalCertificateController = asyncHandler(
   async (req: Request, res: Response) => {
     const appointmentId = req.params.appointmentId as string;
 
-    const result = await AppointmentService.getMedicalCertificate(
+    const result = await AppointmentDocumentsService.getMedicalCertificate(
       appointmentId,
       req.clinicId
     );
@@ -696,7 +713,7 @@ export const upsertMedicalCertificateController = asyncHandler(
     const appointmentId = req.params.appointmentId as string;
     const { medicalCondition, restDays, notes } = req.body;
 
-    const result = await AppointmentService.upsertMedicalCertificate(
+    const result = await AppointmentDocumentsService.upsertMedicalCertificate(
       appointmentId,
       req.clinicId,
       medicalCondition,
@@ -719,7 +736,8 @@ export const addMultipleServicesController = asyncHandler(
 
     const result = await AppointmentMultipleServiceService.addMultipleServices(
       appointmentId,
-      payload
+      payload,
+      req.user!.id
     );
 
     res.status(201).json({
@@ -779,7 +797,8 @@ export const convertAppointmentToFreeController = asyncHandler(
     const result =
       await AppointmentMultipleServiceService.convertAppointmentToFree(
         appointmentId,
-        req.clinicId
+        req.clinicId,
+        req.user!.id
       );
 
     return sendOk(
@@ -787,5 +806,93 @@ export const convertAppointmentToFreeController = asyncHandler(
       'Appointment converted to free consultation successfully',
       result
     );
+  }
+);
+
+export const getMoveToTodayPreviewController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await MoveToTodayService.preview(
+      req.validatedParams.appointmentId,
+      req.clinicId
+    );
+    return sendOk(res, 'Move to today preview', result);
+  }
+);
+
+export const moveToTodayController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await MoveToTodayService.move(
+      req.validatedParams.appointmentId,
+      req.clinicId,
+      req.user,
+      req.validatedBody
+    );
+    return sendOk(res, 'Appointment moved to today', result);
+  }
+);
+
+export const getLeaveMovePreviewController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await LeaveMoveService.preview(
+      req.clinicId,
+      req.user.id,
+      req.validatedQuery.dates
+    );
+    return sendOk(res, 'Appointments on leave days', result);
+  }
+);
+
+export const leaveMoveController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await LeaveMoveService.move(
+      req.clinicId,
+      req.user,
+      req.validatedBody
+    );
+    return sendOk(res, 'Leave appointments moved', result);
+  }
+);
+
+export const leaveCancelController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await LeaveMoveService.cancel(
+      req.clinicId,
+      req.user,
+      req.validatedBody.dates
+    );
+    return sendOk(res, 'Leave appointments cancelled', result);
+  }
+);
+
+export const collectAppointmentPaymentController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await AppointmentMoneySync.move(
+      'pay',
+      req.params.appointmentId as string,
+      req.validatedBody,
+      req.user!.id
+    );
+    return sendCreated(res, 'Payment recorded', result);
+  }
+);
+
+export const refundAppointmentPaymentController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await AppointmentMoneySync.move(
+      'refund',
+      req.params.appointmentId as string,
+      req.validatedBody,
+      req.user!.id
+    );
+    return sendCreated(res, 'Refund recorded', result);
+  }
+);
+
+export const getAppointmentMoneyController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await AppointmentMoneySync.statement(
+      req.params.appointmentId as string
+    );
+    return sendOk(res, 'Payments fetched', result);
   }
 );

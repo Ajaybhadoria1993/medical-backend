@@ -58,7 +58,9 @@ export const matchingTestsQuerySchema = z.object({
       message: 'pageSize must be between 1 and 100',
     }),
 
-  reportStatus: z.enum(['Initiated', 'InProgress', 'Completed']).optional(),
+  reportStatus: z
+    .enum(['Initiated', 'InProgress', 'Collected', 'Completed'])
+    .optional(),
 
   paymentStatus: z.enum(['pending', 'paid', 'failed']).optional(),
 

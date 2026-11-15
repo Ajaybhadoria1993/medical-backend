@@ -22,14 +22,17 @@ import {
   createSalesReturnController,
   getSalesReturnsController,
 } from '../../controllers/salesReturn.controller';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const salesRouter = express.Router();
 
 salesRouter.post(
   '/create-sale',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createSaleSchema, 'body'),
   createSaleController
 );
@@ -37,7 +40,7 @@ salesRouter.post(
 salesRouter.get(
   '/get-all-sales',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSalesQuerySchema, 'query'),
   getSalesController
 );
@@ -45,7 +48,7 @@ salesRouter.get(
 salesRouter.post(
   '/create-sales-return',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createSalesReturnSchema, 'body'),
   createSalesReturnController
 );
@@ -53,7 +56,7 @@ salesRouter.post(
 salesRouter.get(
   '/get-sales-returns',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSalesReturnsQuerySchema, 'query'),
   getSalesReturnsController
 );
@@ -61,7 +64,7 @@ salesRouter.get(
 salesRouter.get(
   '/get-sale/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSaleByIdParamsSchema, 'params'),
   getSaleByIdController
 );
@@ -69,7 +72,7 @@ salesRouter.get(
 salesRouter.post(
   '/send-invoice-whatsapp/:saleId',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(sendInvoiceWhatsAppParamsSchema, 'params'),
   sendInvoiceWhatsAppController
 );
@@ -77,7 +80,7 @@ salesRouter.post(
 salesRouter.get(
   '/stats',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getSalesStatsController
 );
 

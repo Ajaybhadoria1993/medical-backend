@@ -2,6 +2,7 @@ import { PatientService } from '../services/patient.service';
 import { patientBookingSchema } from '../schemas/patient.schemas';
 import { database } from '../../../configurations/dbConnection';
 import { AppointmentService } from '../../appointments/services/appointment.service';
+import { AppointmentSlotsService } from '../../appointments/services/appointmentSlots.service';
 import { DoctorServices } from '../../doctor/services/doctor.service';
 import {
   createRazorpaySplitOrder,
@@ -13,6 +14,7 @@ import { envConfig } from '../../../utils/envConfig';
 jest.mock('../../../configurations/dbConnection');
 jest.mock('../../../utils/logger');
 jest.mock('../../appointments/services/appointment.service');
+jest.mock('../../appointments/services/appointmentSlots.service');
 jest.mock('../../../utils/razorpay');
 jest.mock('../../../utils/notificationHelpers');
 jest.mock('../../../utils/appointmentRealtime');
@@ -37,6 +39,11 @@ jest.mock('../../appointments/services/paymentReservation.service', () => {
       cleanupExpired: jest.fn().mockResolvedValue(undefined),
     },
   };
+});
+
+// These suites cover the original flow where online payment can be offered; the switched-off case is tested in utils/__tests__/bookingPayments.utils.test.ts.
+beforeEach(() => {
+  envConfig.ENABLE_ONLINE_APPOINTMENT_PAYMENTS = true;
 });
 
 describe('PatientService.searchDirectory Unit Tests', () => {
@@ -101,7 +108,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
       .mockReturnValueOnce(serviceChain);
 
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [
         {
@@ -162,7 +169,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
       .mockReturnValueOnce(serviceChain);
 
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [],
     });
@@ -205,7 +212,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
       .mockReturnValueOnce(serviceChain);
 
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [],
     });
@@ -248,7 +255,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
       .mockReturnValueOnce(serviceChain);
 
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [],
     });
@@ -313,7 +320,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
     // Doctor 1 has available slots
     // Doctor 2 has no slots
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockImplementation(async (clinicId, query, params) => {
       if (params.doctorId === 'doctor-1') {
         return {
@@ -391,7 +398,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
       .mockReturnValueOnce(serviceChain);
 
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [
         {
@@ -449,7 +456,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
       .mockReturnValueOnce(serviceChain);
 
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [],
     });
@@ -495,7 +502,7 @@ describe('PatientService.searchDirectory Unit Tests', () => {
       .mockReturnValueOnce(serviceChain);
 
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [],
     });
@@ -601,9 +608,11 @@ describe('PatientService.getDoctorPublicProfile Unit Tests', () => {
     const countChain = createChain(mockPatientCount);
     const favoriteChain = createChain(mockFavorite);
 
+    // Same order as the Promise.all in getDoctorPublicProfile, then the favourite.
     (database.select as jest.Mock)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(qualificationChain)
+      .mockReturnValueOnce(createChain([]))
       .mockReturnValueOnce(clinicChain)
       .mockReturnValueOnce(serviceChain)
       .mockReturnValueOnce(countChain)
@@ -627,11 +636,12 @@ describe('PatientService.getDoctorPublicProfile Unit Tests', () => {
       'patient-1'
     );
 
-    expect(database.select).toHaveBeenCalledTimes(6);
+    expect(database.select).toHaveBeenCalledTimes(7);
     expect(availabilitySpy).toHaveBeenCalledTimes(2);
     expect(result).toEqual({
       ...mockDoctor,
       qualifications: mockQualifications,
+      experiences: [],
       clinics: [
         {
           ...mockClinics[0],
@@ -647,7 +657,10 @@ describe('PatientService.getDoctorPublicProfile Unit Tests', () => {
               startTime: '09:00 AM',
               endTime: '06:00 PM',
               isAvailable: true,
-              breaks: [{ startTime: '01:00 PM', endTime: '02:00 PM' }],
+              shifts: [
+                { startTime: '09:00 AM', endTime: '01:00 PM' },
+                { startTime: '02:00 PM', endTime: '06:00 PM' },
+              ],
             },
           ],
         },
@@ -665,7 +678,10 @@ describe('PatientService.getDoctorPublicProfile Unit Tests', () => {
               startTime: '09:00 AM',
               endTime: '06:00 PM',
               isAvailable: true,
-              breaks: [{ startTime: '01:00 PM', endTime: '02:00 PM' }],
+              shifts: [
+                { startTime: '09:00 AM', endTime: '01:00 PM' },
+                { startTime: '02:00 PM', endTime: '06:00 PM' },
+              ],
             },
           ],
         },
@@ -678,7 +694,10 @@ describe('PatientService.getDoctorPublicProfile Unit Tests', () => {
   it('should throw an error if doctor profile is not found', async () => {
     const profileChain = createChain([]);
 
-    (database.select as jest.Mock).mockReturnValueOnce(profileChain);
+    // The six profile reads start together, so each needs a chain.
+    (database.select as jest.Mock)
+      .mockReturnValue(createChain([]))
+      .mockReturnValueOnce(profileChain);
 
     await expect(
       PatientService.getDoctorPublicProfile('non-existent-doctor')
@@ -740,6 +759,7 @@ describe('PatientService.getDoctorPublicProfile Unit Tests', () => {
     (database.select as jest.Mock)
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(qualificationChain)
+      .mockReturnValueOnce(createChain([]))
       .mockReturnValueOnce(clinicChain)
       .mockReturnValueOnce(serviceChain)
       .mockReturnValueOnce(countChain);
@@ -792,6 +812,7 @@ describe('PatientService.getDoctorPublicProfile Unit Tests', () => {
     const serviceChain = createChain(mockServices);
 
     (database.select as jest.Mock)
+      .mockReturnValue(createChain([]))
       .mockReturnValueOnce(profileChain)
       .mockReturnValueOnce(qualificationChain)
       .mockReturnValueOnce(clinicChain)
@@ -840,7 +861,9 @@ describe('PatientService.getDoctorPublicSlots Unit Tests', () => {
     });
 
     expect(result).toEqual({ slots: [] });
-    expect(AppointmentService.getAvailableSlotsForDate).not.toHaveBeenCalled();
+    expect(
+      AppointmentSlotsService.getAvailableSlotsForDate
+    ).not.toHaveBeenCalled();
   });
 
   it('should pass current IST time as time filter when the requested date is today', async () => {
@@ -872,7 +895,7 @@ describe('PatientService.getDoctorPublicSlots Unit Tests', () => {
       ],
     };
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue(mockSlotsResult);
 
     const result = await PatientService.getDoctorPublicSlots('doctor-1', {
@@ -880,7 +903,9 @@ describe('PatientService.getDoctorPublicSlots Unit Tests', () => {
       clinicId: 'clinic-1',
     });
 
-    expect(AppointmentService.getAvailableSlotsForDate).toHaveBeenCalledWith(
+    expect(
+      AppointmentSlotsService.getAvailableSlotsForDate
+    ).toHaveBeenCalledWith(
       'clinic-1',
       {
         date: istTodayStr,
@@ -919,7 +944,7 @@ describe('PatientService.getDoctorPublicSlots Unit Tests', () => {
       ],
     };
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue(mockSlotsResult);
 
     const result = await PatientService.getDoctorPublicSlots('doctor-1', {
@@ -927,7 +952,9 @@ describe('PatientService.getDoctorPublicSlots Unit Tests', () => {
       clinicId: 'clinic-1',
     });
 
-    expect(AppointmentService.getAvailableSlotsForDate).toHaveBeenCalledWith(
+    expect(
+      AppointmentSlotsService.getAvailableSlotsForDate
+    ).toHaveBeenCalledWith(
       'clinic-1',
       {
         date: tomorrowStr,
@@ -1659,7 +1686,7 @@ describe('PatientService.bookPatientAppointment & verifyAppointmentPayment Route
         .mockReturnValueOnce(createChain(mockLabResults))
         .mockReturnValueOnce(createChain(mockLabResultValues))
         .mockReturnValueOnce(createChain([]));
-      (AppointmentService.getAppointment as jest.Mock).mockResolvedValue(
+      (AppointmentService.getAppointmentDetails as jest.Mock).mockResolvedValue(
         mockDetails
       );
 
@@ -1733,7 +1760,7 @@ describe('PatientService.bookPatientAppointment & verifyAppointmentPayment Route
         .mockReturnValueOnce(createChain(mockClinicInfo))
         .mockReturnValueOnce(createChain([])) // Empty lab reports
         .mockReturnValueOnce(createChain(mockPrimaryLink)); // Family link query
-      (AppointmentService.getAppointment as jest.Mock).mockResolvedValue(
+      (AppointmentService.getAppointmentDetails as jest.Mock).mockResolvedValue(
         mockDetails
       );
 
@@ -1755,58 +1782,47 @@ describe('PatientService.bookPatientAppointment & verifyAppointmentPayment Route
       jest.clearAllMocks();
     });
 
-    it('should query with upcomingOnly filter and exclude past appointments', async () => {
-      const mockAppointments = [
-        {
-          id: 'apt-1',
-          appointmentDate: new Date(),
-          appointmentTime: '10:00 AM',
-          appointmentStatus: 'Confirmed',
-        },
-      ];
-
-      (database.select as jest.Mock).mockReturnValue(
-        createChain(mockAppointments)
+    /** Runs the list on a recording DB chain; returns the list query's WHERE as SQL text and params. */
+    const listWhere = async (query: Record<string, unknown>) => {
+      const { PgDialect } = require('drizzle-orm/pg-core');
+      const where = jest.fn();
+      const chain: any = {};
+      ['from', 'leftJoin', 'innerJoin', 'orderBy', 'limit', 'offset'].forEach(
+        (m) => (chain[m] = jest.fn(() => chain))
       );
+      chain.where = jest.fn((arg) => (where(arg), chain));
+      chain.then = (resolve: any) => resolve([]);
+      (database.select as jest.Mock).mockReturnValue(chain);
+      await PatientService.listPatientAppointments('user-123', null, {
+        pageNumber: '1',
+        pageSize: '10',
+        ...query,
+      });
+      // Call 0 is the family-link lookup; call 1 is the appointment list.
+      return new PgDialect().sqlToQuery(where.mock.calls[1][0]);
+    };
 
-      const result = await PatientService.listPatientAppointments(
-        'user-123',
-        'patient-123',
-        {
-          pageNumber: '1',
-          pageSize: '10',
-          upcomingOnly: true,
-        }
+    it('upcomingOnly keeps today onward and drops closed visits', async () => {
+      const q = await listWhere({ upcomingOnly: true });
+      expect(q.sql).toMatch(/"appointments"\."appointment_date" >= \$\d+/);
+      expect(q.sql).toMatch(/not "appointments"\."appointment_status" in/i);
+      expect(q.params).toEqual(
+        expect.arrayContaining(['Completed', 'Cancelled', 'NoShow', 'Missed'])
       );
-
-      expect(result).toBeDefined();
     });
 
-    it('should query with pastOnly filter and exclude future appointments', async () => {
-      const mockAppointments = [
-        {
-          id: 'apt-2',
-          appointmentDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          appointmentTime: '10:00 AM',
-          appointmentStatus: 'Confirmed',
-        },
-      ];
-
-      (database.select as jest.Mock).mockReturnValue(
-        createChain(mockAppointments)
+    it('pastOnly takes earlier days or any closed visit, so a finished visit today is past', async () => {
+      const q = await listWhere({ pastOnly: true });
+      expect(q.sql).toMatch(
+        /\("appointments"\."appointment_date" < \$\d+ or "appointments"\."appointment_status" in/i
       );
+      expect(q.params).toEqual(expect.arrayContaining(['Completed', 'Missed']));
+    });
 
-      const result = await PatientService.listPatientAppointments(
-        'user-123',
-        'patient-123',
-        {
-          pageNumber: '1',
-          pageSize: '10',
-          pastOnly: true,
-        }
-      );
-
-      expect(result).toBeDefined();
+    it('rejects upcomingOnly with pastOnly', async () => {
+      await expect(
+        listWhere({ upcomingOnly: true, pastOnly: true })
+      ).rejects.toMatchObject({ status: 400 });
     });
 
     it('should apply asc order on appointmentDate and appointmentTime when sortBy is appointmentDate and sortOrder is asc', async () => {
@@ -2385,7 +2401,7 @@ describe('PatientService.bookPatientAppointment & verifyAppointmentPayment Route
             createdAt: new Date('2026-09-03T10:00:00Z'),
           },
           clinic: {
-            clinicName: 'MediSetu Clinic',
+            clinicName: 'MediArogya Clinic',
             Tagline: 'Caring for you',
             clinicAddress: '123 Health Ave',
             clinicPhone: '9876543210',
@@ -2453,7 +2469,7 @@ describe('PatientService.bookPatientAppointment & verifyAppointmentPayment Route
             createdAt: new Date('2026-09-03T11:00:00Z'),
           },
           clinic: {
-            clinicName: 'MediSetu Clinic',
+            clinicName: 'MediArogya Clinic',
             Tagline: null,
             clinicAddress: null,
             clinicPhone: null,

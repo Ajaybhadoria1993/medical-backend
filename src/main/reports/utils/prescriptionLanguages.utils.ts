@@ -21,32 +21,8 @@ import { ta } from './translations/ta';
 import { te } from './translations/te';
 import { ur } from './translations/ur';
 
-/** English plus the 22 scheduled languages of India. */
-export const PRESCRIPTION_LANGUAGE_CODES = [
-  'en',
-  'as',
-  'bn',
-  'brx',
-  'doi',
-  'gu',
-  'hi',
-  'kn',
-  'ks',
-  'kok',
-  'mai',
-  'ml',
-  'mni',
-  'mr',
-  'ne',
-  'or',
-  'pa',
-  'sa',
-  'sat',
-  'sd',
-  'ta',
-  'te',
-  'ur',
-] as const;
+// The list lives in src/utils (doctor profiles use it too); the old name keeps reports' imports.
+export { INDIAN_LANGUAGE_CODES as PRESCRIPTION_LANGUAGE_CODES } from '../../../utils/indianLanguages';
 
 export const LANGUAGE_META: Record<TranslationLanguage, LanguageMeta> = {
   as: {

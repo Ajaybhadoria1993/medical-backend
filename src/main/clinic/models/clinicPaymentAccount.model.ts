@@ -23,7 +23,9 @@ export const ClinicPaymentAccountModel = pgTable(
       .notNull(),
     paymentProvider: varchar('payment_provider', { length: 50 }).notNull(), // 'razorpay' | 'cashfree' | 'stripe'
     gatewayAccountId: varchar('gateway_account_id', { length: 255 }), // sub-merchant account reference ID
+    routeReferenceId: varchar('route_reference_id', { length: 20 }),
     gatewayStakeholderId: varchar('gateway_stakeholder_id', { length: 255 }),
+    routeProductId: varchar('route_product_id', { length: 255 }),
     routeStatus: varchar('route_status', { length: 50 })
       .default('INACTIVE')
       .notNull(),
@@ -37,6 +39,9 @@ export const ClinicPaymentAccountModel = pgTable(
     uniqueIndex('clinic_payment_account_clinic_provider_unique').on(
       table.clinicId,
       table.paymentProvider
+    ),
+    uniqueIndex('clinic_payment_account_route_reference_unique').on(
+      table.routeReferenceId
     ),
   ]
 );

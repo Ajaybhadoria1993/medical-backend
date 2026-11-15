@@ -58,6 +58,8 @@ const corsOptions: CorsOptions = {
     'Authorization',
     'x-access-token',
     'X-Requested-With',
+    // Sent by checkout so a repeated request returns the same order.
+    'Idempotency-Key',
     'X-RateLimit-Limit',
     'X-RateLimit-Remaining',
     'X-RateLimit-Reset',

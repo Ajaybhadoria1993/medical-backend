@@ -9,7 +9,6 @@ import {
 } from '../htmltamplates/email.tamplate';
 import { profileRequestStatusChangeTemplate } from '../htmltamplates/profileRequestStatusChange';
 import { registrationOtpTemplate } from '../htmltamplates/registerAdminWithOtp';
-import { subscriptionRenewalTemplate } from '../htmltamplates/subscriptionRenewal';
 import { welcomeSetPasswordTemplate } from '../htmltamplates/welcome-set-password';
 import { labCreationNotificationTemplate } from '../htmltamplates/labCreationNotification';
 import { pharmacyCreationNotificationTemplate } from '../htmltamplates/pharmacyCreationNotification';
@@ -156,36 +155,6 @@ async function testAll() {
     console.error('❌ registrationOtpTemplate failed:', err.message);
   }
 
-  // 9. subscriptionRenewalTemplate
-  try {
-    const html = subscriptionRenewalTemplate({
-      adminName: 'Jane Admin',
-      clinicName: 'Test Clinic',
-      planName: 'Carehub Plan',
-      planPrice: 999,
-      billingCycle: 'monthly',
-      addOns: [{ name: 'Extra Storage', quantity: 1, price: 99 }],
-      totalAmount: 1098,
-      expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-      daysRemaining: 5,
-      renewalUrl: 'https://example.com/renew',
-      staffCount: 3,
-      doctorCount: 2,
-      staffLimit: 5,
-      doctorLimit: 3,
-    });
-    if (
-      !html.includes('Jane Admin') ||
-      !html.includes('Carehub Plan') ||
-      !html.includes('Extra Storage')
-    ) {
-      throw new Error('subscriptionRenewalTemplate output is invalid');
-    }
-    console.log('✅ subscriptionRenewalTemplate works');
-  } catch (err: any) {
-    console.error('❌ subscriptionRenewalTemplate failed:', err.message);
-  }
-
   // 10. welcomeSetPasswordTemplate
   try {
     const html = welcomeSetPasswordTemplate({
@@ -265,8 +234,30 @@ async function testAll() {
       adminName: 'JOHN DOE',
       adminEmail: 'ADMIN@EXAMPLE.COM',
       adminMobile: '9876543210',
-      planName: 'STARTER PLAN',
-      planDescription: 'monthly subscription',
+      lineItems: [
+        {
+          name: 'STARTER PLAN',
+          description: 'SUBSCRIPTION PLAN — monthly subscription',
+          startDate: '17/09/2026',
+          endDate: '17/10/2026',
+          quantity: 1,
+          rate: '₹900.00',
+          proratedDeduction: '- ₹50.00',
+          proratedDays: '2 DAYS PRORATED',
+          netAmount: '₹850.00',
+        },
+        {
+          name: 'ADDITIONAL DOCTOR',
+          description: 'ADD-ON — one additional doctor account',
+          startDate: '17/09/2026',
+          endDate: '17/10/2026',
+          quantity: 1,
+          rate: '₹150.00',
+          proratedDeduction: '—',
+          proratedDays: '',
+          netAmount: '₹150.00',
+        },
+      ],
       startsAt: '17/09/2026',
       expiresAt: '17/10/2026',
       createdAt: '17/09/2026 19:30:00',
@@ -280,6 +271,7 @@ async function testAll() {
     if (
       !html.includes('INV-123456') ||
       !html.includes('STARTER PLAN') ||
+      !html.includes('ADDITIONAL DOCTOR') ||
       !html.includes('TEST CLINIC')
     ) {
       throw new Error('subscriptionInvoiceTemplate output is invalid');

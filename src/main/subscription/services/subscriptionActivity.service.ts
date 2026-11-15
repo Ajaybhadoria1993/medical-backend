@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import logger from '../../../utils/logger';
+import { IST_TIMEZONE } from '../../../utils/istDateTime';
 import { decodeAddOnItems } from '../utils/razorpayOrder.utils';
 import { AddOnModel } from '../models/addon.model';
 import { SubscriptionPlanModel } from '../models/subscription.model';
@@ -53,6 +54,28 @@ export class SubscriptionActivityService {
           eq(SubscriptionActivityModel.clinicId, clinicId),
           eq(SubscriptionActivityModel.type, 'payment_failed'),
           sql`${SubscriptionActivityModel.metadata}->>'orderId' = ${orderId}`
+        )
+      )
+      .limit(1);
+
+    return Boolean(existing);
+  }
+
+  /** Check for a repeated client failure report when an order ID is unavailable. */
+  static async hasPaymentFailureForReportId(
+    clinicId: string,
+    failureReportId?: string | null
+  ): Promise<boolean> {
+    if (!failureReportId) return false;
+
+    const [existing] = await database
+      .select({ id: SubscriptionActivityModel.id })
+      .from(SubscriptionActivityModel)
+      .where(
+        and(
+          eq(SubscriptionActivityModel.clinicId, clinicId),
+          eq(SubscriptionActivityModel.type, 'payment_failed'),
+          sql`${SubscriptionActivityModel.metadata}->>'failureReportId' = ${failureReportId}`
         )
       )
       .limit(1);
@@ -125,6 +148,57 @@ export class SubscriptionActivityService {
         err
       );
     }
+  }
+
+  /**
+   * Records that a free trial began.
+   *
+   * A trial is granted by inserting the subscription row directly: nothing is
+   * paid, so it never passes through `subscribeClinic`, which is what logs plan
+   * purchases. Without this the clinic's Activity Timeline stayed empty after
+   * taking a trial. Uses the `free_trial_started` type the timeline and the
+   * super-admin timeline already understand.
+   */
+  static async recordTrialStarted(input: {
+    clinicId: string;
+    planId: string;
+    planName: string;
+    subscriptionId?: string | null;
+    trialDays?: number | null;
+    expiresAt?: Date | null;
+    currency?: string | null;
+    actorUserId?: string | null;
+  }): Promise<void> {
+    const endsOn = input.expiresAt
+      ? input.expiresAt.toLocaleDateString('en-IN', {
+          timeZone: IST_TIMEZONE,
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        })
+      : null;
+
+    const description = input.trialDays
+      ? `${input.trialDays}-day free trial${endsOn ? `. Ends on ${endsOn}` : ''}.`
+      : endsOn
+        ? `Free trial active until ${endsOn}.`
+        : 'Free trial is active.';
+
+    await SubscriptionActivityService.record({
+      clinicId: input.clinicId,
+      type: 'free_trial_started',
+      title: `Free trial started: ${input.planName}`,
+      description,
+      currency: input.currency ?? undefined,
+      actorUserId: input.actorUserId ?? null,
+      metadata: {
+        subscriptionId: input.subscriptionId ?? null,
+        planId: input.planId,
+        planName: input.planName,
+        trialDays: input.trialDays ?? null,
+        trialEndsAt: input.expiresAt ? input.expiresAt.toISOString() : null,
+      },
+    });
   }
 
   /**

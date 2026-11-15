@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { sql, SQL } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import redisClient from '../../../configurations/redisConfig';
 import logger from '../../../utils/logger';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { AppointmentPaymentModel } from '../../appointments/models/appointment-payment.model';
-import { ClinicServiceModel } from '../../clinic/models/clinic.model';
 import { UserModel } from '../../users/models/user.model';
 import {
   ReportsRevenueQueryDto,
@@ -15,52 +14,86 @@ import {
   DateRange,
   buildComparisonRange,
   calcChange,
-  generateSlots,
-  mapValuesToSlots,
-  padComparisonSlots,
   toPercentage,
+  wholeRangeValues,
 } from '../utils/reportsPeriod.utils';
+import {
+  calendarDay,
+  generateDateSlots,
+  mapDataToSlots,
+  padSlots,
+  rangeDays,
+  resolveTruncUnit,
+  scopeFilter,
+  serviceJoin,
+  slotMeta,
+} from '../utils/reportsTrend.utils';
 import {
   ReportsRevenueData,
   RevenueMetricItem,
 } from '../types/reportsRevenue.types';
+import { DUE_AMOUNT, PAYMENT_MODE } from '../../dashboard/utils/revenueSql';
+import { MoneyReadService } from '../../money';
+import {
+  NOT_ATTENDED,
+  UNPAID_PAYMENT,
+} from '../../dashboard/services/clinicInsights.service';
+import { getISTDateString, istDayBoundsUtc } from '../../../utils/istDateTime';
 
-const CACHE_TTL = 120;
+/** A Reports range for the money reader, with the Doctor, Service and Payment Mode filters. */
+function moneyRange(
+  clinicId: string,
+  range: DateRange,
+  query: AnyRevenueQuery
+) {
+  return {
+    clinicId,
+    start: istDayBoundsUtc(range.start.slice(0, 10)).start.toISOString(),
+    end: istDayBoundsUtc(range.end.slice(0, 10)).end.toISOString(),
+    doctorIds: query.doctorId ? [query.doctorId] : undefined,
+    paymentMode: query.paymentMode || undefined,
+    serviceName: query.department || undefined,
+  };
+}
+
+/** Payment mode as shown: all-lowercase "cash" → "Cash" ("UPI" stays); missing is "Not Recorded". */
+const modeLabel = (m: string) =>
+  !m || m === 'Unknown'
+    ? 'Not Recorded'
+    : m === m.toLowerCase()
+      ? m.replace(/\b\w/g, (c) => c.toUpperCase())
+      : m;
+
+const CACHE_TTL = 120; // 2 min
+
+/** Fewer paid appointments than this and a weekday "pattern" is noise, so no insight is shown. */
+const MIN_INSIGHT_SAMPLE = 5;
 
 type AnyRevenueQuery = ReportsRevenueQueryDto | ReportsRevenueTrendQueryDto;
 
-/**
- * `payment_status` is written with inconsistent casing and wording across the
- * booking flows ('Paid', 'paid', 'Already Paid', 'Credit'), so every status
- * comparison here is lower-cased rather than matched literally.
- */
-const COLLECTED_STATUS = sql`LOWER(${AppointmentPaymentModel.paymentStatus}) IN ('paid', 'already paid')`;
-const PENDING_STATUS = sql`LOWER(${AppointmentPaymentModel.paymentStatus}) IN ('pending', 'credit')`;
-const BILLED_STATUS = sql`LOWER(COALESCE(${AppointmentPaymentModel.paymentStatus}, '')) NOT IN ('refunded', 'failed')`;
+// Dues = unpaid bill on visits that weren't cancelled or no-shows (the aging chart, which stays on visits).
+const DUES = sql`CASE WHEN ${UNPAID_PAYMENT} AND NOT ${NOT_ATTENDED} THEN ${DUE_AMOUNT} ELSE 0 END`;
 
-const PRICE = sql`CAST(COALESCE(${AppointmentPaymentModel.price}, '0') AS NUMERIC)`;
-const REFUNDED = sql`CAST(NULLIF(COALESCE(${AppointmentPaymentModel.refundedAmount}, '0'), '') AS NUMERIC)`;
+/** Service + Doctor (shared scope) + Payment Mode. */
+function scope(query: AnyRevenueQuery) {
+  return sql`${scopeFilter(query)}
+    ${query.paymentMode ? sql`AND ${PAYMENT_MODE} = ${query.paymentMode}` : sql``}`;
+}
 
-function buildFilters(query: AnyRevenueQuery): {
-  doctorFilter: SQL;
-  serviceJoin: SQL;
-  serviceFilter: SQL;
-  paymentModeFilter: SQL;
-} {
-  return {
-    doctorFilter: query.doctorId
-      ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-      : sql``,
-    serviceJoin: query.department
-      ? sql`INNER JOIN ${ClinicServiceModel} ON ${AppointmentModel.clinicServiceId} = ${ClinicServiceModel.id}`
-      : sql``,
-    serviceFilter: query.department
-      ? sql`AND ${ClinicServiceModel.serviceName} = ${query.department}`
-      : sql``,
-    paymentModeFilter: query.paymentMode
-      ? sql`AND ${AppointmentPaymentModel.paymentMode} = ${query.paymentMode}`
-      : sql``,
-  };
+/** Payment rows of the clinic's appointments in a range, with every filter applied. */
+function paymentsIn(
+  clinicId: string,
+  range: DateRange,
+  query: AnyRevenueQuery,
+  extraJoin = sql``
+) {
+  return sql`FROM ${AppointmentPaymentModel}
+    INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
+    ${extraJoin}
+    ${serviceJoin(query)}
+    WHERE ${AppointmentModel.clinicId} = ${clinicId}
+      AND ${AppointmentModel.appointmentDate} BETWEEN ${range.start} AND ${range.end}
+      ${scope(query)}`;
 }
 
 function buildCacheKey(
@@ -91,6 +124,8 @@ function buildTrendCacheKey(
     query.period,
     query.startDate,
     query.endDate,
+    query.compareStartDate || 'auto',
+    query.compareEndDate || 'auto',
     query.department || 'all',
     query.doctorId || 'all',
     query.paymentMode || 'all',
@@ -102,6 +137,27 @@ function metric(current: number, previous: number): RevenueMetricItem {
   return { value: Math.round(current), change, changeType };
 }
 
+/** Rows as donut slices: non-positive groups dropped (a refund can exceed its row), top N + Others. */
+function toDistribution(rows: any[], limit: number) {
+  const positive = rows.filter((r) => Number(r.value) > 0);
+  const total = positive.reduce((sum, r) => sum + Number(r.value), 0);
+  const top = positive.slice(0, limit).map((r) => ({
+    label: String(r.label),
+    value: Math.round(Number(r.value)),
+    percentage: toPercentage(Number(r.value), total),
+  }));
+  const rest = positive
+    .slice(limit)
+    .reduce((sum, r) => sum + Number(r.value), 0);
+  if (rest > 0)
+    top.push({
+      label: 'Others',
+      value: Math.round(rest),
+      percentage: toPercentage(rest, total),
+    });
+  return top;
+}
+
 export class ReportsRevenueService {
   static async getRevenueReports(
     clinicId: string,
@@ -111,14 +167,14 @@ export class ReportsRevenueService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info('[ReportsRevenue] Cache HIT');
         return JSON.parse(cached);
       }
     } catch (err) {
       logger.warn('[ReportsRevenue] Redis read error', err);
     }
 
-    const { primary, comparison } = buildComparisonRange(query);
+    const ranges = buildComparisonRange(query);
+    const { primary, comparison } = ranges;
 
     const [
       metrics,
@@ -128,10 +184,12 @@ export class ReportsRevenueService {
       doctorWiseRevenue,
       appointmentTypeRevenue,
       outstandingAging,
-      monthlyRevenue,
-      ytd,
+      paymentModeOptions,
+      insights,
     ] = await Promise.all([
-      this.getMetrics(clinicId, primary, comparison, query),
+      wholeRangeValues(ranges, (current) =>
+        this.getMetrics(clinicId, current, comparison, query)
+      ),
       this.getRevenueTrend(
         clinicId,
         primary,
@@ -144,29 +202,26 @@ export class ReportsRevenueService {
       this.getPaymentModeDistribution(clinicId, primary, query),
       this.getDoctorWiseRevenue(clinicId, primary, query),
       this.getAppointmentTypeRevenue(clinicId, primary, query),
-      this.getOutstandingAging(clinicId, query),
-      this.getMonthlyRevenue(clinicId, query),
-      this.getYtdSummary(clinicId, query),
+      this.getOutstandingAging(clinicId, primary, query),
+      this.getPaymentModeOptions(clinicId),
+      this.getInsights(clinicId, primary, query),
     ]);
-
-    const topServices = revenueBreakdown.map((item) => ({
-      service: item.label,
-      revenue: item.value,
-      percentage: item.percentage,
-    }));
 
     const result: ReportsRevenueData = {
       metrics,
       revenueTrend,
       revenueBreakdown,
       paymentModeDistribution,
-      topServices,
+      topServices: revenueBreakdown.map((s) => ({
+        service: s.label,
+        revenue: s.value,
+        percentage: s.percentage,
+      })),
       doctorWiseRevenue,
       appointmentTypeRevenue,
       outstandingAging,
-      monthlyRevenue,
-      ytd,
-      insights: await this.getInsights(clinicId, primary, query, topServices),
+      paymentModeOptions,
+      insights,
     };
 
     try {
@@ -174,7 +229,6 @@ export class ReportsRevenueService {
     } catch (err) {
       logger.warn('[ReportsRevenue] Redis write error', err);
     }
-
     return result;
   }
 
@@ -186,7 +240,6 @@ export class ReportsRevenueService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info('[ReportsRevenue] Trend Cache HIT');
         return JSON.parse(cached);
       }
     } catch (err) {
@@ -208,9 +261,10 @@ export class ReportsRevenueService {
     } catch (err) {
       logger.warn('[ReportsRevenue] Redis write error', err);
     }
-
     return result;
   }
+
+  // ─── METRICS (money from the ledger reader) ──────────────────────────────────
 
   private static async getMetrics(
     clinicId: string,
@@ -218,57 +272,40 @@ export class ReportsRevenueService {
     comparison: DateRange,
     query: ReportsRevenueQueryDto
   ) {
-    const [current, previous] = await Promise.all([
-      this.getTotalsForRange(clinicId, primary, query),
-      this.getTotalsForRange(clinicId, comparison, query),
+    const totalsFor = async (range: DateRange) => {
+      const r = moneyRange(clinicId, range, query);
+      const [t, dues] = await Promise.all([
+        MoneyReadService.totals(r),
+        MoneyReadService.outstanding(r),
+      ]);
+      const net = t.netPaise / 100;
+      const gross = t.grossPaise / 100;
+      return {
+        net,
+        gross,
+        refunds: gross - net,
+        dues: dues.duePaise / 100,
+        paid: t.payments,
+        avg: t.payments ? net / t.payments : 0,
+      };
+    };
+    const [cur, prev] = await Promise.all([
+      totalsFor(primary),
+      totalsFor(comparison),
     ]);
-
     return {
-      totalRevenue: metric(current.billed, previous.billed),
-      amountCollected: metric(current.collected, previous.collected),
-      pendingAmount: metric(current.pending, previous.pending),
-      avgInvoiceValue: metric(
-        current.invoices ? current.billed / current.invoices : 0,
-        previous.invoices ? previous.billed / previous.invoices : 0
-      ),
-      totalInvoices: metric(current.invoices, previous.invoices),
-      refunds: metric(current.refunds, previous.refunds),
+      totalRevenue: metric(cur.net, prev.net),
+      amountCollected: metric(cur.gross, prev.gross),
+      pendingAmount: metric(cur.dues, prev.dues),
+      avgInvoiceValue: metric(cur.avg, prev.avg),
+      totalInvoices: metric(cur.paid, prev.paid),
+      refunds: metric(cur.refunds, prev.refunds),
     };
   }
 
-  private static async getTotalsForRange(
-    clinicId: string,
-    range: DateRange,
-    query: ReportsRevenueQueryDto
-  ) {
-    const { doctorFilter, serviceJoin, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
+  // ─── TREND ───────────────────────────────────────────────────────────────────
 
-    const rows: any[] = await database.execute(sql`
-      SELECT
-        COALESCE(SUM(CASE WHEN ${BILLED_STATUS} THEN ${PRICE} ELSE 0 END), 0) as billed,
-        COALESCE(SUM(CASE WHEN ${COLLECTED_STATUS} THEN ${PRICE} ELSE 0 END), 0) as collected,
-        COALESCE(SUM(CASE WHEN ${PENDING_STATUS} THEN ${PRICE} ELSE 0 END), 0) as pending,
-        COALESCE(SUM(${REFUNDED}), 0) as refunds,
-        COUNT(*) FILTER (WHERE ${BILLED_STATUS}) as invoices
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${range.start} AND ${range.end}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-    `);
-
-    const row = rows[0] || {};
-    return {
-      billed: Number(row.billed || 0),
-      collected: Number(row.collected || 0),
-      pending: Number(row.pending || 0),
-      refunds: Number(row.refunds || 0),
-      invoices: Number(row.invoices || 0),
-    };
-  }
-
+  /** 'revenue' = money received after refunds; 'collected' = gross, before refunds. */
   private static async getRevenueTrend(
     clinicId: string,
     primary: DateRange,
@@ -277,52 +314,68 @@ export class ReportsRevenueService {
     period: string,
     type: 'revenue' | 'collected'
   ) {
-    const durationDays = Math.ceil(
-      (new Date(primary.end).getTime() - new Date(primary.start).getTime()) /
-        (1000 * 60 * 60 * 24)
+    const days = rangeDays(primary);
+    const truncUnit = resolveTruncUnit(period, days);
+    const primarySlots = generateDateSlots(
+      primary.start,
+      primary.end,
+      truncUnit,
+      days
     );
-    const truncUnit =
-      period === 'monthly' || (period === 'auto' && durationDays > 30)
-        ? 'week'
-        : 'day';
-
-    const primarySlots = generateSlots(primary.start, primary.end, period);
-    const comparisonSlots = padComparisonSlots(
+    const comparisonSlots = padSlots(
       primarySlots,
-      generateSlots(comparison.start, comparison.end, period)
+      generateDateSlots(comparison.start, comparison.end, truncUnit, days)
     );
-
-    const statusFilter =
-      type === 'collected' ? COLLECTED_STATUS : BILLED_STATUS;
-    const { doctorFilter, serviceJoin, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
-
-    const rangeRows = (range: DateRange) =>
-      database.execute(sql`
-      SELECT
-        date_trunc(${sql.raw(`'${truncUnit}'`)}, ${AppointmentModel.appointmentDate}) as dt,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${range.start} AND ${range.end}
-        AND ${statusFilter}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-      GROUP BY dt
-      ORDER BY dt
-    `);
-
-    const [curRows, prevRows] = (await Promise.all([
-      rangeRows(primary),
-      rangeRows(comparison),
-    ])) as any[][];
-
-    return {
-      labels: primarySlots.map((s) => s.label),
-      currentPeriod: mapValuesToSlots(curRows, primarySlots, truncUnit),
-      previousPeriod: mapValuesToSlots(prevRows, comparisonSlots, truncUnit),
+    // One row per bucket (summed here), the shape mapDataToSlots expects.
+    const bucketsFor = async (range: DateRange) => {
+      const rows = await MoneyReadService.buckets(
+        moneyRange(clinicId, range, query),
+        truncUnit as 'day' | 'week' | 'month',
+        type === 'collected' ? 'gross' : 'net'
+      );
+      const byDt = new Map<string, number>();
+      for (const x of rows)
+        byDt.set(String(x.dt), (byDt.get(String(x.dt)) ?? 0) + x.paise);
+      return [...byDt].map(([dt, paise]) => ({ dt, cnt: paise / 100 }));
     };
+    const [current, previous] = await Promise.all([
+      bucketsFor(primary),
+      bucketsFor(comparison),
+    ]);
+    const round = (values: number[]) => values.map((v) => Math.round(v));
+    return {
+      ...slotMeta(primarySlots, comparisonSlots, primary, comparison),
+      currentPeriod: round(mapDataToSlots(current, primarySlots, truncUnit)),
+      previousPeriod: round(
+        mapDataToSlots(previous, comparisonSlots, truncUnit)
+      ),
+    };
+  }
+
+  // ─── BREAKDOWNS (each adds up to Total Revenue) ──────────────────────────────
+
+  /** Money grouped by service / day / type, summed across channels, top first. */
+  private static async grouped(
+    clinicId: string,
+    primary: DateRange,
+    query: ReportsRevenueQueryDto,
+    by: 'service' | 'type'
+  ) {
+    const rows = await MoneyReadService.receivedGrouped(
+      moneyRange(clinicId, primary, query),
+      by
+    );
+    const byKey = new Map<string, number>();
+    for (const x of rows)
+      byKey.set(x.key, (byKey.get(x.key) ?? 0) + x.paise / 100);
+    return [...byKey]
+      .map(([label, value]) => ({
+        label:
+          by === 'service' && label === 'Unassigned' ? 'No Service' : label,
+        value,
+      }))
+      .filter((r) => r.value !== 0)
+      .sort((a, b) => b.value - a.value);
   }
 
   private static async getServiceRevenue(
@@ -330,25 +383,10 @@ export class ReportsRevenueService {
     primary: DateRange,
     query: ReportsRevenueQueryDto
   ) {
-    const { doctorFilter, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
-
-    const rows: any[] = await database.execute(sql`
-      SELECT
-        COALESCE(${ClinicServiceModel.serviceName}, 'Unassigned') as label,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      LEFT JOIN ${ClinicServiceModel} ON ${AppointmentModel.clinicServiceId} = ${ClinicServiceModel.id}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        AND ${BILLED_STATUS}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-      GROUP BY label
-      ORDER BY value DESC
-    `);
-
-    return this.toDistribution(rows, 5);
+    return toDistribution(
+      await this.grouped(clinicId, primary, query, 'service'),
+      5
+    );
   }
 
   private static async getPaymentModeDistribution(
@@ -356,25 +394,17 @@ export class ReportsRevenueService {
     primary: DateRange,
     query: ReportsRevenueQueryDto
   ) {
-    const { doctorFilter, serviceJoin, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
-
-    const rows: any[] = await database.execute(sql`
-      SELECT
-        COALESCE(${AppointmentPaymentModel.paymentMode}, 'Other') as label,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        AND ${COLLECTED_STATUS}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-      GROUP BY label
-      ORDER BY value DESC
-    `);
-
-    return this.toDistribution(rows, 5);
+    const t = await MoneyReadService.totals(
+      moneyRange(clinicId, primary, query)
+    );
+    const byLabel = new Map<string, number>();
+    for (const [m, paise] of Object.entries(t.byModePaise))
+      byLabel.set(modeLabel(m), (byLabel.get(modeLabel(m)) ?? 0) + paise / 100);
+    const rows = [...byLabel]
+      .map(([label, value]) => ({ label, value }))
+      .filter((r) => r.value !== 0)
+      .sort((a, b) => b.value - a.value);
+    return toDistribution(rows, 5);
   }
 
   private static async getDoctorWiseRevenue(
@@ -382,35 +412,35 @@ export class ReportsRevenueService {
     primary: DateRange,
     query: ReportsRevenueQueryDto
   ) {
-    const { doctorFilter, serviceJoin, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
-
-    const rows: any[] = await database.execute(sql`
-      SELECT
-        ${AppointmentModel.doctorId} as doctor_id,
-        COALESCE(${UserModel.name}, 'Unassigned') as doctor,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      LEFT JOIN ${UserModel} ON ${AppointmentModel.doctorId} = ${UserModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        AND ${BILLED_STATUS}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-      -- Qualified: the service filter joins clinics_service, which also has doctor_id.
-      GROUP BY ${AppointmentModel.doctorId}, ${UserModel.name}
-      ORDER BY value DESC
-      LIMIT 5
-    `);
-
-    const total = rows.reduce((sum, r) => sum + Number(r.value), 0);
-
+    const perDoctor = await MoneyReadService.byDoctor(
+      moneyRange(clinicId, primary, query)
+    );
+    const ids = Object.keys(perDoctor).filter((id) => perDoctor[id] > 0);
+    const names = ids.length
+      ? await database
+          .select({ id: UserModel.id, name: UserModel.name })
+          .from(UserModel)
+          .where(
+            sql`${UserModel.id} IN (${sql.join(
+              ids.map((id) => sql`${id}`),
+              sql`, `
+            )})`
+          )
+      : [];
+    const rows = ids
+      .map((id) => ({
+        doctorId: id,
+        doctor: names.find((x) => x.id === id)?.name ?? 'Unassigned',
+        value: perDoctor[id] / 100,
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+    const total = rows.reduce((sum, r) => sum + r.value, 0);
     return rows.map((r) => ({
       doctor: r.doctor,
-      doctorId: r.doctor_id || '',
-      revenue: Math.round(Number(r.value)),
-      percentage: toPercentage(Number(r.value), total),
+      doctorId: r.doctorId,
+      revenue: Math.round(r.value),
+      percentage: toPercentage(r.value, total),
     }));
   }
 
@@ -419,221 +449,135 @@ export class ReportsRevenueService {
     primary: DateRange,
     query: ReportsRevenueQueryDto
   ) {
-    const { doctorFilter, serviceJoin, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
-
-    const rows: any[] = await database.execute(sql`
-      SELECT
-        COALESCE(${AppointmentModel.appointmentType}, 'Other') as label,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        AND ${BILLED_STATUS}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-      GROUP BY label
-      ORDER BY value DESC
-      LIMIT 5
-    `);
-
-    const total = rows.reduce((sum, r) => sum + Number(r.value), 0);
-
+    const rows = (await this.grouped(clinicId, primary, query, 'type'))
+      .filter((r) => r.value > 0)
+      .slice(0, 5);
+    const total = rows.reduce((sum, r) => sum + r.value, 0);
     return rows.map((r) => ({
       appointmentType: r.label,
-      revenue: Math.round(Number(r.value)),
-      percentage: toPercentage(Number(r.value), total),
+      revenue: Math.round(r.value),
+      percentage: toPercentage(r.value, total),
     }));
   }
 
-  /**
-   * Aging runs from the appointment date to today, not from the report range,
-   * so an outstanding balance keeps ageing after the period it was billed in.
-   */
+  /** Dues for visits in the range, aged from the visit day to today (IST). Every bucket, zeros
+   *  included; the total equals the Outstanding Dues card. */
   private static async getOutstandingAging(
     clinicId: string,
+    primary: DateRange,
     query: ReportsRevenueQueryDto
   ) {
-    const { doctorFilter, serviceJoin, serviceFilter } = buildFilters(query);
-
+    const age = sql`(${getISTDateString()}::date - ${AppointmentModel.appointmentDate}::date)`;
     const rows: any[] = await database.execute(sql`
-      SELECT
-        CASE
-          WHEN NOW() - ${AppointmentModel.appointmentDate} <= INTERVAL '30 days' THEN '0 - 30 Days'
-          WHEN NOW() - ${AppointmentModel.appointmentDate} <= INTERVAL '60 days' THEN '31 - 60 Days'
-          WHEN NOW() - ${AppointmentModel.appointmentDate} <= INTERVAL '90 days' THEN '61 - 90 Days'
-          ELSE '90+ Days'
-        END as bracket,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} <= NOW()
-        AND ${PENDING_STATUS}
-        ${doctorFilter} ${serviceFilter}
-      GROUP BY bracket
+      SELECT CASE WHEN ${age} <= 30 THEN 0 WHEN ${age} <= 60 THEN 1 WHEN ${age} <= 90 THEN 2 ELSE 3 END as bucket,
+        COALESCE(SUM(${DUES}), 0) as value
+      ${paymentsIn(clinicId, primary, query)}
+        AND ${UNPAID_PAYMENT} AND NOT ${NOT_ATTENDED}
+      GROUP BY 1
     `);
-
-    const order = ['0 - 30 Days', '31 - 60 Days', '61 - 90 Days', '90+ Days'];
-    const byBracket = new Map<string, number>(
-      rows.map((r) => [String(r.bracket), Number(r.value)])
+    const labels = [
+      'Up to 30 days',
+      '31–60 days',
+      '61–90 days',
+      'Over 90 days',
+    ];
+    const amounts = labels.map((_, i) =>
+      Number(rows.find((r) => Number(r.bucket) === i)?.value || 0)
     );
-    const total = order.reduce((sum, b) => sum + (byBracket.get(b) || 0), 0);
-
-    return order.map((bracket) => {
-      const amount = byBracket.get(bracket) || 0;
-      return {
-        bracket,
-        amount: Math.round(amount),
-        percentage: toPercentage(amount, total),
-      };
-    });
+    const total = amounts.reduce((sum, a) => sum + a, 0);
+    return labels.map((bracket, i) => ({
+      bracket,
+      amount: Math.round(amounts[i]),
+      percentage: toPercentage(amounts[i], total),
+    }));
   }
 
-  private static async getMonthlyRevenue(
-    clinicId: string,
-    query: ReportsRevenueQueryDto
-  ) {
-    const { doctorFilter, serviceJoin, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
-
-    const year = new Date(query.endDate).getFullYear();
-    const rangeStart = `${year - 1}-01-01 00:00:00`;
-    const rangeEnd = `${year}-12-31 23:59:59`;
-
+  /** The clinic's real payment modes, for the filter dropdown. */
+  private static async getPaymentModeOptions(clinicId: string) {
     const rows: any[] = await database.execute(sql`
-      SELECT
-        EXTRACT(YEAR FROM ${AppointmentModel.appointmentDate})::int as yr,
-        EXTRACT(MONTH FROM ${AppointmentModel.appointmentDate})::int as mo,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${rangeStart} AND ${rangeEnd}
-        AND ${BILLED_STATUS}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-      GROUP BY yr, mo
+      SELECT DISTINCT payment_mode as mode
+      FROM money_entries
+      WHERE clinic_id = ${clinicId} AND account = 'clinic' AND payment_mode IS NOT NULL
+      ORDER BY 1
     `);
-
-    const byKey = new Map<string, number>(
-      rows.map((r) => [`${r.yr}-${r.mo}`, Number(r.value)])
-    );
-
-    return Array.from({ length: 12 }, (_, index) => {
-      const monthNo = index + 1;
-      return {
-        month: new Date(year, index, 1).toLocaleDateString('en-US', {
-          month: 'short',
-        }),
-        thisYear: Math.round(byKey.get(`${year}-${monthNo}`) || 0),
-        lastYear: Math.round(byKey.get(`${year - 1}-${monthNo}`) || 0),
-      };
-    });
+    return rows.map((r) => ({
+      label: String(r.mode).replace(/^\w/, (ch) => ch.toUpperCase()),
+      value: r.mode,
+    }));
   }
 
-  private static async getYtdSummary(
-    clinicId: string,
-    query: ReportsRevenueQueryDto
-  ) {
-    const end = new Date(query.endDate);
-    const year = end.getFullYear();
-
-    const thisYear: DateRange = {
-      start: `${year}-01-01 00:00:00`,
-      end: `${query.endDate} 23:59:59`,
-    };
-    const lastYear: DateRange = {
-      start: `${year - 1}-01-01 00:00:00`,
-      end: `${year - 1}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(
-        end.getDate()
-      ).padStart(2, '0')} 23:59:59`,
-    };
-
-    const [current, previous] = await Promise.all([
-      this.getTotalsForRange(clinicId, thisYear, query),
-      this.getTotalsForRange(clinicId, lastYear, query),
-    ]);
-
-    const revenueChange = calcChange(current.billed, previous.billed);
-    const collectedChange = calcChange(current.collected, previous.collected);
-
-    return {
-      revenue: Math.round(current.billed),
-      lastYearRevenue: Math.round(previous.billed),
-      change: revenueChange.change,
-      changeType: revenueChange.changeType,
-      collected: Math.round(current.collected),
-      lastYearCollected: Math.round(previous.collected),
-      collectedChange: collectedChange.change,
-      collectedChangeType: collectedChange.changeType,
-      label: `YTD (Jan 1 – ${end.toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })})`,
-    };
-  }
+  // ─── INSIGHTS (each carries its numbers) ─────────────────────────────────────
 
   private static async getInsights(
     clinicId: string,
     primary: DateRange,
-    query: ReportsRevenueQueryDto,
-    topServices: Array<{ service: string; percentage: number }>
-  ): Promise<string[]> {
-    const { doctorFilter, serviceJoin, serviceFilter, paymentModeFilter } =
-      buildFilters(query);
-
-    const rows: any[] = await database.execute(sql`
-      SELECT
-        TRIM(TO_CHAR(${AppointmentModel.appointmentDate}, 'Day')) as day,
-        COALESCE(SUM(${PRICE}), 0) as value
-      FROM ${AppointmentPaymentModel}
-      INNER JOIN ${AppointmentModel} ON ${AppointmentPaymentModel.appointmentId} = ${AppointmentModel.id}
-      ${serviceJoin}
-      WHERE ${AppointmentModel.clinicId} = ${clinicId}
-        AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
-        AND ${BILLED_STATUS}
-        ${doctorFilter} ${serviceFilter} ${paymentModeFilter}
-      GROUP BY day
-      ORDER BY value DESC
-      LIMIT 1
-    `);
-
+    query: ReportsRevenueQueryDto
+  ) {
+    const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
     const insights: string[] = [];
-    if (rows[0]?.day && Number(rows[0].value) > 0) {
-      insights.push(`Revenue is highest on ${rows[0].day}s.`);
+
+    const range = moneyRange(clinicId, primary, query);
+    const [days, money, byService] = await Promise.all([
+      MoneyReadService.byDay(range),
+      MoneyReadService.totals(range),
+      this.getServiceRevenue(clinicId, primary, query),
+    ]);
+    // Group the days by weekday, keeping the first day and how many distinct days each covers.
+    const weekdays = new Map<
+      number,
+      {
+        day_name: string;
+        first_day: string;
+        days: number;
+        value: number;
+        paid: number;
+      }
+    >();
+    for (const [day, paise] of Object.entries(days).sort()) {
+      const d = calendarDay(day);
+      const w = weekdays.get(d.getDay()) ?? {
+        day_name: d.toLocaleDateString('en-US', { weekday: 'long' }),
+        first_day: day,
+        days: 0,
+        value: 0,
+        paid: 0,
+      };
+      w.days++;
+      w.value += paise / 100;
+      weekdays.set(d.getDay(), w);
     }
-    if (topServices[0]) {
+    const byWeekday = [...weekdays.values()].sort((a, b) => b.value - a.value);
+    if (byWeekday[0]) byWeekday[0].paid = money.payments;
+
+    const total = byWeekday.reduce((sum, r) => sum + Number(r.value), 0);
+    const paid = byWeekday.reduce((sum, r) => sum + r.paid, 0);
+    const [top] = byWeekday;
+    if (
+      top &&
+      total > 0 &&
+      paid >= MIN_INSIGHT_SAMPLE &&
+      Number(top.value) > 0
+    ) {
+      const when =
+        top.days > 1
+          ? `${top.day_name}s`
+          : calendarDay(top.first_day).toLocaleDateString('en-IN', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            });
       insights.push(
-        `${topServices[0].service} accounts for ${topServices[0].percentage}% of revenue.`
+        `Most revenue came on ${when}: ${inr(Number(top.value))} of ${inr(total)} (${toPercentage(Number(top.value), total)}%).`
       );
     }
-    return insights;
-  }
-
-  private static toDistribution(rows: any[], limit: number) {
-    const total = rows.reduce((sum, r) => sum + Number(r.value), 0);
-    const top = rows.slice(0, limit).map((r) => ({
-      label: String(r.label),
-      value: Math.round(Number(r.value)),
-      percentage: toPercentage(Number(r.value), total),
-    }));
-
-    const restTotal = rows
-      .slice(limit)
-      .reduce((sum, r) => sum + Number(r.value), 0);
-
-    if (restTotal > 0) {
-      top.push({
-        label: 'Others',
-        value: Math.round(restTotal),
-        percentage: toPercentage(restTotal, total),
-      });
+    const [lead] = byService;
+    if (lead && byService.length > 1) {
+      insights.push(
+        `${lead.label} brought in ${lead.percentage}% of revenue (${inr(lead.value)}).`
+      );
+    } else if (lead) {
+      insights.push(`All revenue in this period came from ${lead.label}.`);
     }
-
-    return top;
+    return insights;
   }
 }

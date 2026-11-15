@@ -2,6 +2,7 @@
 import {
   S3Client,
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
@@ -103,9 +104,11 @@ const storageFor = (folder: UploaderOptions['folder'], formats: string[]) => {
     contentType: multerS3.AUTO_CONTENT_TYPE,
     metadata: (req, file, cb) => {
       // The only place the upload's real name survives — never the key.
+      // S3 metadata travels as ASCII headers; a name like "Scan 7.15 PM.png" (phones put a special space
+      // before PM) breaks the request signature, so it is URI-encoded. Decode with decodeURIComponent.
       cb(null, {
         fieldName: file.fieldname,
-        originalName: file.originalname,
+        originalName: encodeURIComponent(file.originalname),
         allowedFormats: formats.join(','),
       });
     },
@@ -166,6 +169,15 @@ export async function uploadBufferToS3(
   await s3Client.send(command);
 
   return s3ObjectUrl(prefixedKey);
+}
+
+/** Reads a private object back, for files streamed through our own endpoints. */
+export async function getBufferFromS3(key: string): Promise<Buffer> {
+  if (!BUCKET_NAME) throw new Error('AWS_BUCKET_NAME is not configured');
+  const out = await s3Client.send(
+    new GetObjectCommand({ Bucket: BUCKET_NAME, Key: withEnvPrefix(key) })
+  );
+  return Buffer.from(await out.Body!.transformToByteArray());
 }
 
 export async function doesFileExistInS3(key: string): Promise<boolean> {

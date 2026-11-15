@@ -13,7 +13,6 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { z } from 'zod';
 
 // ==================== ENUMS ====================
 
@@ -101,101 +100,3 @@ export const CouponModel = pgTable(
 
 export type Coupon = typeof CouponModel.$inferSelect;
 export type NewCoupon = typeof CouponModel.$inferInsert;
-
-// ==================== ZOD SCHEMAS ====================
-
-export const insertCouponSchema = z.object({
-  code: z.string().min(1).max(50),
-  description: z.string().optional(),
-  discountType: z.enum(['percentage', 'fixed', 'trial']),
-  discountValue: z.union([z.string(), z.number()]),
-  maxDiscountAmount: z.union([z.string(), z.number()]).optional(),
-  trialDays: z.number().int().optional(),
-  appliesTo: z
-    .enum(['all', 'plans', 'addons', 'specific_plans', 'specific_addons'])
-    .default('all'),
-  applicablePlanIds: z.array(z.string()).optional(),
-  applicableAddOnIds: z.array(z.string()).optional(),
-  maxUses: z.number().int().optional(),
-  maxUsesPerClinic: z.number().int().default(1),
-  minOrderValue: z.union([z.string(), z.number()]).optional(),
-  firstTimeOnly: z.boolean().default(false),
-  startsAt: z.date(),
-  expiresAt: z.date(),
-  status: z.enum(['active', 'inactive', 'expired']).default('active'),
-  currentUses: z.number().int().default(0),
-  createdBy: z.string(),
-});
-
-export const selectCouponSchema = z.object({
-  id: z.number(),
-  code: z.string(),
-  description: z.string().nullable(),
-  discountType: z.enum(['percentage', 'fixed', 'trial']),
-  discountValue: z.union([z.string(), z.number()]),
-  maxDiscountAmount: z.union([z.string(), z.number()]).nullable(),
-  trialDays: z.number().int().nullable(),
-  appliesTo: z.enum([
-    'all',
-    'plans',
-    'addons',
-    'specific_plans',
-    'specific_addons',
-  ]),
-  applicablePlanIds: z.array(z.string()).nullable(),
-  applicableAddOnIds: z.array(z.string()).nullable(),
-  maxUses: z.number().int().nullable(),
-  maxUsesPerClinic: z.number().int(),
-  minOrderValue: z.union([z.string(), z.number()]).nullable(),
-  firstTimeOnly: z.boolean(),
-  startsAt: z.date(),
-  expiresAt: z.date(),
-  status: z.enum(['active', 'inactive', 'expired']),
-  currentUses: z.number().int(),
-  createdBy: z.string(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
-});
-
-// ==================== API VALIDATION SCHEMAS ====================
-
-export const createCouponSchema = z.object({
-  code: z
-    .string()
-    .min(3)
-    .max(50)
-    .regex(
-      /^[A-Z0-9_-]+$/,
-      'Code must be uppercase letters, numbers, hyphens, underscores'
-    ),
-  description: z.string().optional(),
-  discountType: z.enum(['percentage', 'fixed', 'trial']),
-  discountValue: z.number().min(0),
-  maxDiscountAmount: z.number().min(0).optional(),
-  trialDays: z.number().int().min(1).optional(),
-  appliesTo: z.enum([
-    'all',
-    'plans',
-    'addons',
-    'specific_plans',
-    'specific_addons',
-  ]),
-  applicablePlanIds: z.array(z.string()).optional(),
-  applicableAddOnIds: z.array(z.string()).optional(),
-  maxUses: z.number().int().min(1).optional(),
-  maxUsesPerClinic: z.number().int().min(1).default(1),
-  minOrderValue: z.number().min(0).optional(),
-  firstTimeOnly: z.boolean().default(false),
-  startsAt: z.string().datetime(),
-  expiresAt: z.string().datetime(),
-});
-
-export const updateCouponSchema = createCouponSchema.partial();
-
-export const validateCouponSchema = z.object({
-  code: z.string().min(1),
-  planId: z.string().optional(),
-  addOnId: z.string().optional(),
-  billingCycle: z.enum(['monthly', 'yearly']).optional(),
-  orderValue: z.number().min(0),
-});

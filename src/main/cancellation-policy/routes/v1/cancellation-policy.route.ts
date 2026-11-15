@@ -1,8 +1,10 @@
 import express from 'express';
 import {
+  CLINIC_STAFF_ROLES,
   requireAuth,
   requireClinic,
   requireReceptionist,
+  requireRole,
 } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
 import {
@@ -16,7 +18,8 @@ import {
   cancelAppointmentController,
   getDefaultPolicyController,
 } from '../../controllers/cancellationPolicy.controller';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
+import { requireAppointmentScope } from '../../../permissions/middlewares/staffScope.middleware';
 
 const cancellationPolicyRouter = express.Router();
 
@@ -46,6 +49,7 @@ cancellationPolicyRouter.get(
 cancellationPolicyRouter.get(
   '/clinic',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getClinicPolicyController
 );
@@ -75,6 +79,7 @@ cancellationPolicyRouter.post(
   requireClinic,
   requireReceptionist,
   validate(requestCancellationSchema, 'body'),
+  requireAppointmentScope('appointmentId', 'params'),
   cancelAppointmentController
 );
 

@@ -7,7 +7,6 @@ import {
   IRefundPayload,
   IRefundResponse,
 } from '../interfaces/IPaymentAdapter';
-import { IReconciledTransaction } from '../interfaces/reconciliation.types';
 import { razorpayInstance, callRazorpaySdk } from '../../../utils/razorpay';
 import { envConfig } from '../../../utils/envConfig';
 import logger from '../../../utils/logger';
@@ -174,51 +173,5 @@ export class RazorpayAdapter implements IPaymentAdapter {
       status: refund.status === 'processed' ? 'PROCESSED' : 'PENDING',
       rawResponse: refund,
     };
-  }
-
-  /**
-   * Pulls daily reconciliation transactions from Razorpay.
-   */
-  public async getReconciliationReport(
-    date: Date
-  ): Promise<IReconciledTransaction[]> {
-    try {
-      const fromTimestamp = Math.floor(
-        new Date(date.setHours(0, 0, 0, 0)).getTime() / 1000
-      );
-      const toTimestamp = Math.floor(
-        new Date(date.setHours(23, 59, 59, 999)).getTime() / 1000
-      );
-
-      const payments = await callRazorpaySdk('Razorpay Fetch Payments', () =>
-        razorpayInstance.payments.all({
-          from: fromTimestamp,
-          to: toTimestamp,
-          count: 100,
-        })
-      );
-
-      return (payments.items || []).map((item: any) => ({
-        gatewayOrderId: item.order_id,
-        gatewayPaymentId: item.id,
-        gatewayName: this.providerName,
-        amountCaptured: item.amount / 100,
-        paymentGatewayFee: (item.fee || 0) / 100,
-        transferredAmount: 0, // Resolved from transfers if present
-        settlementStatus:
-          item.status === 'captured'
-            ? 'SETTLED'
-            : item.status === 'failed'
-              ? 'FAILED'
-              : 'PENDING',
-        settledAt: item.created_at
-          ? new Date(item.created_at * 1000)
-          : undefined,
-        rawRecord: item,
-      }));
-    } catch (err) {
-      logger.error('Failed to pull Razorpay reconciliation report', err);
-      return [];
-    }
   }
 }

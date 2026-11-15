@@ -28,8 +28,6 @@ import {
   getCacheKeyPlacement,
   getCacheKeyAllPlacements,
   invalidateBannerCache,
-  logCacheMiss,
-  logCacheHit,
   logCacheInvalidation,
   getBannerCache,
   setBannerCache,
@@ -444,18 +442,13 @@ export class BannerService {
     }
 
     const cacheKey = getCacheKeyPlacement(user.id, query.placement);
-    const startTime = Date.now();
 
     // Step 1: Check cache
     const cached =
       await getBannerCache<
         (typeof BannerModel.$inferSelect & { isCritical: boolean })[]
       >(cacheKey);
-    if (cached) {
-      const executionTime = Date.now() - startTime;
-      logCacheHit(cacheKey, user.id, query.placement, executionTime);
-      return cached;
-    }
+    if (cached) return cached;
 
     // Step 2: Cache miss — execute business logic
     const now = new Date();
@@ -534,10 +527,8 @@ export class BannerService {
       isCritical: banner.priority === 'P0',
     }));
 
-    // Step 3: Store in cache and log
+    // Step 3: Store in cache
     await setBannerCache(cacheKey, result);
-    const executionTime = Date.now() - startTime;
-    logCacheMiss(cacheKey, user.id, query.placement, executionTime);
 
     return result;
   }
@@ -573,7 +564,6 @@ export class BannerService {
 
     // ─── Cache-Aside: Try cache first ────────────────────────────────────
     const cacheKey = getCacheKeyAllPlacements(user.id);
-    const startTime = Date.now();
 
     // Step 1: Check cache
     const cached = await getBannerCache<{
@@ -596,11 +586,7 @@ export class BannerService {
         isCritical: boolean;
       })[];
     }>(cacheKey);
-    if (cached) {
-      const executionTime = Date.now() - startTime;
-      logCacheHit(cacheKey, user.id, 'all', executionTime);
-      return cached;
-    }
+    if (cached) return cached;
 
     // Step 2: Cache miss — execute business logic
     const now = new Date();
@@ -700,10 +686,8 @@ export class BannerService {
       }
     });
 
-    // Step 3: Store in cache and log
+    // Step 3: Store in cache
     await setBannerCache(cacheKey, result);
-    const executionTime = Date.now() - startTime;
-    logCacheMiss(cacheKey, user.id, 'all', executionTime);
 
     return result;
   }

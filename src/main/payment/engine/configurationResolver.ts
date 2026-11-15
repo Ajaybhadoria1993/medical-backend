@@ -63,10 +63,6 @@ export class ConfigurationResolver {
         rateOrAmount: Number(row.rate_or_amount),
         taxRate: Number(row.tax_rate),
         taxTreatment: row.tax_treatment,
-        feePayer: row.fee_payer,
-        feeRecipient: row.fee_recipient,
-        deductionStrategy: row.deduction_strategy,
-        applicationLevel: 'APPOINTMENT_LEVEL',
         priority:
           row.fee_type === 'CONVENIENCE_FEE'
             ? 1

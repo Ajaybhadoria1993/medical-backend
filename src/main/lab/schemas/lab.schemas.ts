@@ -124,6 +124,33 @@ export const labTestIdParamSchema = z.object({
   testId: z.string().uuid('Invalid lab test id'),
 });
 
+export const labTestPackageIdParamSchema = z.object({
+  packageId: z.string().uuid('Invalid package id'),
+});
+
+export const getLabTestPackagesQuerySchema = z.object({
+  page: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.coerce.number().int().positive().optional().default(1)
+  ),
+  limit: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.coerce.number().int().positive().max(100).optional().default(10)
+  ),
+  search: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().trim().max(100).optional()
+  ),
+  status: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.enum(['Active', 'Inactive']).optional()
+  ),
+});
+
 export const createLabDepartmentSchema = z.object({
   name: z
     .string()
@@ -131,6 +158,43 @@ export const createLabDepartmentSchema = z.object({
     .min(2, 'Department name must be at least 2 characters')
     .max(60, 'Department name must be 60 characters or fewer')
     .transform((value) => value.replace(/\s+/g, ' ')),
+});
+
+export const labDepartmentIdParamSchema = z.object({
+  departmentId: z.string().uuid('Invalid department id'),
+});
+
+export const updateLabDepartmentSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(2, 'Department name must be at least 2 characters')
+      .max(60, 'Department name must be 60 characters or fewer')
+      .transform((value) => value.replace(/\s+/g, ' '))
+      .optional(),
+    status: z.enum(['active', 'inactive']).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be updated',
+  });
+
+export const getLabDepartmentsQuerySchema = z.object({
+  page: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.coerce.number().int().positive().optional()
+  ),
+  limit: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.coerce.number().int().positive().max(100).optional()
+  ),
+  status: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.enum(['active', 'inactive']).optional()
+  ),
 });
 
 export const userLabAssignmentIdParamSchema = z.object({
@@ -326,6 +390,12 @@ export const resetLabDefaultFieldOverrideSchema = z.preprocess(
 
 export type CreateLabInput = z.infer<typeof createLabSchema>;
 export type UpdateLabInput = z.infer<typeof updateLabSchema>;
+export type UpdateLabDepartmentInput = z.infer<
+  typeof updateLabDepartmentSchema
+>;
+export type GetLabDepartmentsQueryInput = z.infer<
+  typeof getLabDepartmentsQuerySchema
+>;
 
 export type CreateMyLabTestInput = z.infer<typeof createMyLabTestSchema>;
 export type UpdateLabCatalogTestInput = z.infer<
@@ -364,6 +434,85 @@ export const updateLabDepartmentsSchema = z.object({
 
 export type UpdateLabDepartmentsInput = z.infer<
   typeof updateLabDepartmentsSchema
+>;
+
+const labTestPackageStatusSchema = z.enum(['Active', 'Inactive']);
+
+const packageCodeSchema = z
+  .string()
+  .trim()
+  .min(3, 'Package code must be at least 3 characters')
+  .max(30, 'Package code must be 30 characters or fewer')
+  .transform((value) => value.toUpperCase());
+
+const labPackageTestIdsSchema = z
+  .array(z.string().uuid('Invalid lab test id'))
+  .min(1, 'At least one lab test is required');
+
+export const createLabTestPackageSchema = z.object({
+  packageName: z
+    .string()
+    .trim()
+    .min(3, 'Package name must be at least 3 characters')
+    .max(50, 'Package name must be 50 characters or fewer'),
+  packageCode: packageCodeSchema,
+  packageDescription: z
+    .string()
+    .trim()
+    .min(10, 'Package description must be at least 10 characters')
+    .max(200, 'Package description must be 200 characters or fewer'),
+  packagePrice: z.coerce
+    .number()
+    .int('Package price must be a whole number')
+    .min(1, 'Package price must be at least 1')
+    .max(1000000, 'Package price cannot exceed 1000000'),
+  status: labTestPackageStatusSchema.optional().default('Active'),
+  labTest: labPackageTestIdsSchema,
+});
+
+const updatePackageDeletedAtSchema = z.preprocess((value) => {
+  if (value === true) return new Date();
+  if (value === false || value === null || value === '') return null;
+  return value;
+}, z.coerce.date().nullable().optional());
+
+export const updateLabTestPackageSchema = z
+  .object({
+    packageName: z
+      .string()
+      .trim()
+      .min(3, 'Package name must be at least 3 characters')
+      .max(50, 'Package name must be 50 characters or fewer')
+      .optional(),
+    packageCode: packageCodeSchema.optional(),
+    packageDescription: z
+      .string()
+      .trim()
+      .min(10, 'Package description must be at least 10 characters')
+      .max(200, 'Package description must be 200 characters or fewer')
+      .optional(),
+    packagePrice: z.coerce
+      .number()
+      .int('Package price must be a whole number')
+      .min(1, 'Package price must be at least 1')
+      .max(1000000, 'Package price cannot exceed 1000000')
+      .optional(),
+    status: labTestPackageStatusSchema.optional(),
+    labTest: labPackageTestIdsSchema.optional(),
+    deletedAt: updatePackageDeletedAtSchema,
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be updated',
+  });
+
+export type CreateLabTestPackageInput = z.infer<
+  typeof createLabTestPackageSchema
+>;
+export type UpdateLabTestPackageInput = z.infer<
+  typeof updateLabTestPackageSchema
+>;
+export type GetLabTestPackagesQueryInput = z.infer<
+  typeof getLabTestPackagesQuerySchema
 >;
 
 export const getMyLabCatalogQuerySchema = z.object({

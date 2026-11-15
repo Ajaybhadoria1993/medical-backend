@@ -63,7 +63,12 @@ const buildData = (elements: Record<string, boolean>) => ({
     email: 'doctor@example.test',
     availability: [{ day: 'Mon', isAvailable: true, display: 'AVAILDISPLAY' }],
     groupedAvailability: [
-      { days: 'Mon', isAvailable: true, display: 'AVAILDISPLAY' },
+      {
+        days: 'Mon',
+        isAvailable: true,
+        display: 'AVAILDISPLAY',
+        shifts: [{ label: '', time: 'AVAILDISPLAY' }],
+      },
     ],
   },
   patient: {

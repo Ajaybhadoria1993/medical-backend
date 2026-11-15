@@ -1,3 +1,7 @@
+import { sql } from 'drizzle-orm';
+import { comparisonRanges, getISTDateString } from '../../../utils/istDateTime';
+import { AppointmentModel } from '../../appointments/models/appointment.model';
+
 export interface DateRange {
   start: string;
   end: string;
@@ -20,8 +24,23 @@ interface ComparableQuery {
   compareEndDate?: string;
 }
 
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+
+/** The dashboard's comparison rule as YYYY-MM-DD days; `primaryEnd` is cut at today when the range runs past it. */
+export function previousPeriod(startDate: string, endDate: string) {
+  const r = comparisonRanges(startDate, endDate);
+  return {
+    primaryEnd: ymd(r.compareEnd),
+    startDate: ymd(r.prevStart),
+    endDate: ymd(r.prevEnd),
+  };
+}
+
+/** `primary` is the whole selected range; `elapsed` is its part up to today, the side a % compares
+ *  with `comparison` (the dashboard rule). Rates and "as of" figures use `elapsed`. */
 export function buildComparisonRange(query: ComparableQuery): {
   primary: DateRange;
+  elapsed: DateRange;
   comparison: DateRange;
 } {
   const primary: DateRange = {
@@ -32,6 +51,7 @@ export function buildComparisonRange(query: ComparableQuery): {
   if (query.compareStartDate && query.compareEndDate) {
     return {
       primary,
+      elapsed: primary,
       comparison: {
         start: query.compareStartDate + ' 00:00:00',
         end: query.compareEndDate + ' 23:59:59',
@@ -39,19 +59,68 @@ export function buildComparisonRange(query: ComparableQuery): {
     };
   }
 
-  const startMs = new Date(query.startDate).getTime();
-  const endMs = new Date(query.endDate).getTime();
-  const durationMs = endMs - startMs;
-  const compEnd = new Date(startMs - 1);
-  const compStart = new Date(startMs - durationMs - 86400000);
-
+  const prev = previousPeriod(query.startDate, query.endDate);
   return {
     primary,
+    elapsed: { start: primary.start, end: prev.primaryEnd + ' 23:59:59' },
     comparison: {
-      start: compStart.toISOString().split('T')[0] + ' 00:00:00',
-      end: compEnd.toISOString().split('T')[0] + ' 23:59:59',
+      start: prev.startDate + ' 00:00:00',
+      end: prev.endDate + ' 23:59:59',
     },
   };
+}
+
+const CHANGE_KEY = /change(Type)?$/i;
+
+/** `full` with every `…change`/`…changeType` taken from `elapsed` at the same path. */
+function withElapsedChanges<T>(full: T, elapsed: unknown): T {
+  if (!full || typeof full !== 'object' || !elapsed) return full;
+  if (Array.isArray(full)) {
+    return full.map((v, i) =>
+      withElapsedChanges(v, (elapsed as unknown[])[i])
+    ) as T;
+  }
+  const from = elapsed as Record<string, unknown>;
+  const out = { ...(full as Record<string, unknown>) };
+  for (const key of Object.keys(out)) {
+    out[key] =
+      CHANGE_KEY.test(key) && key in from
+        ? from[key]
+        : withElapsedChanges(out[key], from[key]);
+  }
+  return out as T;
+}
+
+/** Runs `get` for the whole range and, if it runs past today, for the elapsed part:
+ *  values come from the whole range, each % from the elapsed part. Arrays must keep a fixed order. */
+export async function wholeRangeValues<T>(
+  ranges: { primary: DateRange; elapsed: DateRange },
+  get: (current: DateRange) => Promise<T>
+): Promise<T> {
+  if (ranges.elapsed.end === ranges.primary.end) return get(ranges.primary);
+  const [full, elapsed] = await Promise.all([
+    get(ranges.primary),
+    get(ranges.elapsed),
+  ]);
+  return withElapsedChanges(full, elapsed);
+}
+
+/** Joins `fv.first_visit` per patient. Dashboard rule: new = no appointment at the clinic
+ *  (with this doctor, if filtered) before the range starts. */
+export function firstVisitJoin(clinicId: string, doctorId?: string) {
+  return sql`LEFT JOIN (
+    SELECT ${AppointmentModel.patientId} AS pid, MIN(${AppointmentModel.appointmentDate}) AS first_visit
+    FROM ${AppointmentModel}
+    WHERE ${AppointmentModel.clinicId} = ${clinicId}
+      ${doctorId ? sql`AND ${AppointmentModel.doctorId} = ${doctorId}` : sql``}
+    GROUP BY ${AppointmentModel.patientId}
+  ) fv ON fv.pid = ${AppointmentModel.patientId}`;
+}
+
+/** The end of `range` capped at today, for figures measured "as of" a day. */
+export function asOfEnd(range: DateRange): string {
+  const today = getISTDateString();
+  return range.end.slice(0, 10) > today ? `${today} 23:59:59` : range.end;
 }
 
 export function calcChange(current: number, previous: number): ChangeResult {
@@ -70,6 +139,22 @@ export function calcChange(current: number, previous: number): ChangeResult {
   return {
     change: Math.abs(change),
     changeType: change > 0 ? 'increase' : change < 0 ? 'decrease' : 'neutral',
+  };
+}
+
+/** A rate's change in percentage points (14% vs 9% → "+5 pts"), never a % of a %. "new" when the
+ *  previous period had nothing to measure the rate over. */
+export function rateChange(
+  current: number,
+  previous: number,
+  previousHasData: boolean
+): ChangeResult {
+  if (!previousHasData)
+    return { change: 0, changeType: current > 0 ? 'new' : 'neutral' };
+  const diff = parseFloat((current - previous).toFixed(1));
+  return {
+    change: Math.abs(diff),
+    changeType: diff > 0 ? 'increase' : diff < 0 ? 'decrease' : 'neutral',
   };
 }
 

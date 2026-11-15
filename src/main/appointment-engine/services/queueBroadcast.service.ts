@@ -68,9 +68,6 @@ export class QueueBroadcastService {
     try {
       const { socketManager } = require('../../../app');
       socketManager.io.to(room).emit('queue.updated', payload);
-      logger.info(
-        `[AppointmentEngine] Emitted queue.updated to room ${room} (${queueData.appointments.length} appointments)`
-      );
 
       // Broadcast to patients in live-queue rooms
       this.emitLiveQueueUpdates(socketManager, clinicId, queueData);
@@ -104,7 +101,6 @@ export class QueueBroadcastService {
    * the two broadcast paths can't drift out of sync.
    */
   async emitPatientUpdated(queueData: QueueDelayData): Promise<void> {
-    let emittedCount = 0;
     const appointments = queueData.appointments;
 
     // Same threshold the notifier uses, so a pushed payload and one fetched
@@ -126,7 +122,6 @@ export class QueueBroadcastService {
       try {
         const { socketManager } = require('../../../app');
         socketManager.io.to(room).emit('appointment.updated', eventPayload);
-        emittedCount++;
       } catch (err) {
         logger.warn(
           `[AppointmentEngine] Failed to emit appointment.updated to ${room}`,
@@ -134,10 +129,6 @@ export class QueueBroadcastService {
         );
       }
     }
-
-    logger.info(
-      `[AppointmentEngine] Emitted appointment.updated to ${emittedCount} patient rooms`
-    );
 
     // Evaluate patient "Notify me when" push conditions against the same fresh
     // queue data. Fire-and-forget — Redis-only, never blocks or throws into the

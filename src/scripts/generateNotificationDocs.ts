@@ -15,7 +15,12 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { listEvents } from '../main/notifications/registry';
 
-const OUTPUT = join(process.cwd(), 'docs', 'NOTIFICATION_EVENTS.md');
+const OUTPUT = join(
+  process.cwd(),
+  'docs',
+  'notifications',
+  'NOTIFICATION_EVENTS.md'
+);
 
 function escape(value: string): string {
   return value.replace(/\|/g, '\\|');
@@ -108,7 +113,7 @@ function main(): void {
   lines.push('');
 
   writeFileSync(OUTPUT, lines.join('\n'));
-  console.log(`Wrote ${OUTPUT} (${events.length} events)`);
+  console.info(`Wrote ${OUTPUT} (${events.length} events)`);
 }
 
 main();

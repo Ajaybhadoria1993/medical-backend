@@ -172,7 +172,7 @@ describe('ClinicService.resetClinicOnboarding', () => {
   });
 
   // Deactivated, never deleted: the free-month offer reads subscription history.
-  it('ends the active subscription and keeps its row', async () => {
+  it('ends the current subscription and keeps its row', async () => {
     arrange();
 
     await ClinicService.resetClinicOnboarding(CLINIC_ID, SUPER_ADMIN_ID, {
@@ -181,8 +181,7 @@ describe('ClinicService.resetClinicOnboarding', () => {
 
     expect(updateSets).toContainEqual(
       expect.objectContaining({
-        active: false,
-        autoRenew: false,
+        status: 'cancelled',
         cancellationReason: 'Onboarding reset by super admin',
       })
     );
@@ -245,9 +244,13 @@ describe('ClinicService.resetClinicOnboarding', () => {
       expect.objectContaining({ userStatus: 'Inactive' })
     );
     expect(updateSets[2]).toEqual(
-      expect.objectContaining({ active: false, autoRenew: false })
+      expect.objectContaining({
+        status: 'cancelled',
+        cancellationReason: 'Clinic deleted by super admin',
+      })
     );
-    expect(updateSets[3]).toEqual(
+    // Ending the plan writes its own rows first, so match by content, not position.
+    expect(updateSets).toContainEqual(
       expect.objectContaining({
         appointmentStatus: 'Cancelled',
         reReasonForCancellation: 'Clinic closed',

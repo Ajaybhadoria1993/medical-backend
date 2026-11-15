@@ -15,6 +15,7 @@
  */
 
 import { Job, Queue, Worker } from 'bullmq';
+import { queueConnection } from '../../notifications/queues/queueConnection';
 import redisClient from '../../../configurations/redisConfig';
 import logger from '../../../utils/logger';
 import { DelayTrackerService } from './delayTracker.service';
@@ -69,15 +70,9 @@ class RunningLateQueueService {
   private worker: Worker;
 
   constructor() {
-    const connection = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-    };
-
-    this.queue = new Queue(QUEUE_NAME, { connection });
+    this.queue = new Queue(QUEUE_NAME, { connection: queueConnection });
     this.worker = new Worker(QUEUE_NAME, this.processJob.bind(this), {
-      connection,
+      connection: queueConnection,
       concurrency: 5,
       // The handler shares its event loop with the API server and does a DB
       // recalculation plus socket broadcasts. Under the 30s default lock, a
@@ -198,11 +193,6 @@ class RunningLateQueueService {
           removeOnComplete: true,
           removeOnFail: { age: 3600 }, // Clean up after 1 hour
         }
-      );
-
-      logger.info(
-        `[RunningLateQueue] Scheduled check for appointment=${appointmentId} ` +
-          `at ${fireAt.toISOString()} (delay=${Math.round(effectiveDelay / 60000)}min)`
       );
     } catch (error) {
       logger.warn(

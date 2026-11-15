@@ -84,6 +84,127 @@ export default tseslint.config(
               message:
                 'Reach the notification module through notify(), not its internals.',
             },
+            {
+              group: [
+                '**/superadminAnalytics/*',
+                '**/superadminAnalytics/*/**',
+              ],
+              message:
+                'Import the Super Admin analytics module from main/superadminAnalytics (its index.ts) only.',
+            },
+            {
+              group: ['**/credits/*', '**/credits/*/**'],
+              message:
+                'Import the credits module from main/credits (its index.ts) only.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Email HTML is rendered by the notification dispatcher only; everything else sends through notify().
+    files: ['src/**/*.ts'],
+    ignores: ['src/main/notifications/**'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '**/main/notifications/templates',
+                '**/main/notifications/templates/**',
+                '**/notifications/templates/**',
+              ],
+              message:
+                'Email templates are rendered by the notification dispatcher. Send through notify() instead.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    /**
+     * Super Admin analytics boundary: it reads other features only through its
+     * ports, so it can move to its own service without a rewrite.
+     */
+    files: ['src/main/superadminAnalytics/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/models/**', '!../models/**', '!./models/**'],
+              message:
+                'Read other features through ports/ (implemented in src/adapters/superadminAnalytics), never their models.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    /** Credits boundary: other features are read through ports/ only (src/adapters/credits). */
+    files: ['src/main/credits/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '**/models/**',
+                '!../models/**',
+                '!./models/**',
+                '!../../models/**',
+              ],
+              message:
+                'Read other features through ports/ (implemented in src/adapters/credits), never their models.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    /**
+     * Subscription boundary: other features are read through ports/ (src/adapters/subscription).
+     * A warning while the existing reads move; switch to error once none remain.
+     */
+    files: ['src/main/subscription/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: [
+                '**/models/**',
+                '!../models/**',
+                '!./models/**',
+                '!../../models/**',
+              ],
+              message:
+                'Read other features through ports/ (implemented in src/adapters/subscription), never their models.',
+            },
+            {
+              group: ['../../*/services/**', '../../../*/services/**'],
+              message:
+                'Call other features through ports/ (implemented in src/adapters/subscription), never their services.',
+            },
+            {
+              // Kept here: this block replaces the global setting of the same rule for these files.
+              group: [
+                '**/main/notifications/templates',
+                '**/main/notifications/templates/**',
+                '**/notifications/templates/**',
+              ],
+              message:
+                'Email templates are rendered by the notification dispatcher. Send through notify() instead.',
+            },
           ],
         },
       ],

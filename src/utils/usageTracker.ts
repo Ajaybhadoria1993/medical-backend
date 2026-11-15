@@ -4,7 +4,7 @@ import {
   FEATURE_KEYS,
   LimitationService,
   UsageCheckResult,
-} from '../main/subscription/services/limitation.service';
+} from '../main/subscription';
 
 /**
  * Usage Tracker Utility

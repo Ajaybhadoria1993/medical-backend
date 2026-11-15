@@ -46,14 +46,8 @@ export async function invalidateCacheMany(keys: string[]): Promise<void> {
   }
 }
 
-/**
- * Delete every key matching a glob (e.g. `dashboard:reception-overview:<id>:*`).
- *
- * For key families whose full name depends on the *reader* rather than the data
- * — a receptionist's doctor scope, for one — so a writer cannot name them all.
- * Uses SCAN rather than KEYS: this runs on the appointment write path, and KEYS
- * blocks the whole Redis server for the length of the scan.
- */
+/** For keys named by the reader, not the data (a receptionist's doctor scope), so a writer can't list them.
+ *  SCAN, not KEYS: this runs on the appointment write path, and KEYS blocks Redis for the whole scan. */
 export async function invalidateCacheByPattern(pattern: string): Promise<void> {
   try {
     let cursor = '0';
@@ -95,10 +89,64 @@ const doctorPublicProfileFullKey = (doctorId: string) =>
   `doctor_public_profile_full:${doctorId}`;
 const doctorDisplayNameKey = (doctorId: string) =>
   `doctor_display_name:${doctorId}`;
+const clinicSettingsKey = (clinicId: string) => `clinic_settings:${clinicId}`;
+const clinicAutoLogoutKey = (clinicId: string) =>
+  `clinic_autologout:${clinicId}`;
+// Versioned: bump when the cached GET /patient/:id shape changes so old entries
+// retire at once. Family is left out: it depends on the viewer's clinic.
+const patientDetailKey = (patientId: string) => `patient:${patientId}:v3`;
 
 export const CacheKeys = {
+  // Hand-off, not a cache: the night's appointment-payment items for the billing alert email; 26 h TTL.
+  appointmentPaymentNeedsLook: () =>
+    'finance:appointment-payment-check:needs-look',
+  // Live marker for a "View as" session, not a cache: missing means ended. TTL = session length.
+  supportSession: (sessionId: string) => `support:session:${sessionId}`,
+  // Every settings row for a credit type; invalidated by the credits module's settings writes.
+  creditSettings: (creditType: string) => `credits:settings:${creditType}`,
+  // Set-once marker: one usage alert per clinic, channel, billing period and kind.
+  creditUsageAlert: (
+    clinicId: string,
+    channel: string,
+    periodKey: string,
+    kind: 'warning' | 'paused'
+  ) => `credits:alert:${clinicId}:${channel}:${periodKey}:${kind}`,
+  // A clinic's active treatment templates with steps; cleared by every template write of that clinic.
+  treatmentTemplatesActive: (clinicId: string) =>
+    `treatment-plan:templates-active:${clinicId}`,
+  // Messages an owner switched off; cleared by WhatsAppMessagePrefsService.save.
+  whatsappMessagePrefs: (ownerType: string, ownerId: string) =>
+    `notifications:whatsapp-prefs:${ownerType}:${ownerId}`,
+  // Messages Super Admin turned off for every clinic; cleared by WhatsAppMessagePrefsService.setPlatformMessage.
+  whatsappPlatformOffs: () => 'notifications:whatsapp-platform-offs',
+  // Super Admin's main speciality display order; cleared by SpecialtyOrderService.save.
+  specialtyDisplayOrder: () => 'superadmin:specialty-display-order',
+  // Phone-to-desktop scan session (status + the uploaded file); Redis expiry is its TTL.
+  scanBridgeSession: (otp: string) => `scan:bridge:${otp}`,
+  // Platform-wide Super Admin figures; short TTL only, nothing invalidates them.
+  superadminOverview: (from: string, to: string, prevFrom: string) =>
+    `superadmin:overview:${from}:${to}:${prevFrom}`,
+  superadminRevenue: (from: string, to: string, prevFrom: string) =>
+    `superadmin:revenue:${from}:${to}:${prevFrom}`,
+  superadminPatientApp: (from: string, to: string, prevFrom: string) =>
+    `superadmin:patient-app:${from}:${to}:${prevFrom}`,
+  superadminUsage: (from: string, to: string, prevFrom: string) =>
+    `superadmin:usage:${from}:${to}:${prevFrom}`,
+  superadminGrowth: (from: string, to: string, prevFrom: string) =>
+    `superadmin:growth:${from}:${to}:${prevFrom}`,
   clinicProfileOverview: (clinicId: string) =>
     `clinic:profile-overview:${clinicId}`,
+  // GET /clinic/settings blob (settings + reminders) and the auto-logout row.
+  clinicSettings: clinicSettingsKey,
+  clinicAutoLogout: clinicAutoLogoutKey,
+  // Every key a clinic_settings or clinic_reminders write can stale.
+  clinicSettingsAll: (clinicId: string) => [
+    clinicSettingsKey(clinicId),
+    clinicAutoLogoutKey(clinicId),
+  ],
+  // Auth guard's user row and the patient-app account blob.
+  authUser: (userId: string) => `user:${userId}`,
+  patientAccount: (userId: string) => `patient_account:${userId}`,
   userPermissions: (userId: string, clinicId: string) =>
     `perm:${userId}:${clinicId}`,
   staffScope: (userId: string, clinicId: string) =>
@@ -141,6 +189,11 @@ export const CacheKeys = {
   clinicDoctorList: (clinicId: string, scopeKey?: string) =>
     `doctors:list:${clinicId}:${scopeKey ?? 'all'}`,
   clinicDoctorListPattern: (clinicId: string) => `doctors:list:${clinicId}*`,
+  // A doctor's day per the schedule (ok/leave/off); every schedule writer clears the pattern.
+  followUpDoctorDay: (clinicId: string, doctorId: string, date: string) =>
+    `follow-ups:day:${clinicId}:${doctorId}:${date}`,
+  followUpDoctorDayPattern: (clinicId: string, doctorId: string) =>
+    `follow-ups:day:${clinicId}:${doctorId}:*`,
   // Set once a shift has an arrival; arrivals are append-only, so it never needs clearing.
   doctorShiftArrived: (
     clinicId: string,
@@ -181,4 +234,30 @@ export const CacheKeys = {
     doctorPublicProfileFullKey(doctorId),
     doctorDisplayNameKey(doctorId),
   ],
+  // GET /patient/:id base details (familyMembers is added per request).
+  patientDetail: patientDetailKey,
+  // Every details key for a patient. Writers clear this group; a family-link
+  // change clears it for both patients, since each page shows the other's number.
+  patientDetailAll: (patientId: string) => [patientDetailKey(patientId)],
+  // Clinic profile payload; owned by the clinic module, cleared by subscription changes too.
+  clinicDetails: (clinicId: string) => `clinic_details:${clinicId}`,
+  // Subscription module: a plan or add-on change clears the clinic's keys.
+  clinicActiveSubscription: (clinicId: string) =>
+    `clinic_active_subscription:${clinicId}`,
+  clinicPlan: (clinicId: string) => `clinic_plan:${clinicId}`,
+  clinicLimits: (clinicId: string) => `clinic_limits:${clinicId}`,
+  clinicLimitsOverview: (clinicId: string) =>
+    `clinic_limits_overview:${clinicId}`,
+  clinicAddOns: (clinicId: string) => `clinic_addons:${clinicId}`,
+  userSubscriptionExpiry: (userId: string) =>
+    `user_subscription_expiry:${userId}`,
+  // planId first, so planLimitPattern still clears every version of the plan.
+  planLimit: (planId: string, featureKey: string, planVersionId = 'current') =>
+    `plan_limit:${planId}:${planVersionId}:${featureKey}`,
+  planLimitPattern: (planId: string) => `plan_limit:${planId}:*`,
+  planAddOnLimits: (planId: string) => `plan_addon_limits:${planId}`,
+  // The pricing page list; every plan, feature or add-on-limit write clears it.
+  allPlans: 'subscription_plans:all',
+  // Add-on names and prices, the same for every clinic; add-ons change only through the seed.
+  addOnCatalog: 'subscription_addons:catalog',
 } as const;

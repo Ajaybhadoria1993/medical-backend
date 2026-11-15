@@ -2,6 +2,7 @@
 export {
   s3Client,
   BUCKET_NAME,
+  s3ObjectUrl,
   createUploader,
   uploadBufferToS3,
   deleteFromS3,

@@ -63,7 +63,184 @@ function paymentPatient(ctx: PaymentCtx): string[] {
   return ctx.patientId ? [ctx.patientId] : [];
 }
 
+/** A Route transfer to the clinic failed or was reversed (step 10, Q8). */
+export interface TransferFailedCtx extends Record<string, unknown> {
+  appointmentId: string;
+  clinicId: string;
+  transferId: string;
+  amount: string;
+  reversed: boolean;
+  reason: string | null;
+  patientName?: string;
+  when?: string;
+}
+
+const transferFailedEmail = (ctx: TransferFailedCtx) => ({
+  subject: `Payout of ₹${ctx.amount} ${ctx.reversed ? 'was reversed' : 'failed'}`,
+  template: 'payment.transferFailed',
+  props: { ...ctx },
+});
+
+const transferFailedInApp = (ctx: TransferFailedCtx) => ({
+  title: `Payout of ₹${ctx.amount} ${ctx.reversed ? 'reversed' : 'failed'}`,
+  body: `${ctx.patientName ? `For ${ctx.patientName}'s visit. ` : ''}Reason: ${ctx.reason || 'not given'}. Our team has been told.`,
+});
+
+/** The clinic's payout account just became ready to receive online money. */
+export interface PayoutsReadyCtx extends Record<string, unknown> {
+  clinicId: string;
+}
+
+/** Razorpay needs a change, rejected, suspended or locked the clinic's payout account. */
+export interface PayoutActionNeededCtx extends Record<string, unknown> {
+  clinicId: string;
+  reason: string | null;
+  suspended: boolean;
+}
+
+const payoutActionInApp = (ctx: PayoutActionNeededCtx) => ({
+  title: ctx.suspended ? 'Payouts are paused' : 'Payout account needs a change',
+  body: `${ctx.reason || 'Razorpay needs a change'}. Open the payout account to fix it.`,
+});
+
 export const paymentEvents = defineEvents({
+  'payment.payouts_ready': {
+    label: 'Payouts Ready',
+    description: 'When Razorpay finishes checking the payout account.',
+    category: 'payments',
+    priority: 'normal',
+    kind: 'notification',
+    configurable: false,
+    defaults: { inApp: true, push: true },
+    channels: ['inApp', 'push', 'email'],
+    tenant: (ctx: PayoutsReadyCtx) => ({
+      type: 'clinic' as const,
+      id: ctx.clinicId,
+    }),
+    clickAction: () => ({ route: '/finance?tab=payouts' }),
+    audiences: [
+      {
+        key: 'admins',
+        roles: ['Admin'],
+        recipients: async (ctx: PayoutsReadyCtx, { directory }) =>
+          (await directory.getStaffByRole(ctx.clinicId, ['Admin'])).map(
+            (u) => u.id
+          ),
+        message: {
+          inApp: () => ({
+            title: 'Payouts are ready',
+            body: 'Razorpay checked your bank account. Online booking money now reaches it automatically.',
+          }),
+          email: (ctx: PayoutsReadyCtx) => ({
+            subject: 'Payouts are ready',
+            template: 'payment.payoutsReady',
+            props: { ...ctx },
+          }),
+        },
+      },
+    ],
+  },
+
+  'payment.payout_action_needed': {
+    label: 'Payout Account Needs A Change',
+    description:
+      'When Razorpay needs a change, rejects, pauses or locks the payout account.',
+    category: 'payments',
+    priority: 'action_required',
+    kind: 'notification',
+    // Money that can't reach the clinic is never something to opt out of.
+    configurable: false,
+    defaults: { inApp: true, push: true },
+    channels: ['inApp', 'push', 'email'],
+    tenant: (ctx: PayoutActionNeededCtx) => ({
+      type: 'clinic' as const,
+      id: ctx.clinicId,
+    }),
+    clickAction: () => ({ route: '/link-clinic-account' }),
+    audiences: [
+      {
+        key: 'admins',
+        roles: ['Admin'],
+        recipients: async (ctx: PayoutActionNeededCtx, { directory }) =>
+          (await directory.getStaffByRole(ctx.clinicId, ['Admin'])).map(
+            (u) => u.id
+          ),
+        message: {
+          inApp: payoutActionInApp,
+          email: (ctx: PayoutActionNeededCtx) => ({
+            subject: ctx.suspended
+              ? 'Payouts are paused'
+              : 'Your payout account needs a change',
+            template: 'payment.payoutActionNeeded',
+            props: { ...ctx },
+          }),
+        },
+      },
+      {
+        // The team hears at once; the payout_blocked follow-up is where they work it.
+        key: 'superadmins',
+        roles: ['Super_Admin'],
+        recipients: async (_ctx: PayoutActionNeededCtx, { directory }) =>
+          (await directory.getSuperAdmins()).map((a) => a.id),
+        message: {
+          inApp: (ctx: PayoutActionNeededCtx) => ({
+            title: ctx.suspended
+              ? "A clinic's payouts are paused"
+              : "A clinic's payout account needs a change",
+            body: `${ctx.reason || 'Razorpay needs a change'}. See Follow-ups → Payout blocked.`,
+          }),
+        },
+      },
+    ],
+  },
+
+  'payment.transfer_failed': {
+    label: 'Payout Failed',
+    description:
+      'When money from an online payment does not reach the clinic bank.',
+    category: 'payments',
+    priority: 'action_required',
+    kind: 'notification',
+    // Money not arriving is never something to opt out of.
+    configurable: false,
+    defaults: { inApp: true, push: false },
+    channels: ['inApp', 'email'],
+    tenant: (ctx: TransferFailedCtx) => ({
+      type: 'clinic' as const,
+      id: ctx.clinicId,
+    }),
+    enrich: async (ctx: TransferFailedCtx, deps) => {
+      const info = await deps.directory.getAppointmentContext(
+        ctx.appointmentId
+      );
+      return info
+        ? { patientName: info.patientName, when: formatSchedule(info) }
+        : {};
+    },
+    clickAction: () => ({ route: '/finance?tab=payouts' }),
+    audiences: [
+      {
+        key: 'admins',
+        roles: ['Admin'],
+        recipients: async (ctx: TransferFailedCtx, { directory }) =>
+          (await directory.getStaffByRole(ctx.clinicId, ['Admin'])).map(
+            (u) => u.id
+          ),
+        message: {
+          inApp: transferFailedInApp,
+          email: transferFailedEmail,
+        },
+      },
+      {
+        key: 'superadmins',
+        roles: ['Super_Admin'],
+        recipients: async (_ctx: TransferFailedCtx, { directory }) =>
+          (await directory.getSuperAdmins()).map((a) => a.id),
+        message: { inApp: transferFailedInApp, email: transferFailedEmail },
+      },
+    ],
+  },
+
   'payment.received': {
     aliases: ['payment_received'],
     label: 'Payment Received',

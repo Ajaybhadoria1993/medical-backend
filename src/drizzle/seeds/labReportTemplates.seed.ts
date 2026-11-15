@@ -1,10 +1,9 @@
-import { sql } from 'drizzle-orm';
-import { database } from '../../configurations/dbConnection';
+import { and, eq, isNull } from 'drizzle-orm';
 import {
   LabReportTemplateParametersModel,
   LabReportTemplatesModel,
 } from '../../main/lab/models/labResult.model';
-import logger from '../../utils/logger';
+import { logSeed, newCounts, syncRow, tally } from './seedSync';
 
 type TemplateParameterSeed = {
   sectionName: string;
@@ -718,78 +717,65 @@ const departmentTemplates: TemplateSeed[] = [
 
 const allTemplates = [...templates, ...departmentTemplates];
 
+/** Global default templates (no lab) by code, and their default parameters by name; on/off stays the admin's. */
 export async function seedLabReportTemplates() {
-  try {
-    logger.info('Seeding lab report templates...');
+  const templateCounts = newCounts();
+  const paramCounts = newCounts();
+  const changed: string[] = [];
+  for (const templateSeed of allTemplates) {
+    const { result, row: template } = await syncRow({
+      table: LabReportTemplatesModel,
+      where: and(
+        eq(LabReportTemplatesModel.code, templateSeed.code),
+        isNull(LabReportTemplatesModel.labId)
+      ),
+      values: {
+        code: templateSeed.code,
+        name: templateSeed.name,
+        sampleType: templateSeed.sampleType,
+        description: templateSeed.description,
+      },
+      createOnly: { labId: null, isActive: true },
+    });
+    tally(templateCounts, changed, templateSeed.code, result);
 
-    for (const templateSeed of allTemplates) {
-      const [template] = await database
-        .insert(LabReportTemplatesModel)
-        .values({
+    for (const parameter of templateSeed.parameters) {
+      const { result: paramResult } = await syncRow({
+        table: LabReportTemplateParametersModel,
+        where: and(
+          eq(LabReportTemplateParametersModel.templateId, template.id),
+          eq(
+            LabReportTemplateParametersModel.parameterName,
+            parameter.parameterName
+          ),
+          isNull(LabReportTemplateParametersModel.labId),
+          eq(LabReportTemplateParametersModel.sourceType, 'DEFAULT')
+        ),
+        values: {
+          templateId: template.id,
+          parameterName: parameter.parameterName,
+          sectionName: parameter.sectionName,
+          unit: parameter.unit,
+          referenceRange: parameter.referenceRange,
+          inputType: parameter.inputType,
+          sortOrder: parameter.sortOrder,
+          isRequired: parameter.isRequired ?? true,
+        },
+        createOnly: {
           labId: null,
-          name: templateSeed.name,
-          code: templateSeed.code,
-          sampleType: templateSeed.sampleType,
-          description: templateSeed.description,
           isActive: true,
-        })
-        .onConflictDoUpdate({
-          target: LabReportTemplatesModel.code,
-          targetWhere: sql`${LabReportTemplatesModel.labId} IS NULL`,
-          set: {
-            labId: null,
-            name: templateSeed.name,
-            sampleType: templateSeed.sampleType,
-            description: templateSeed.description,
-            isActive: true,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
-
-      for (const parameter of templateSeed.parameters) {
-        await database
-          .insert(LabReportTemplateParametersModel)
-          .values({
-            templateId: template.id,
-            labId: null,
-            sectionName: parameter.sectionName,
-            parameterName: parameter.parameterName,
-            unit: parameter.unit,
-            referenceRange: parameter.referenceRange,
-            inputType: parameter.inputType,
-            sortOrder: parameter.sortOrder,
-            isRequired: parameter.isRequired ?? true,
-            isActive: true,
-            sourceType: 'DEFAULT',
-            isCustom: false,
-          })
-          .onConflictDoUpdate({
-            target: [
-              LabReportTemplateParametersModel.templateId,
-              LabReportTemplateParametersModel.parameterName,
-            ],
-            targetWhere: sql`${LabReportTemplateParametersModel.labId} IS NULL AND ${LabReportTemplateParametersModel.sourceType} = 'DEFAULT'`,
-            set: {
-              sectionName: parameter.sectionName,
-              unit: parameter.unit,
-              referenceRange: parameter.referenceRange,
-              inputType: parameter.inputType,
-              sortOrder: parameter.sortOrder,
-              isRequired: parameter.isRequired ?? true,
-              isActive: true,
-              sourceType: 'DEFAULT',
-              isCustom: false,
-              labId: null,
-              updatedAt: new Date(),
-            },
-          });
-      }
+          sourceType: 'DEFAULT',
+          isCustom: false,
+        },
+      });
+      tally(
+        paramCounts,
+        changed,
+        `${templateSeed.code}/${parameter.parameterName}`,
+        paramResult
+      );
     }
-
-    logger.info('Lab report templates seeded successfully');
-  } catch (error) {
-    logger.error('Error seeding lab report templates', error);
-    throw error;
   }
+  logSeed('lab report templates', templateCounts);
+  logSeed('lab report parameters', paramCounts, changed);
 }

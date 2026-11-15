@@ -1,4 +1,5 @@
 import handlebars from 'handlebars';
+import { visitPrintSections } from '../main/examination';
 
 /**
  * Shared Handlebars helpers for the prescription/report templates, imported for
@@ -286,18 +287,12 @@ handlebars.registerHelper('doseSlots', (frequency?: unknown) =>
   parseDoseSlots(frequency)
 );
 
-/**
- * Turns the free-form `additionalInformation` map into `[{key, value}, ...]` so
- * a template can `{{#each}}` it — Handlebars cannot iterate a plain object's
- * entries. Empty/placeholder entries are dropped so they don't print a bullet.
- */
-handlebars.registerHelper('objectEntries', (obj: unknown) => {
-  if (!obj || typeof obj !== 'object') return [];
-
-  return Object.entries(obj as Record<string, unknown>)
-    .filter(([, value]) => hasMeaningfulValue(value))
-    .map(([key, value]) => ({ key, value: toText(value) }));
-});
+/** History, then chart notes under their chart's heading; see `specialtySections.ts`. */
+handlebars.registerHelper(
+  'specialtySections',
+  (notes: unknown, history: unknown, showCharts: unknown) =>
+    visitPrintSections(notes, history, showCharts)
+);
 
 /** Shape of `i18n` on the render data; built by PrescriptionTranslationService.buildI18n. */
 type BilingualContext = {

@@ -20,14 +20,17 @@ import {
   updateNextDeliveryDateController,
   updatePatientSubscriptionController,
 } from '../../controllers/patientSubscription.controller';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const patientSubscriptionRouter = express.Router();
 
 patientSubscriptionRouter.post(
   '/create-patient-subscription',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createSubscriptionSchema, 'body'),
   createPatientSubscriptionController
 );
@@ -42,7 +45,7 @@ patientSubscriptionRouter.put(
 patientSubscriptionRouter.get(
   '/get-patient-subscriptions',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSubscriptionsQuerySchema, 'query'),
   getPatientSubscriptionsController
 );
@@ -50,7 +53,7 @@ patientSubscriptionRouter.get(
 patientSubscriptionRouter.get(
   '/get-patient-subscription/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSubscriptionByIdParamsSchema, 'params'),
   getPatientSubscriptionByIdController
 );
@@ -65,7 +68,7 @@ patientSubscriptionRouter.get(
 patientSubscriptionRouter.get(
   '/get-patient-subscriptions-notification',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSubscriptionsNotificationQuerySchema, 'query'),
   getPatientSubscriptionsNotificationController
 );
@@ -73,14 +76,14 @@ patientSubscriptionRouter.get(
 patientSubscriptionRouter.post(
   '/mark-subscription-notification-read',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   markSubscriptionNotificationReadController
 );
 
 patientSubscriptionRouter.patch(
   '/update-delivery-date/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(updateNextDeliveryDateSchema),
   updateNextDeliveryDateController
 );
@@ -88,7 +91,7 @@ patientSubscriptionRouter.patch(
 patientSubscriptionRouter.get(
   '/stats',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getPatientSubscriptionStatsController
 );
 

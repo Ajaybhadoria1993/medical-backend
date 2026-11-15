@@ -1,3 +1,4 @@
+import { PrescriptionPreviewService } from '../../reports/services/prescriptionPreview.service';
 import {
   and,
   desc,
@@ -15,6 +16,8 @@ import { DoctorWeeklyShiftCapacityModel } from '../../appointment-engine/models/
 import redisClient from '../../../configurations/redisConfig';
 import {
   CacheKeys,
+  invalidateCache,
+  invalidateCacheByPattern,
   invalidateCacheMany,
   withCacheInvalidation,
 } from '../../../utils/cache.util';
@@ -45,38 +48,86 @@ import {
   getDoctorAvailabilityRangeDto,
   UpdateServiceByIdDto,
   ToggleServiceStatusDto,
+  UpsertDoctorPreferencesInput,
 } from '../schemas/doctor.schemas';
 import {
   doctorPrescriptionTypeModel,
+  DoctorExperienceModel,
   DoctorQualificationModel,
 } from '../models/doctor.model';
 import { HttpError } from '../../../middlewear/errorHandler';
 import { pagination } from '../../../utils/utils';
 import { AuthUser } from '../../../middlewear/auth.middleware';
 import { alias } from 'drizzle-orm/pg-core';
-import {
-  PrescriptionModel,
-  PrescriptionTemplateModel,
-} from '../../reports/models/reports.model';
+import { PrescriptionModel } from '../../reports/models/reports.model';
 import { MedicineModel } from '../../medicine/models/medicine.model';
 import { DoctorPreferenceModel } from '../models/doctorPreference.model';
 import { mergeInstructionSuggestions } from '../utils/instructionSuggestions.utils';
 import { INSTRUCTION_SUGGESTION_DEFAULTS } from '../utils/instructionSuggestionDefaults';
 import { doctorTemplateModel } from '../models/doctorTemplate.model';
 import {
+  configSpecialty,
   MAX_OWN_SUGGESTIONS,
   resolvePreferenceLists,
+  toKnownTools,
   type SuggestionListKey,
 } from '../../../utils/doctorSpecialtyConfig';
 import { doctorManualTemplateModel } from '../models/doctorManualTemplate.model';
 import { deleteFromS3 } from '../../../configurations/s3';
 import { isDoctorAssignedToClinic } from '../../../utils/clinicOwnership';
-import { buildFontUrl, getPrimaryFont } from '../../../utils/fontConfig.utils';
 import logger from '../../../utils/logger';
+import { doctorDegreeLine } from '../../../utils/qualificationCatalog';
 import { getISTDateString } from '../../../utils/istDateTime';
 import { notifyDoctorProfileUpdateRequested } from '../../../utils/notificationHelpers';
 
 export class DoctorServices {
+  /** The doctor's degree line every screen shows ("BUMS, MD Anaesthesiology"); `max` keeps the highest ones. */
+  static async degreeLine(doctorId: string, max?: number): Promise<string> {
+    return (
+      (await DoctorServices.degreeLines([doctorId], max)).get(doctorId) ?? ''
+    );
+  }
+
+  /** Degree lines for many doctors in two queries, for lists (one call per page, never per row). */
+  static async degreeLines(
+    doctorIds: string[],
+    max?: number
+  ): Promise<Map<string, string>> {
+    const ids = [...new Set(doctorIds)];
+    if (!ids.length) return new Map();
+    const [rows, professionals] = await Promise.all([
+      database
+        .select({
+          userId: DoctorQualificationModel.userId,
+          qualificationTitle: DoctorQualificationModel.qualificationTitle,
+          qualificationType: DoctorQualificationModel.qualificationType,
+          yearOfCompletion: DoctorQualificationModel.yearOfCompletion,
+        })
+        .from(DoctorQualificationModel)
+        .where(inArray(DoctorQualificationModel.userId, ids)),
+      database
+        .select({
+          userId: UserProfessionalModel.userId,
+          qualification: UserProfessionalModel.qualification,
+        })
+        .from(UserProfessionalModel)
+        .where(inArray(UserProfessionalModel.userId, ids)),
+    ]);
+    const legacy = new Map(
+      professionals.map((p) => [p.userId, p.qualification])
+    );
+    return new Map(
+      ids.map((id) => [
+        id,
+        doctorDegreeLine(
+          rows.filter((r) => r.userId === id),
+          legacy.get(id),
+          max
+        ),
+      ])
+    );
+  }
+
   private static async assertDoctorInClinic(
     doctorId: string,
     clinicId: string
@@ -111,6 +162,7 @@ export class DoctorServices {
         'licenseNumber',
         'yearsOfExperience',
         'qualification',
+        'languagesSpoken',
       ] as const;
 
       for (const k of allowedUserFields) {
@@ -160,13 +212,17 @@ export class DoctorServices {
       (payload as any).adminProfile?.qualifications ??
       payload.qualifications;
     const about =
-      (payload as any).about || (payload as any).doctorProfile?.about;
+      (payload as any).about ?? (payload as any).doctorProfile?.about;
 
     if (about !== undefined) {
       await tx
         .update(UserProfessionalModel)
         .set({ about, updatedAt: new Date() })
         .where(eq(UserProfessionalModel.userId, userId));
+    }
+
+    if (Array.isArray(payload.experiences)) {
+      await this.replaceExperiences(tx, userId, payload.experiences);
     }
 
     if (!Array.isArray(qualifications)) return;
@@ -212,6 +268,8 @@ export class DoctorServices {
             // specialization: q.specialization,
             boardOrUniversity: q.boardOrUniversity,
             yearOfCompletion: q.yearOfCompletion,
+            // Omitted leaves the saved note alone; '' clears it.
+            notes: q.notes === undefined ? undefined : q.notes || null,
             updatedAt: new Date(),
           })
           .where(
@@ -231,6 +289,7 @@ export class DoctorServices {
         // specialization: q.specialization,
         boardOrUniversity: q.boardOrUniversity,
         yearOfCompletion: q.yearOfCompletion,
+        notes: q.notes || null,
         createdAt: new Date(),
         updatedAt: new Date(),
       }));
@@ -244,6 +303,31 @@ export class DoctorServices {
     if (insertData.length > 0) {
       await tx.insert(DoctorQualificationModel).values(insertData);
     }
+  }
+
+  // The list is small (max 15) and has no external references, so it is replaced whole.
+  private static async replaceExperiences(
+    tx: any,
+    userId: string,
+    experiences: NonNullable<FulupdateDoctorScheamasDto['experiences']>
+  ) {
+    await tx
+      .delete(DoctorExperienceModel)
+      .where(eq(DoctorExperienceModel.userId, userId));
+    if (experiences.length === 0) return;
+    await tx.insert(DoctorExperienceModel).values(
+      experiences.map((e) => ({
+        userId,
+        organisation: e.organisation,
+        role: e.role,
+        city: e.city || null,
+        startMonth: e.startMonth,
+        startYear: e.startYear,
+        endMonth: e.isCurrent ? null : (e.endMonth ?? null),
+        endYear: e.isCurrent ? null : (e.endYear ?? null),
+        isCurrent: e.isCurrent,
+      }))
+    );
   }
 
   public static async updateUser(
@@ -267,6 +351,7 @@ export class DoctorServices {
         payload.qualifications;
       if (
         Array.isArray(qualifications) ||
+        Array.isArray(payload.experiences) ||
         payload.doctorProfile ||
         profileImage ||
         typeof (payload as any).about !== 'undefined'
@@ -662,7 +747,12 @@ export class DoctorServices {
     await Promise.all([
       scanAndDelete(`doctor_availability_range:${clinicId}:${currentUserId}:*`),
       scanAndDelete(`doctors_availability_on_date:${clinicId}:*`),
+      invalidateCacheByPattern(
+        CacheKeys.followUpDoctorDayPattern(clinicId, currentUserId)
+      ),
       invalidateCacheMany(CacheKeys.doctorPublicProfileAll(currentUserId)),
+      // GET /clinic serves the owner's profile from this; without it the Profile page shows old values.
+      redisClient.del(CacheKeys.clinicDetails(clinicId)),
     ]).catch((err) => {
       logger.error(
         `[DoctorServices] Cache invalidation failed for doctor=${currentUserId}`,
@@ -1050,6 +1140,16 @@ export class DoctorServices {
       .from(DoctorQualificationModel)
       .where(eq(DoctorQualificationModel.userId, currentUserId));
 
+    const experiences = await database
+      .select()
+      .from(DoctorExperienceModel)
+      .where(eq(DoctorExperienceModel.userId, currentUserId))
+      .orderBy(
+        desc(DoctorExperienceModel.isCurrent),
+        desc(DoctorExperienceModel.startYear),
+        desc(DoctorExperienceModel.startMonth)
+      );
+
     // Fetch professional details (speciality)
     const [professional] = await database
       .select()
@@ -1067,7 +1167,9 @@ export class DoctorServices {
             specialization: professional?.specialization ?? [],
             about: professional?.about ?? null,
             registrationNumber: professional?.registrationNumber ?? null,
+            languagesSpoken: professional?.languagesSpoken ?? [],
             qualifications,
+            experiences,
           };
         })()
       : null;
@@ -1181,6 +1283,7 @@ export class DoctorServices {
             specialization: DoctorQualificationModel.specialization,
             boardOrUniversity: DoctorQualificationModel.boardOrUniversity,
             yearOfCompletion: DoctorQualificationModel.yearOfCompletion,
+            notes: DoctorQualificationModel.notes,
           })
           .from(DoctorQualificationModel)
           .where(eq(DoctorQualificationModel.userId, params.doctorId))
@@ -1254,6 +1357,8 @@ export class DoctorServices {
         slotMinutes: ClinicAvailability.slotMinutes,
         stepMinutes: ClinicAvailability.stepMinutes,
         noOfPatients: ClinicAvailability.noOfPatients,
+        breaksStart: ClinicAvailability.breaksStart,
+        breaksEnd: ClinicAvailability.breaksEnd,
       })
       .from(ClinicAvailability)
       .where(
@@ -1273,6 +1378,7 @@ export class DoctorServices {
             breakType: ClinicAvailabilityBreak.breakType,
             startTime: ClinicAvailabilityBreak.startTime,
             endTime: ClinicAvailabilityBreak.endTime,
+            status: ClinicAvailabilityBreak.status,
           })
           .from(ClinicAvailabilityBreak)
           .where(inArray(ClinicAvailabilityBreak.clinicAvailabilityId, avIds))
@@ -1731,7 +1837,7 @@ export class DoctorServices {
       const totalCount = Number(totalRecords[0]?.count) || 0;
       const totalPages = Math.ceil(totalCount / pageSize);
 
-      // Summary Statistics (Total Amount and Payment Mode Totals)
+      // Subscription sales totals, not visit money: subscriptions are not in money_entries.
       const statsResult = await tx
         .select({
           paymentMode: ClinicAppointmentPlainModel.paymentMode,
@@ -2286,24 +2392,32 @@ export class DoctorServices {
   static async getDoctorPreferences(doctorId: string, clinicId: string) {
     await DoctorServices.assertDoctorInClinic(doctorId, clinicId);
 
-    const [prefs] = await database
-      .select()
-      .from(DoctorPreferenceModel)
-      .where(eq(DoctorPreferenceModel.doctorId, doctorId));
-
-    const [doctor] = await database
-      .select({ speciality: UserProfessionalModel.speciality })
-      .from(UserModel)
-      .leftJoin(
-        UserProfessionalModel,
-        eq(UserProfessionalModel.userId, UserModel.id)
-      )
-      .where(eq(UserModel.id, doctorId));
+    // Independent reads, so they share one round trip.
+    const [[prefs], [doctor]] = await Promise.all([
+      database
+        .select()
+        .from(DoctorPreferenceModel)
+        .where(eq(DoctorPreferenceModel.doctorId, doctorId)),
+      database
+        .select({
+          speciality: UserProfessionalModel.speciality,
+          specialization: UserProfessionalModel.specialization,
+        })
+        .from(UserModel)
+        .leftJoin(
+          UserProfessionalModel,
+          eq(UserProfessionalModel.userId, UserModel.id)
+        )
+        .where(eq(UserModel.id, doctorId)),
+    ]);
 
     return {
       ...prefs,
       doctorId,
-      ...resolvePreferenceLists(doctor?.speciality, prefs),
+      ...resolvePreferenceLists(
+        configSpecialty(doctor?.speciality, doctor?.specialization),
+        prefs
+      ),
       instructionSuggestions: prefs?.instructionSuggestions ?? {},
       instructionSuggestionDefaults: INSTRUCTION_SUGGESTION_DEFAULTS,
     };
@@ -2313,26 +2427,22 @@ export class DoctorServices {
   static async upsertDoctorPreferences(
     doctorId: string,
     clinicId: string,
-    data: {
-      headerOrder?: string[];
-      habitList?: string[];
-      allergyList?: string[];
-      diagnosisList?: string[];
-      preDiagnosisList?: string[];
-      surgerySuggestedList?: string[];
-      adviceSuggestionsList?: string[];
-      dietarySuggestionsList?: string[];
-      instructionSuggestions?: Record<string, string[]>;
-    }
+    data: UpsertDoctorPreferencesInput
   ) {
     await DoctorServices.assertDoctorInClinic(doctorId, clinicId);
 
     // Store only the doctor's own entries (the Preference page sends defaults too), capped per list.
     const [doctor] = await database
-      .select({ speciality: UserProfessionalModel.speciality })
+      .select({
+        speciality: UserProfessionalModel.speciality,
+        specialization: UserProfessionalModel.specialization,
+      })
       .from(UserProfessionalModel)
       .where(eq(UserProfessionalModel.userId, doctorId));
-    const { customLists } = resolvePreferenceLists(doctor?.speciality, data);
+    const { customLists, defaultLists } = resolvePreferenceLists(
+      configSpecialty(doctor?.speciality, doctor?.specialization),
+      data
+    );
     const ownLists: Partial<Record<SuggestionListKey, string[]>> = {};
     for (const key of Object.keys(customLists) as SuggestionListKey[]) {
       if (data[key] === undefined) continue;
@@ -2355,6 +2465,15 @@ export class DoctorServices {
       const values = {
         ...data,
         ...ownLists,
+        hiddenOptions: DoctorServices.nextHiddenOptions(
+          existing[0]?.hiddenOptions,
+          data,
+          defaultLists
+        ),
+        ...(data.specialtyTools !== undefined && {
+          specialtyTools:
+            data.specialtyTools && toKnownTools(data.specialtyTools),
+        }),
         ...(data.instructionSuggestions && {
           instructionSuggestions: mergeInstructionSuggestions(
             existing[0]?.instructionSuggestions,
@@ -2388,6 +2507,25 @@ export class DoctorServices {
     });
   }
 
+  /** Hidden built-ins after a save: the sent set (or the stored one), minus anything the save lists again.
+   *  Only real built-ins are kept; one re-added while prescribing shows again. */
+  private static nextHiddenOptions(
+    stored: Partial<Record<string, string[]>> | null | undefined,
+    data: UpsertDoctorPreferencesInput,
+    defaults: Record<SuggestionListKey, string[]>
+  ) {
+    const next: Partial<Record<SuggestionListKey, string[]>> = {};
+    for (const key of Object.keys(defaults) as SuggestionListKey[]) {
+      const builtIn = new Set(defaults[key].map((x) => x.toLowerCase()));
+      const listed = new Set((data[key] ?? []).map((x) => x.toLowerCase()));
+      const hidden = (data.hiddenOptions?.[key] ?? stored?.[key] ?? []).filter(
+        (x) => builtIn.has(x.toLowerCase()) && !listed.has(x.toLowerCase())
+      );
+      if (hidden.length > 0) next[key] = [...new Set(hidden)];
+    }
+    return next;
+  }
+
   static async getDoctorPrescriptionTemplate(
     doctorId: string,
     clinicId: string
@@ -2409,501 +2547,10 @@ export class DoctorServices {
       return template;
     }
 
-    const sampleData = {
-      clinic: {
-        name: 'My Clinic',
-        address: '12-B, Medical Street, Vijay Nagar',
-        city: 'Indore',
-        state: 'Madhya Pradesh',
-        zipcode: '452010',
-        phone: '9876543210',
-        logo: 'https://res.cloudinary.com/ddzkedas8/image/upload/v1773045466/image_rx09np.png',
-        tagline: 'Your Health, Our Priority',
-      },
-      doctor: {
-        name: 'Udit Chouhan',
-        email: 'udit.chouhan@ims.com',
-        qualification: 'MBBS, MD',
-        speciality: 'General Physician',
-        registrationNumber: 'DVGCS456123612',
-        availability: [
-          {
-            day: 'Mon',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Tue',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Wed',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Thu',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Fri',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          { day: 'Sat', isAvailable: false, startTime: '', endTime: '' },
-          { day: 'Sun', isAvailable: false, startTime: '', endTime: '' },
-        ],
-      },
-      patient: {
-        name: 'Amrendra Kumar',
-        age: '35',
-        gender: 'Male',
-        address: '789 Health City, Palasia, Indore',
-      },
-      appointmentDate: '15-Mar-2024',
-      token: '20',
-      symptoms: [{ name: 'Headache' }, { name: 'Fever' }, { name: 'Cough' }],
-      hasTests: 2,
-      testNames: 'CBC, Vitamin B12',
-      diagnosis: 'Viral Fever, Respiratory Tract Infection',
-      habits: ['Smoking', 'Tobacco'],
-      allergies: ['Dust', 'Syrup'],
-      visitingDays: ['10-Mar-2026', '16-Mar-2026'],
-      visitingNotes: 'To checkup of health condition',
-      surgerySuggested: ['Mole Removal', 'Suturing Wounds'],
-      vitalsMoreThanOne: true,
-      vitals: {
-        bpSys: 120,
-        bpDia: 80,
-        fbs: 95,
-        ppbs: 140,
-        rbs: 110,
-        pulse: 72,
-        spo2: 98,
-        temperatureC: 98.6,
-        weightKg: 70,
-        heightCm: 170,
-        bmi: 24.2,
-      },
-      prescriptions: [
-        {
-          medicineName: 'Paracip 500',
-          dosage: '2 tablet',
-          frequency: 'Twice a day',
-          duration: '5 days',
-          notes: 'After Food',
-        },
-        {
-          medicineName: 'Asthakind',
-          dosage: '1 spoon',
-          frequency: 'Twice a day',
-          duration: '3 days',
-          notes: '-',
-        },
-      ],
-      advice:
-        'Take adequate rest. Drink plenty of warm water. Avoid cold food items. Follow up in 3 days if symptoms persist.',
-      dietarySuggestion: 'Please drink orange juice twice a day.',
-      followUpDate: '18-Mar-2024',
-    };
-
-    let finalHtml = template.templateHtml;
-
-    // Fetch template config for colors and font
-    const [templateConfigData] = await database
-      .select()
-      .from(PrescriptionTemplateModel)
-      .where(eq(PrescriptionTemplateModel.doctorId, doctorId))
-      .limit(1);
-
-    const config = templateConfigData || {
-      fontFamily: 'Inter, sans-serif',
-      color1: '#0A6C74',
-      color2: '#EBFCF4',
-      color3: '#333333',
-      color4: '#666666',
-      color5: '#e0e0e0',
-      color6: '#b22222',
-      color7: '#f9f9f9',
-      color8: '#ffffff',
-      color9: '#000000',
-      color10: '#856404',
-    };
-
-    // Replace templateConfig variables
-    finalHtml = finalHtml
-      .replace(/\{\{templateConfig\.fontFamily\}\}/g, config.fontFamily)
-      .replace(
-        /\{\{templateConfig\.primaryFont\}\}/g,
-        getPrimaryFont(config.fontFamily)
-      )
-      .replace(
-        /\{\{templateConfig\.fontUrl\}\}/g,
-        buildFontUrl(config.fontFamily)
-      )
-      .replace(/\{\{templateConfig\.colors\.color1\}\}/g, config.color1)
-      .replace(/\{\{templateConfig\.colors\.color2\}\}/g, config.color2)
-      .replace(/\{\{templateConfig\.colors\.color3\}\}/g, config.color3)
-      .replace(/\{\{templateConfig\.colors\.color4\}\}/g, config.color4)
-      .replace(/\{\{templateConfig\.colors\.color5\}\}/g, config.color5)
-      .replace(/\{\{templateConfig\.colors\.color6\}\}/g, config.color6)
-      .replace(/\{\{templateConfig\.colors\.color7\}\}/g, config.color7)
-      .replace(/\{\{templateConfig\.colors\.color8\}\}/g, config.color8)
-      .replace(/\{\{templateConfig\.colors\.color9\}\}/g, config.color9)
-      .replace(/\{\{templateConfig\.colors\.color10\}\}/g, config.color10);
-
-    // Replace simple variables
-    finalHtml = finalHtml
-      .replace(/\{\{clinic\.name\}\}/g, sampleData.clinic.name)
-      .replace(/\{\{clinic\.address\}\}/g, sampleData.clinic.address)
-      .replace(/\{\{clinic\.city\}\}/g, sampleData.clinic.city)
-      .replace(/\{\{clinic\.state\}\}/g, sampleData.clinic.state)
-      .replace(/\{\{clinic\.zipcode\}\}/g, sampleData.clinic.zipcode)
-      .replace(/\{\{clinic\.phone\}\}/g, sampleData.clinic.phone)
-      .replace(/\{\{clinic\.tagline\}\}/g, sampleData.clinic.tagline)
-      .replace(/\{\{doctor\.name\}\}/g, sampleData.doctor.name)
-      .replace(/\{\{doctor\.speciality\}\}/g, sampleData.doctor.speciality)
-      .replace(
-        /\{\{doctor\.qualification\}\}/g,
-        sampleData.doctor.qualification
-      )
-      .replace(/\{\{doctor\.email\}\}/g, sampleData.doctor.email)
-      .replace(
-        /\{\{doctor\.registrationNumber\}\}/g,
-        sampleData.doctor.registrationNumber
-      )
-      .replace(
-        /\{\{#if doctor\.registrationNumber\}\}([\s\S]*?)\{\{\/if\}\}/g,
-        '$1'
-      )
-      .replace(/\{\{patient\.name\}\}/g, sampleData.patient.name)
-      .replace(/\{\{patient\.age\}\}/g, sampleData.patient.age)
-      .replace(/\{\{patient\.gender\}\}/g, sampleData.patient.gender)
-      .replace(/\{\{patient\.address\}\}/g, sampleData.patient.address)
-      .replace(/\{\{appointmentDate\}\}/g, sampleData.appointmentDate)
-      .replace(/\{\{token\}\}/g, sampleData.token)
-      .replace(/\{\{diagnosis\}\}/g, sampleData.diagnosis)
-      .replace(/\{\{testNames\}\}/g, sampleData.testNames)
-      .replace(/\{\{followUpDate\}\}/g, sampleData.followUpDate)
-      .replace(/\{\{advice\}\}/g, sampleData.advice)
-      .replace(/\{\{dietarySuggestion\}\}/g, sampleData.dietarySuggestion)
-      .replace(/\{\{vitals\.bpSys\}\}/g, sampleData.vitals.bpSys.toString())
-      .replace(/\{\{vitals\.bpDia\}\}/g, sampleData.vitals.bpDia.toString())
-      .replace(/\{\{vitals\.fbs\}\}/g, sampleData.vitals.fbs.toString())
-      .replace(/\{\{vitals\.ppbs\}\}/g, sampleData.vitals.ppbs.toString())
-      .replace(/\{\{vitals\.rbs\}\}/g, sampleData.vitals.rbs.toString())
-      .replace(/\{\{vitals\.pulse\}\}/g, sampleData.vitals.pulse.toString())
-      .replace(/\{\{vitals\.spo2\}\}/g, sampleData.vitals.spo2.toString())
-      .replace(/\{\{visitingNotes\}\}/g, sampleData.visitingNotes)
-      .replace(
-        /\{\{vitals\.temperatureC\}\}/g,
-        sampleData.vitals.temperatureC.toString()
-      )
-      .replace(
-        /\{\{vitals\.weightKg\}\}/g,
-        sampleData.vitals.weightKg.toString()
-      )
-      .replace(
-        /\{\{vitals\.heightCm\}\}/g,
-        sampleData.vitals.heightCm.toString()
-      )
-      .replace(/\{\{vitals\.bmi\}\}/g, sampleData.vitals.bmi.toString());
-
-    // Handle symptoms loop - preserve badge structure
-    const symptomsMatch = finalHtml.match(
-      /\{\{#each symptoms\}\}([\s\S]*?)\{\{\/each\}\}/s
+    // Same render as the printed PDF, filled with the shared sample visit.
+    const finalHtml = PrescriptionPreviewService.renderCustomTemplate(
+      template.templateHtml
     );
-    if (symptomsMatch) {
-      const symptomTemplate = symptomsMatch[1];
-      let symptomsHtml = '';
-      sampleData.symptoms.forEach((s, index) => {
-        let itemHtml = symptomTemplate.replace(/\{\{this\.name\}\}/g, s.name);
-
-        // Handle @last for commas if present
-        if (index === sampleData.symptoms.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        symptomsHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each symptoms\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        symptomsHtml
-      );
-    }
-
-    // Handle habits loop - preserve badge structure
-    const habitsMatch = finalHtml.match(
-      /\{\{#each habits\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (habitsMatch) {
-      const habitTemplate = habitsMatch[1];
-      let habitsHtml = '';
-      sampleData.habits.forEach((habit, index) => {
-        let itemHtml = habitTemplate.replace(/\{\{this\}\}/g, habit);
-
-        if (index === sampleData.habits.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        habitsHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each habits\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        habitsHtml
-      );
-    }
-
-    // Handle allergies loop - preserve badge structure
-    const allergiesMatch = finalHtml.match(
-      /\{\{#each allergies\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (allergiesMatch) {
-      const allergyTemplate = allergiesMatch[1];
-      let allergiesHtml = '';
-      sampleData.allergies.forEach((allergy, index) => {
-        let itemHtml = allergyTemplate.replace(/\{\{this\}\}/g, allergy);
-
-        if (index === sampleData.allergies.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        allergiesHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each allergies\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        allergiesHtml
-      );
-    }
-
-    // NEW: Handle visitingDays loop
-    const visitingDaysMatch = finalHtml.match(
-      /\{\{#each visitingDays\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (visitingDaysMatch) {
-      const visitingDayTemplate = visitingDaysMatch[1];
-      let visitingDaysHtml = '';
-      sampleData.visitingDays.forEach((day, index) => {
-        let itemHtml = visitingDayTemplate.replace(/\{\{this\}\}/g, day);
-
-        if (index === sampleData.visitingDays.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        visitingDaysHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each visitingDays\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        visitingDaysHtml
-      );
-    }
-
-    // NEW: Handle surgerySuggested loop
-    const surgerySuggestedMatch = finalHtml.match(
-      /\{\{#each surgerySuggested\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (surgerySuggestedMatch) {
-      const surgeryTemplate = surgerySuggestedMatch[1];
-      let surgeryHtml = '';
-      sampleData.surgerySuggested.forEach((surgery, index) => {
-        let itemHtml = surgeryTemplate.replace(/\{\{this\}\}/g, surgery);
-
-        if (index === sampleData.surgerySuggested.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        surgeryHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each surgerySuggested\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        surgeryHtml
-      );
-    }
-
-    finalHtml = finalHtml.replace(
-      /\{\{#if token\}\}[\s\S]*?\{\{token\}\}[\s\S]*?\{\{else\}\}[\s\S]*?\{\{appointmentTime\}\}[\s\S]*?\{\{\/if\}\}/g,
-      `<div style="font-size: 11px;">Token : ${sampleData.token}</div>`
-    );
-
-    // Remove any remaining appointmentTime placeholders
-    finalHtml = finalHtml.replace(/\{\{appointmentTime\}\}/g, '');
-
-    finalHtml = finalHtml.replace(/Time:\s*/g, '');
-
-    // Handle each loops for simple comma-separated lists
-    finalHtml = finalHtml
-      .replace(
-        /\{\{#each symptoms\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.symptoms.map((s) => s.name).join(', ')
-      )
-      .replace(
-        /\{\{#each habits\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.habits.join(', ')
-      )
-      .replace(
-        /\{\{#each allergies\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.allergies.join(', ')
-      )
-      .replace(
-        /\{\{#each visitingDays\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.visitingDays.join(', ')
-      )
-      .replace(
-        /\{\{#each surgerySuggested\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.surgerySuggested.join(', ')
-      );
-
-    // Handle doctor availability loop - preserve structure
-    const availabilityMatch = finalHtml.match(
-      /\{\{#each doctor\.availability\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (availabilityMatch) {
-      const availabilityTemplate = availabilityMatch[1];
-      let availabilityHtml = '';
-
-      sampleData.doctor.availability.forEach((a) => {
-        // Create display text
-        const displayText = a.isAvailable
-          ? `${a.startTime} - ${a.endTime}`
-          : 'Off';
-
-        // Start with template
-        let itemHtml = availabilityTemplate;
-
-        // Replace day
-        itemHtml = itemHtml.replace(/\{\{this\.day\}\}/g, a.day);
-
-        // Replace the entire if block structure with just display text
-        itemHtml = itemHtml.replace(
-          /\{\{#if this\.isAvailable\}\}[\s\S]*?\{\{this\.display\}\}[\s\S]*?Off[\s\S]*?\{\{\/if\}\}/g,
-          displayText
-        );
-
-        availabilityHtml += itemHtml;
-      });
-
-      finalHtml = finalHtml.replace(
-        /\{\{#each doctor\.availability\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        availabilityHtml
-      );
-    }
-
-    // Handle prescriptions loop - preserve table structure
-    const prescriptionsMatch = finalHtml.match(
-      /\{\{#each prescriptions\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (prescriptionsMatch) {
-      const prescriptionTemplate = prescriptionsMatch[1];
-      let prescriptionsHtml = '';
-
-      sampleData.prescriptions.forEach((p) => {
-        const itemHtml = prescriptionTemplate
-          .replace(/\{\{this\.medicineName\}\}/g, p.medicineName)
-          .replace(/\{\{this\.dosage\}\}/g, p.dosage)
-          .replace(/\{\{this\.frequency\}\}/g, p.frequency)
-          .replace(/\{\{this\.duration\}\}/g, p.duration)
-          .replace(/\{\{this\.notes\}\}/g, p.notes);
-
-        prescriptionsHtml += itemHtml;
-      });
-
-      finalHtml = finalHtml.replace(
-        /\{\{#each prescriptions\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        prescriptionsHtml
-      );
-    }
-
-    const logoRegex = /\{\{#if clinic\.logo\}\}([\s\S]*?)\{\{\/if\}\}/s;
-    finalHtml = finalHtml.replace(logoRegex, (match, p1) => {
-      return p1.replace(/\{\{clinic\.logo\}\}/g, sampleData.clinic.logo);
-    });
-
-    // Remove any remaining mustache tags
-    finalHtml = finalHtml
-      .replace(/\{\{#if token\}\}/g, '')
-      .replace(/\{\{else\}\}/g, '')
-      .replace(/\{\{\/if\}\}/g, '');
-
-    // Remove all remaining if/else tags but keep content
-    finalHtml = finalHtml
-      .replace(/\{\{#if followUpDate\}\}\s*/g, '')
-      .replace(/\{\{#if diagnosis\}\}\s*/g, '')
-      .replace(/\{\{#if testNames\}\}\s*/g, '')
-      .replace(/\{\{#if habits\}\}\s*/g, '')
-      .replace(/\{\{#if allergies\}\}\s*/g, '')
-      .replace(/\{\{#if symptoms\.length\}\}\s*/g, '')
-      .replace(/\{\{#if vitalsMoreThanOne\}\}\s*/g, '')
-      .replace(/\{\{#if hasTests\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.bpSys\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.bpDia\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.fbs\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.ppbs\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.rbs\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.pulse\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.spo2\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.temperatureC\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.weightKg\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.heightCm\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.bmi\}\}\s*/g, '')
-      .replace(/\{\{#if prescriptions\.length\}\}\s*/g, '')
-      .replace(/\{\{#if advice\}\}\s*/g, '')
-      .replace(/\{\{#if dietarySuggestion\}\}\s*/g, '')
-      .replace(/\{\{#if visitingDays\}\}\s*/g, '')
-      .replace(/\{\{#if surgerySuggested\}\}\s*/g, '')
-      .replace(/\{\{#if visitingDays\.length\}\}\s*/g, '')
-      .replace(/\{\{#if visitingNotes\}\}\s*/g, '')
-      .replace(/\{\{#if surgerySuggested\.length\}\}\s*/g, '')
-      .replace(/\{\{#unless @last\}\}\s*/g, '')
-      .replace(/\{\{else\}\}\s*/g, '')
-      .replace(/\{\{\/if\}\}\s*/g, '')
-      .replace(/\{\{\/each\}\}\s*/g, '');
 
     // Return in same format as original
     return [
@@ -2931,501 +2578,10 @@ export class DoctorServices {
       return template;
     }
 
-    const sampleData = {
-      clinic: {
-        name: 'My Clinic',
-        address: '12-B, Medical Street, Vijay Nagar',
-        city: 'Indore',
-        state: 'Madhya Pradesh',
-        zipcode: '452010',
-        phone: '9876543210',
-        logo: 'https://res.cloudinary.com/ddzkedas8/image/upload/v1773045466/image_rx09np.png',
-        tagline: 'Your Health, Our Priority',
-      },
-      doctor: {
-        name: 'Udit Chouhan',
-        email: 'udit.chouhan@ims.com',
-        qualification: 'MBBS, MD',
-        speciality: 'General Physician',
-        registrationNumber: 'DVGCS456123612',
-        availability: [
-          {
-            day: 'Mon',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Tue',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Wed',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Thu',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Fri',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          { day: 'Sat', isAvailable: false, startTime: '', endTime: '' },
-          { day: 'Sun', isAvailable: false, startTime: '', endTime: '' },
-        ],
-      },
-      patient: {
-        name: 'Amrendra Kumar',
-        age: '35',
-        gender: 'Male',
-        address: '789 Health City, Palasia, Indore',
-      },
-      appointmentDate: '15-Mar-2024',
-      token: '20',
-      symptoms: [{ name: 'Headache' }, { name: 'Fever' }, { name: 'Cough' }],
-      hasTests: 2,
-      testNames: 'CBC, Vitamin B12',
-      diagnosis: 'Viral Fever, Respiratory Tract Infection',
-      habits: ['Smoking', 'Tobacco'],
-      allergies: ['Dust', 'Syrup'],
-      visitingDays: ['10-Mar-2026', '16-Mar-2026'],
-      visitingNotes: 'To checkup of health condition',
-      surgerySuggested: ['Mole Removal', 'Suturing Wounds'],
-      vitalsMoreThanOne: true,
-      vitals: {
-        bpSys: 120,
-        bpDia: 80,
-        fbs: 95,
-        ppbs: 140,
-        rbs: 110,
-        pulse: 72,
-        spo2: 98,
-        temperatureC: 98.6,
-        weightKg: 70,
-        heightCm: 170,
-        bmi: 24.2,
-      },
-      prescriptions: [
-        {
-          medicineName: 'Paracip 500',
-          dosage: '2 tablet',
-          frequency: 'Twice a day',
-          duration: '5 days',
-          notes: 'After Food',
-        },
-        {
-          medicineName: 'Asthakind',
-          dosage: '1 spoon',
-          frequency: 'Twice a day',
-          duration: '3 days',
-          notes: '-',
-        },
-      ],
-      advice:
-        'Take adequate rest. Drink plenty of warm water. Avoid cold food items. Follow up in 3 days if symptoms persist.',
-      dietarySuggestion: 'Please drink orange juice twice a day.',
-      followUpDate: '18-Mar-2024',
-    };
-
-    let finalHtml = template.templateHtml;
-
-    // Fetch template config for colors and font
-    const [templateConfigData] = await database
-      .select()
-      .from(PrescriptionTemplateModel)
-      .where(eq(PrescriptionTemplateModel.doctorId, doctorId))
-      .limit(1);
-
-    const config = templateConfigData || {
-      fontFamily: 'Inter, sans-serif',
-      color1: '#0A6C74',
-      color2: '#EBFCF4',
-      color3: '#333333',
-      color4: '#666666',
-      color5: '#e0e0e0',
-      color6: '#b22222',
-      color7: '#f9f9f9',
-      color8: '#ffffff',
-      color9: '#000000',
-      color10: '#856404',
-    };
-
-    // Replace templateConfig variables
-    finalHtml = finalHtml
-      .replace(/\{\{templateConfig\.fontFamily\}\}/g, config.fontFamily)
-      .replace(
-        /\{\{templateConfig\.primaryFont\}\}/g,
-        getPrimaryFont(config.fontFamily)
-      )
-      .replace(
-        /\{\{templateConfig\.fontUrl\}\}/g,
-        buildFontUrl(config.fontFamily)
-      )
-      .replace(/\{\{templateConfig\.colors\.color1\}\}/g, config.color1)
-      .replace(/\{\{templateConfig\.colors\.color2\}\}/g, config.color2)
-      .replace(/\{\{templateConfig\.colors\.color3\}\}/g, config.color3)
-      .replace(/\{\{templateConfig\.colors\.color4\}\}/g, config.color4)
-      .replace(/\{\{templateConfig\.colors\.color5\}\}/g, config.color5)
-      .replace(/\{\{templateConfig\.colors\.color6\}\}/g, config.color6)
-      .replace(/\{\{templateConfig\.colors\.color7\}\}/g, config.color7)
-      .replace(/\{\{templateConfig\.colors\.color8\}\}/g, config.color8)
-      .replace(/\{\{templateConfig\.colors\.color9\}\}/g, config.color9)
-      .replace(/\{\{templateConfig\.colors\.color10\}\}/g, config.color10);
-
-    // Replace simple variables
-    finalHtml = finalHtml
-      .replace(/\{\{clinic\.name\}\}/g, sampleData.clinic.name)
-      .replace(/\{\{clinic\.address\}\}/g, sampleData.clinic.address)
-      .replace(/\{\{clinic\.city\}\}/g, sampleData.clinic.city)
-      .replace(/\{\{clinic\.state\}\}/g, sampleData.clinic.state)
-      .replace(/\{\{clinic\.zipcode\}\}/g, sampleData.clinic.zipcode)
-      .replace(/\{\{clinic\.phone\}\}/g, sampleData.clinic.phone)
-      .replace(/\{\{clinic\.tagline\}\}/g, sampleData.clinic.tagline)
-      .replace(/\{\{doctor\.name\}\}/g, sampleData.doctor.name)
-      .replace(/\{\{doctor\.speciality\}\}/g, sampleData.doctor.speciality)
-      .replace(
-        /\{\{doctor\.qualification\}\}/g,
-        sampleData.doctor.qualification
-      )
-      .replace(/\{\{doctor\.email\}\}/g, sampleData.doctor.email)
-      .replace(
-        /\{\{doctor\.registrationNumber\}\}/g,
-        sampleData.doctor.registrationNumber
-      )
-      .replace(
-        /\{\{#if doctor\.registrationNumber\}\}([\s\S]*?)\{\{\/if\}\}/g,
-        '$1'
-      )
-      .replace(/\{\{patient\.name\}\}/g, sampleData.patient.name)
-      .replace(/\{\{patient\.age\}\}/g, sampleData.patient.age)
-      .replace(/\{\{patient\.gender\}\}/g, sampleData.patient.gender)
-      .replace(/\{\{patient\.address\}\}/g, sampleData.patient.address)
-      .replace(/\{\{appointmentDate\}\}/g, sampleData.appointmentDate)
-      .replace(/\{\{token\}\}/g, sampleData.token)
-      .replace(/\{\{diagnosis\}\}/g, sampleData.diagnosis)
-      .replace(/\{\{testNames\}\}/g, sampleData.testNames)
-      .replace(/\{\{followUpDate\}\}/g, sampleData.followUpDate)
-      .replace(/\{\{advice\}\}/g, sampleData.advice)
-      .replace(/\{\{dietarySuggestion\}\}/g, sampleData.dietarySuggestion)
-      .replace(/\{\{vitals\.bpSys\}\}/g, sampleData.vitals.bpSys.toString())
-      .replace(/\{\{vitals\.bpDia\}\}/g, sampleData.vitals.bpDia.toString())
-      .replace(/\{\{vitals\.fbs\}\}/g, sampleData.vitals.fbs.toString())
-      .replace(/\{\{vitals\.ppbs\}\}/g, sampleData.vitals.ppbs.toString())
-      .replace(/\{\{vitals\.rbs\}\}/g, sampleData.vitals.rbs.toString())
-      .replace(/\{\{vitals\.pulse\}\}/g, sampleData.vitals.pulse.toString())
-      .replace(/\{\{vitals\.spo2\}\}/g, sampleData.vitals.spo2.toString())
-      .replace(/\{\{visitingNotes\}\}/g, sampleData.visitingNotes)
-      .replace(
-        /\{\{vitals\.temperatureC\}\}/g,
-        sampleData.vitals.temperatureC.toString()
-      )
-      .replace(
-        /\{\{vitals\.weightKg\}\}/g,
-        sampleData.vitals.weightKg.toString()
-      )
-      .replace(
-        /\{\{vitals\.heightCm\}\}/g,
-        sampleData.vitals.heightCm.toString()
-      )
-      .replace(/\{\{vitals\.bmi\}\}/g, sampleData.vitals.bmi.toString());
-
-    // Handle symptoms loop - preserve badge structure
-    const symptomsMatch = finalHtml.match(
-      /\{\{#each symptoms\}\}([\s\S]*?)\{\{\/each\}\}/s
+    // Same render as the printed PDF, filled with the shared sample visit.
+    const finalHtml = PrescriptionPreviewService.renderCustomTemplate(
+      template.templateHtml
     );
-    if (symptomsMatch) {
-      const symptomTemplate = symptomsMatch[1];
-      let symptomsHtml = '';
-      sampleData.symptoms.forEach((s, index) => {
-        let itemHtml = symptomTemplate.replace(/\{\{this\.name\}\}/g, s.name);
-
-        // Handle @last for commas if present
-        if (index === sampleData.symptoms.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        symptomsHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each symptoms\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        symptomsHtml
-      );
-    }
-
-    // Handle habits loop - preserve badge structure
-    const habitsMatch = finalHtml.match(
-      /\{\{#each habits\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (habitsMatch) {
-      const habitTemplate = habitsMatch[1];
-      let habitsHtml = '';
-      sampleData.habits.forEach((habit, index) => {
-        let itemHtml = habitTemplate.replace(/\{\{this\}\}/g, habit);
-
-        if (index === sampleData.habits.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        habitsHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each habits\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        habitsHtml
-      );
-    }
-
-    // Handle allergies loop - preserve badge structure
-    const allergiesMatch = finalHtml.match(
-      /\{\{#each allergies\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (allergiesMatch) {
-      const allergyTemplate = allergiesMatch[1];
-      let allergiesHtml = '';
-      sampleData.allergies.forEach((allergy, index) => {
-        let itemHtml = allergyTemplate.replace(/\{\{this\}\}/g, allergy);
-
-        if (index === sampleData.allergies.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        allergiesHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each allergies\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        allergiesHtml
-      );
-    }
-
-    // NEW: Handle visitingDays loop
-    const visitingDaysMatch = finalHtml.match(
-      /\{\{#each visitingDays\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (visitingDaysMatch) {
-      const visitingDayTemplate = visitingDaysMatch[1];
-      let visitingDaysHtml = '';
-      sampleData.visitingDays.forEach((day, index) => {
-        let itemHtml = visitingDayTemplate.replace(/\{\{this\}\}/g, day);
-
-        if (index === sampleData.visitingDays.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        visitingDaysHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each visitingDays\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        visitingDaysHtml
-      );
-    }
-
-    // NEW: Handle surgerySuggested loop
-    const surgerySuggestedMatch = finalHtml.match(
-      /\{\{#each surgerySuggested\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (surgerySuggestedMatch) {
-      const surgeryTemplate = surgerySuggestedMatch[1];
-      let surgeryHtml = '';
-      sampleData.surgerySuggested.forEach((surgery, index) => {
-        let itemHtml = surgeryTemplate.replace(/\{\{this\}\}/g, surgery);
-
-        if (index === sampleData.surgerySuggested.length - 1) {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}[\s\S]*?\{\{\/unless\}\}/g,
-            ''
-          );
-        } else {
-          itemHtml = itemHtml.replace(
-            /\{\{#unless @last\}\}([\s\S]*?)\{\{\/unless\}\}/g,
-            '$1'
-          );
-        }
-
-        surgeryHtml += itemHtml;
-      });
-      finalHtml = finalHtml.replace(
-        /\{\{#each surgerySuggested\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        surgeryHtml
-      );
-    }
-
-    finalHtml = finalHtml.replace(
-      /\{\{#if token\}\}[\s\S]*?\{\{token\}\}[\s\S]*?\{\{else\}\}[\s\S]*?\{\{appointmentTime\}\}[\s\S]*?\{\{\/if\}\}/g,
-      `<div style="font-size: 11px;">Token : ${sampleData.token}</div>`
-    );
-
-    // Remove any remaining appointmentTime placeholders
-    finalHtml = finalHtml.replace(/\{\{appointmentTime\}\}/g, '');
-
-    finalHtml = finalHtml.replace(/Time:\s*/g, '');
-
-    // Handle each loops for simple comma-separated lists
-    finalHtml = finalHtml
-      .replace(
-        /\{\{#each symptoms\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.symptoms.map((s) => s.name).join(', ')
-      )
-      .replace(
-        /\{\{#each habits\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.habits.join(', ')
-      )
-      .replace(
-        /\{\{#each allergies\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.allergies.join(', ')
-      )
-      .replace(
-        /\{\{#each visitingDays\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.visitingDays.join(', ')
-      )
-      .replace(
-        /\{\{#each surgerySuggested\}\}([\s\S]*?)\{\{\/each\}\}/g,
-        sampleData.surgerySuggested.join(', ')
-      );
-
-    // Handle doctor availability loop - preserve structure
-    const availabilityMatch = finalHtml.match(
-      /\{\{#each doctor\.availability\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (availabilityMatch) {
-      const availabilityTemplate = availabilityMatch[1];
-      let availabilityHtml = '';
-
-      sampleData.doctor.availability.forEach((a) => {
-        // Create display text
-        const displayText = a.isAvailable
-          ? `${a.startTime} - ${a.endTime}`
-          : 'Off';
-
-        // Start with template
-        let itemHtml = availabilityTemplate;
-
-        // Replace day
-        itemHtml = itemHtml.replace(/\{\{this\.day\}\}/g, a.day);
-
-        // Replace the entire if block structure with just display text
-        itemHtml = itemHtml.replace(
-          /\{\{#if this\.isAvailable\}\}[\s\S]*?\{\{this\.display\}\}[\s\S]*?Off[\s\S]*?\{\{\/if\}\}/g,
-          displayText
-        );
-
-        availabilityHtml += itemHtml;
-      });
-
-      finalHtml = finalHtml.replace(
-        /\{\{#each doctor\.availability\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        availabilityHtml
-      );
-    }
-
-    // Handle prescriptions loop - preserve table structure
-    const prescriptionsMatch = finalHtml.match(
-      /\{\{#each prescriptions\}\}([\s\S]*?)\{\{\/each\}\}/s
-    );
-    if (prescriptionsMatch) {
-      const prescriptionTemplate = prescriptionsMatch[1];
-      let prescriptionsHtml = '';
-
-      sampleData.prescriptions.forEach((p) => {
-        const itemHtml = prescriptionTemplate
-          .replace(/\{\{this\.medicineName\}\}/g, p.medicineName)
-          .replace(/\{\{this\.dosage\}\}/g, p.dosage)
-          .replace(/\{\{this\.frequency\}\}/g, p.frequency)
-          .replace(/\{\{this\.duration\}\}/g, p.duration)
-          .replace(/\{\{this\.notes\}\}/g, p.notes);
-
-        prescriptionsHtml += itemHtml;
-      });
-
-      finalHtml = finalHtml.replace(
-        /\{\{#each prescriptions\}\}([\s\S]*?)\{\{\/each\}\}/s,
-        prescriptionsHtml
-      );
-    }
-
-    const logoRegex = /\{\{#if clinic\.logo\}\}([\s\S]*?)\{\{\/if\}\}/s;
-    finalHtml = finalHtml.replace(logoRegex, (match, p1) => {
-      return p1.replace(/\{\{clinic\.logo\}\}/g, sampleData.clinic.logo);
-    });
-
-    // Remove any remaining mustache tags
-    finalHtml = finalHtml
-      .replace(/\{\{#if token\}\}/g, '')
-      .replace(/\{\{else\}\}/g, '')
-      .replace(/\{\{\/if\}\}/g, '');
-
-    // Remove all remaining if/else tags but keep content
-    finalHtml = finalHtml
-      .replace(/\{\{#if followUpDate\}\}\s*/g, '')
-      .replace(/\{\{#if diagnosis\}\}\s*/g, '')
-      .replace(/\{\{#if testNames\}\}\s*/g, '')
-      .replace(/\{\{#if habits\}\}\s*/g, '')
-      .replace(/\{\{#if allergies\}\}\s*/g, '')
-      .replace(/\{\{#if symptoms\.length\}\}\s*/g, '')
-      .replace(/\{\{#if vitalsMoreThanOne\}\}\s*/g, '')
-      .replace(/\{\{#if hasTests\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.bpSys\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.bpDia\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.fbs\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.ppbs\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.rbs\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.pulse\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.spo2\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.temperatureC\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.weightKg\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.heightCm\}\}\s*/g, '')
-      .replace(/\{\{#if vitals\.bmi\}\}\s*/g, '')
-      .replace(/\{\{#if prescriptions\.length\}\}\s*/g, '')
-      .replace(/\{\{#if advice\}\}\s*/g, '')
-      .replace(/\{\{#if dietarySuggestion\}\}\s*/g, '')
-      .replace(/\{\{#if visitingDays\}\}\s*/g, '')
-      .replace(/\{\{#if surgerySuggested\}\}\s*/g, '')
-      .replace(/\{\{#if visitingDays\.length\}\}\s*/g, '')
-      .replace(/\{\{#if visitingNotes\}\}\s*/g, '')
-      .replace(/\{\{#if surgerySuggested\.length\}\}\s*/g, '')
-      .replace(/\{\{#unless @last\}\}\s*/g, '')
-      .replace(/\{\{else\}\}\s*/g, '')
-      .replace(/\{\{\/if\}\}\s*/g, '')
-      .replace(/\{\{\/each\}\}\s*/g, '');
 
     return [
       {
@@ -3512,6 +2668,13 @@ export class DoctorServices {
     await database
       .delete(ClinicDateAvailability)
       .where(eq(ClinicDateAvailability.id, leaveId));
+    await invalidateCache(
+      CacheKeys.followUpDoctorDay(
+        existingDoctorLeave.clinicId,
+        existingDoctorLeave.doctorId,
+        getISTDateString(existingDoctorLeave.date)
+      )
+    );
 
     return { message: 'Doctor leave deleted successfully' };
   }

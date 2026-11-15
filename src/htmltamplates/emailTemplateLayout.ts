@@ -70,7 +70,7 @@ const toneStyles: Record<
   },
 };
 
-const emailFont = "'Outfit', sans-serif";
+const emailFont = "'Outfit', Arial, Helvetica, sans-serif";
 
 const assetBaseUrl = () =>
   (
@@ -82,7 +82,7 @@ const assetBaseUrl = () =>
 export const getEmailImages = () => ({
   mailIcon: `${assetBaseUrl()}/Email-Image/mail-icon.png`,
   secure: `${assetBaseUrl()}/Email-Image/secure.png`,
-  logo: `${assetBaseUrl()}/Email-Image/logoLight.png`,
+  logo: `${assetBaseUrl()}/Email-Image/mediarogya-logo.png`,
 });
 
 export const getSupportInfo = (support?: SupportInfo) => ({
@@ -97,7 +97,7 @@ export const renderActionButton = (label: string, href: string) => `
   <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="border-collapse:separate; margin:16px auto 18px;">
     <tr>
       <td align="center" bgcolor="#127c80" style="border-radius:8px; box-shadow:0 6px 13px rgba(18,124,128,0.22);">
-        <a class="cta-link" href="${href}" target="_blank" style="display:inline-block; min-width:188px; padding:12px 24px; color:#ffffff !important; font-family:${emailFont}; font-size:12px; line-height:16px; font-weight:700; text-align:center; text-decoration:none; border-radius:8px;">
+        <a class="cta-link" href="${href}" target="_blank" style="display:inline-block; min-width:188px; padding:12px 24px; color:#ffffff !important; font-family:${emailFont}; font-size:14px; line-height:20px; font-weight:700; text-align:center; text-decoration:none; border-radius:8px;">
           ${label}
         </a>
       </td>
@@ -108,20 +108,20 @@ export const renderValidityNotice = (text: string) => `
   <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:15px auto 12px;">
     <tr>
       <td valign="middle" style="padding:0 6px 0 0;">
-        <span style="display:inline-block; background:#127c80; border-radius:50%; color:#ffffff; font-family:${emailFont}; font-size:9px; font-weight:700; height:15px; line-height:15px; text-align:center; width:15px;">i</span>
+        <span style="display:inline-block; background:#127c80; border-radius:50%; color:#ffffff; font-family:${emailFont}; font-size:11px; font-weight:700; height:15px; line-height:20px; text-align:center; width:15px;">i</span>
       </td>
-      <td valign="middle" style="color:#41545b; font-family:${emailFont}; font-size:11px; font-weight:500; line-height:16px; text-align:left;">
+      <td valign="middle" style="color:#41545b; font-family:${emailFont}; font-size:13px; font-weight:500; line-height:20px; text-align:left;">
         ${text}
       </td>
     </tr>
   </table>`;
 
 export const renderLinkFallback = (label: string, href: string) => `
-  <p style="margin:11px 0 7px; color:#6b7b82; font-family:${emailFont}; font-size:10px; font-weight:500; line-height:15px; text-align:center;">${label}</p>
+  <p style="margin:11px 0 7px; color:#6b7b82; font-family:${emailFont}; font-size:13px; font-weight:500; line-height:20px; text-align:center;">${label}</p>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5fffe; border:1px solid #ccece9; border-collapse:separate; border-radius:6px; margin:0 0 14px;">
     <tr>
-      <td style="color:#0b777a; font-family:${emailFont}; font-size:10px; font-weight:500; line-height:15px; padding:9px 10px; text-align:center; word-break:break-all; overflow-wrap:anywhere;">
+      <td style="color:#0b777a; font-family:${emailFont}; font-size:13px; font-weight:500; line-height:20px; padding:9px 10px; text-align:center; word-break:break-all; overflow-wrap:anywhere;">
         ${href}
       </td>
     </tr>
@@ -138,10 +138,10 @@ export const renderAlertBox = (
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${styles.bg}; border:0; border-collapse:separate; border-radius:7px; margin:0 0 14px;">
       <tr>
         <td width="34" valign="top" style="padding:11px 0 11px 12px;">
-          <span style="display:inline-block; background:${styles.iconBg}; border:1px solid ${styles.iconBorder}; border-radius:50%; color:${styles.icon}; font-family:${emailFont}; font-size:11px; font-weight:700; height:20px; line-height:20px; text-align:center; width:20px;">${styles.symbol}</span>
+          <span style="display:inline-block; background:${styles.iconBg}; border:1px solid ${styles.iconBorder}; border-radius:50%; color:${styles.icon}; font-family:${emailFont}; font-size:13px; font-weight:700; height:20px; line-height:20px; text-align:center; width:20px;">${styles.symbol}</span>
         </td>
         <td valign="top" style="padding:11px 12px 11px 7px;">
-          <p style="margin:0; color:${styles.text}; font-family:${emailFont}; font-size:10px; font-weight:500; line-height:15px;">
+          <p style="margin:0; color:${styles.text}; font-family:${emailFont}; font-size:13px; font-weight:500; line-height:20px;">
             <strong style="color:${styles.title};">${title}:</strong> ${text}
           </p>
         </td>
@@ -155,7 +155,7 @@ export const renderDetailsCard = (
 ) => `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fbfffe; border:1px solid #d8e9ec; border-collapse:separate; border-radius:7px; margin:0 0 14px;">
     <tr>
-      <td colspan="2" style="padding:11px 13px 5px; color:#0d696d; font-family:${emailFont}; font-size:12px; font-weight:700; line-height:17px;">
+      <td colspan="2" style="padding:11px 13px 5px; color:#0d696d; font-family:${emailFont}; font-size:14px; font-weight:700; line-height:22px;">
         ${title}
       </td>
     </tr>
@@ -163,10 +163,10 @@ export const renderDetailsCard = (
       .map(
         (row) => `
           <tr>
-            <td class="details-label" style="padding:7px 10px 7px 13px; color:#263b40; font-family:${emailFont}; font-size:11px; line-height:16px; font-weight:700; width:120px;">
+            <td class="details-label" style="padding:7px 10px 7px 13px; color:#263b40; font-family:${emailFont}; font-size:13px; line-height:20px; font-weight:700; width:120px;">
               ${row.label}
             </td>
-            <td class="details-value" style="padding:7px 13px 7px 0; color:#52646e; font-family:${emailFont}; font-size:11px; font-weight:500; line-height:16px;">
+            <td class="details-value" style="padding:7px 13px 7px 0; color:#52646e; font-family:${emailFont}; font-size:13px; font-weight:500; line-height:20px;">
               ${row.value}
             </td>
           </tr>`
@@ -304,7 +304,7 @@ export const renderEmailLayout = ({
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                 <tr>
                   <td align="left" valign="middle" style="padding:24px 0 21px;">
-                    <img class="brand-logo" src="${images.logo}" alt="Infinity Medisetu" width="124" style="display:block; height:auto; max-width:124px; width:124px;" />
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr><td style="padding:0; vertical-align:middle;"><img src="${images.logo}" alt="" width="40" height="40" style="display:block; height:40px; width:40px;" /></td><td style="padding:0 0 0 10px; vertical-align:middle; color:#0a6c74; font-family:${emailFont}; font-size:22px; font-weight:700; line-height:26px;">MediArogya</td></tr></table>
                   </td>
 
                   <td align="right" valign="middle" style="padding:0; font-size:0; line-height:0;">
@@ -316,25 +316,21 @@ export const renderEmailLayout = ({
           </tr>
 
           <tr>
-            <td class="main-pad" style="padding:16px 24px 0;">
+            <td class="main-pad" style="padding:24px 24px 18px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                 <tr>
-                  <td class="hero-copy" valign="middle" width="68%" style="padding:0 10px 0 0; vertical-align:middle;">
-                    <h1 style="color:#25383b; font-family:${emailFont}; font-size:12px; line-height:16px; margin:0 0 5px; font-weight:700;">
+                  <td class="hero-copy" valign="top" style="padding:0; vertical-align:top;">
+                    <h1 style="color:#25383b; font-family:${emailFont}; font-size:15px; line-height:22px; margin:0 0 6px; font-weight:600;">
                       ${greeting}
                     </h1>
 
-                    <p style="color:#0d6f73; font-family:${emailFont}; font-size:13px; line-height:17px; margin:0 0 9px; font-weight:700;">
+                    <p style="color:#0d6f73; font-family:${emailFont}; font-size:21px; line-height:28px; margin:0 0 10px; font-weight:700;">
                       ${headline}
                     </p>
 
-                    <p style="color:#596872; font-family:${emailFont}; font-size:10px; font-weight:500; line-height:16px; margin:0;">
+                    <p style="color:#46555e; font-family:${emailFont}; font-size:14px; font-weight:400; line-height:23px; margin:0;">
                       ${message}
                     </p>
-                  </td>
-
-                  <td class="secure-cell" align="right" valign="middle" width="32%" style="padding:0 12px 0 0; text-align:right; vertical-align:middle;">
-                    <img class="secure-img" src="${images.secure}" alt="" width="70" style="display:block; height:auto; margin:0 0 0 auto; max-width:70px; width:70px;" />
                   </td>
                 </tr>
               </table>
@@ -346,15 +342,15 @@ export const renderEmailLayout = ({
               ${bodyHtml}
 
               <div style="text-align:center; margin:14px 0 14px;">
-                <p style="color:#0d6f73; font-family:${emailFont}; font-size:13px; line-height:17px; margin:0 0 6px; font-weight:700;">
+                <p style="color:#0d6f73; font-family:${emailFont}; font-size:15px; line-height:22px; margin:0 0 6px; font-weight:700;">
                   Need help?
                 </p>
 
-                <p style="color:#6f7d84; font-family:${emailFont}; font-size:11px; font-weight:500; line-height:16px; margin:0;">
+                <p style="color:#6f7d84; font-family:${emailFont}; font-size:13px; font-weight:500; line-height:20px; margin:0;">
                   ${helpText}
                 </p>
 
-                <p style="color:#0d6f73; font-family:${emailFont}; font-size:11px; font-weight:500; line-height:16px; margin:11px 0 0;">
+                <p style="color:#0d6f73; font-family:${emailFont}; font-size:13px; font-weight:500; line-height:20px; margin:11px 0 0;">
                   <a class="contact-link" href="tel:${support.phone.replace(/\s/g, '')}" style="color:#0d6f73; text-decoration:none;">
                     ${support.phone}
                   </a>
@@ -371,16 +367,16 @@ export const renderEmailLayout = ({
 
           <tr>
             <td style="border-top:1px solid #e4efed; padding:16px 24px 18px; text-align:center;">
-              <p style="color:#8a969c; font-family:${emailFont}; font-size:9px; line-height:13px; margin:0 0 4px;">
+              <p style="color:#8a969c; font-family:${emailFont}; font-size:11px; line-height:16px; margin:0 0 4px;">
                 Powered By
               </p>
 
-              <p style="color:#243033; font-family:${emailFont}; font-size:10px; line-height:14px; margin:0; font-weight:700;">
+              <p style="color:#243033; font-family:${emailFont}; font-size:13px; line-height:14px; margin:0; font-weight:700;">
                 Infinity Genesis Techso Pvt. Ltd.
               </p>
 
-              <p style="color:#8a969c; font-family:${emailFont}; font-size:9px; line-height:13px; margin:5px 0 0;">
-                &copy; ${new Date().getFullYear()} Infinity Medisetu. All rights reserved.
+              <p style="color:#8a969c; font-family:${emailFont}; font-size:11px; line-height:16px; margin:5px 0 0;">
+                &copy; ${new Date().getFullYear()} MediArogya. All rights reserved.
               </p>
             </td>
           </tr>

@@ -58,7 +58,7 @@ Responses use the standard envelope `{ success, message, data }`.
       enqueues into nothing and no notification is ever written.
 - [ ] **Registry parity.** `npm run notifications:parity` → `0 mismatches`.
 - [ ] **Event docs match code.** `npm run notifications:docs`, then confirm
-      `docs/NOTIFICATION_EVENTS.md` is unchanged (a diff means the registry moved without
+      `docs/notifications/NOTIFICATION_EVENTS.md` is unchanged (a diff means the registry moved without
       the docs being regenerated).
 
 ### The three behaviours that matter

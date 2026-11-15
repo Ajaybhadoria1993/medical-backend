@@ -1,7 +1,6 @@
 import express from 'express';
 import { validate } from '../../../../middlewear/validation.middleware';
 import { requireAuth } from '../../../../middlewear/auth.middleware';
-// import { requirePharmacySubscription } from '../../../../middlewear/subscriptionAccess.middleware';
 import {
   addSupplierController,
   downloadSupplierSampleTemplateController,
@@ -20,14 +19,17 @@ import {
   updateSupplierSchema,
 } from '../../schemas/supplier.schema';
 import { uploadSupplierImport } from '../../../../configurations/s3/pharmacy.storage';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const supplierRouter = express.Router();
 
 supplierRouter.post(
   '/add-supplier',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(createSupplierSchema, 'body'),
   addSupplierController
 );
@@ -35,7 +37,7 @@ supplierRouter.post(
 supplierRouter.get(
   '/get-all-supplier',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSuppliersQuerySchema, 'query'),
   getSuppliersController
 );
@@ -43,7 +45,7 @@ supplierRouter.get(
 supplierRouter.get(
   '/get-supplier/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getSupplierByIdParamsSchema, 'params'),
   getSupplierByIdController
 );
@@ -51,7 +53,7 @@ supplierRouter.get(
 supplierRouter.put(
   '/update-supplier/:id',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(updateSupplierParamsSchema, 'params'),
   validate(updateSupplierSchema, 'body'),
   updateSupplierController
@@ -80,7 +82,7 @@ supplierRouter.get(
 supplierRouter.get(
   '/stats',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getSupplierStatsController
 );
 

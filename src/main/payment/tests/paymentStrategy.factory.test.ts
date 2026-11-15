@@ -3,7 +3,7 @@ import { IPaymentAdapter } from '../interfaces/IPaymentAdapter';
 
 describe('PaymentStrategyFactory Unit Tests', () => {
   beforeAll(() => {
-    process.env.ENABLED_PAYMENT_GATEWAYS = 'razorpay,cashfree';
+    process.env.ENABLED_PAYMENT_GATEWAYS = 'razorpay';
     process.env.DEFAULT_PLATFORM_GATEWAY = 'razorpay';
     PaymentStrategyFactory.initializeStrategies();
   });
@@ -14,10 +14,10 @@ describe('PaymentStrategyFactory Unit Tests', () => {
     expect(strategy.providerName).toBe('razorpay');
   });
 
-  it('should return CashfreeAdapter when requested', () => {
+  it('falls back to Razorpay when the removed Cashfree gateway is requested', () => {
     const strategy = PaymentStrategyFactory.getStrategy('cashfree');
     expect(strategy).toBeDefined();
-    expect(strategy.providerName).toBe('cashfree');
+    expect(strategy.providerName).toBe('razorpay');
   });
 
   it('should fall back to default platform gateway when no provider is specified', () => {
@@ -33,7 +33,6 @@ describe('PaymentStrategyFactory Unit Tests', () => {
       verifyWebhookSignature: jest.fn().mockReturnValue(true),
       normalizeWebhookEvent: jest.fn(),
       processRefund: jest.fn(),
-      getReconciliationReport: jest.fn().mockResolvedValue([]),
     };
 
     PaymentStrategyFactory.registerStrategy('mock_test_gateway', mockAdapter);

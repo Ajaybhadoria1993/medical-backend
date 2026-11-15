@@ -27,7 +27,7 @@ import { LabOrderModel } from '../../test/models/labOrder.model';
 import { LabTestCatalogModel } from '../../test/models/labTestCatalog.model';
 import { TestCatalogModel } from '../../test/models/testCatalog.model';
 import { UserModel } from '../../users/models/user.model';
-import { LimitationService } from '../../subscription/services/limitation.service';
+import { LimitationService } from '../../subscription';
 import {
   LabDepartmentsMasterModel,
   LabsModel,
@@ -38,9 +38,15 @@ import {
   LabReportTemplateParametersModel,
   LabReportTemplatesModel,
 } from '../models/labResult.model';
+import {
+  labOrderPaymentColumns,
+  labOrderWithPaymentColumns,
+} from '../utils/labOrderPayment';
 import type {
   AddLabCustomFieldInput,
+  GetLabDepartmentsQueryInput,
   LabCustomFieldSyncInput,
+  UpdateLabDepartmentInput,
 } from '../schemas/lab.schemas';
 import { LabResultService } from './labResult.service';
 
@@ -142,6 +148,18 @@ type UpdateLabCatalogTestPayload = Partial<{
   masterTestId?: string | null;
 }>;
 
+type DepartmentSelectionResolution = {
+  departmentIds: string[];
+  departmentTestIds?: DepartmentTestSelection;
+};
+
+type ResultFieldTarget = {
+  templateId: string;
+  labId: string;
+  userId?: string | null;
+  labTestCatalogId?: string | null;
+};
+
 function normalizeCatalogStatus(status?: LabCatalogStatus) {
   if (!status) return 'active';
   return status === 'deactive' ? 'inactive' : status;
@@ -211,8 +229,56 @@ export const DEPARTMENT_CODES = [
   'BLOOD_BANK',
 ];
 
+const LAB_SCOPED_DEPARTMENT_CODE_MARKER = '_LAB_';
+
+function buildLabScopedDepartmentCode(
+  departmentCode: string,
+  labId: string,
+  departmentId: string
+) {
+  const labToken = labId.replace(/-/g, '').slice(0, 8).toUpperCase();
+  const deptToken = departmentId.replace(/-/g, '').slice(0, 8).toUpperCase();
+  const suffix = `${LAB_SCOPED_DEPARTMENT_CODE_MARKER}${labToken}_${deptToken}`;
+  const baseCode = departmentCode.slice(0, 80 - suffix.length);
+
+  return `${baseCode}${suffix}`;
+}
+
+function getBaseDepartmentCode(departmentCode: string) {
+  if (DEPARTMENT_TEMPLATES_MAP[departmentCode]) {
+    return departmentCode;
+  }
+
+  const [baseCode] = departmentCode.split(LAB_SCOPED_DEPARTMENT_CODE_MARKER);
+  return baseCode && DEPARTMENT_TEMPLATES_MAP[baseCode]
+    ? baseCode
+    : departmentCode;
+}
+
 function getTemplateCodesForDepartment(departmentCode: string) {
-  return DEPARTMENT_TEMPLATES_MAP[departmentCode] || [];
+  return DEPARTMENT_TEMPLATES_MAP[getBaseDepartmentCode(departmentCode)] || [];
+}
+
+function preferLabOwnedDepartmentRows<
+  T extends { id: string; code: string; labId?: string | null },
+>(departments: T[], labId?: string | null) {
+  if (!labId) return departments;
+
+  const labOwnedCodes = new Set(
+    departments
+      .filter((department) => department.labId === labId)
+      .map((department) => department.code)
+  );
+
+  return departments.filter((department) => {
+    if (department.labId !== null && department.labId !== undefined) {
+      return true;
+    }
+
+    return !labOwnedCodes.has(
+      buildLabScopedDepartmentCode(department.code, labId, department.id)
+    );
+  });
 }
 
 // Global catalog departments (lab_id null) plus the custom ones this lab created.
@@ -367,7 +433,7 @@ export class LabService {
           if (adminUser && adminUser.email) {
             await sendEmail(
               adminUser.email,
-              `Infinity Medisetu - Lab Created: ${lab.name} at ${clinic?.clinicName || 'Clinic'}`,
+              `MediArogya - Lab Created: ${lab.name} at ${clinic?.clinicName || 'Clinic'}`,
               labCreationNotificationTemplate({
                 adminName: adminUser.name ?? '',
                 labName: lab.name,
@@ -612,15 +678,15 @@ export class LabService {
     return await this.getAssignedLabForUser(tx, userId, clinicId);
   }
 
-  private static async attachTestsToDepartments<T extends { code: string }>(
-    tx: DbTransaction | typeof database,
-    departments: T[]
-  ) {
+  private static async attachTestsToDepartments<
+    T extends { id: string; code: string },
+  >(tx: DbTransaction | typeof database, departments: T[], labId?: string) {
     if (departments.length === 0) return departments;
 
-    const globalTemplates = await tx
+    const templates = await tx
       .select({
         id: LabReportTemplatesModel.id,
+        labId: LabReportTemplatesModel.labId,
         name: LabReportTemplatesModel.name,
         code: LabReportTemplatesModel.code,
         sampleType: LabReportTemplatesModel.sampleType,
@@ -629,36 +695,129 @@ export class LabService {
       .from(LabReportTemplatesModel)
       .where(
         and(
-          isNull(LabReportTemplatesModel.labId),
+          labId
+            ? or(
+                isNull(LabReportTemplatesModel.labId),
+                eq(LabReportTemplatesModel.labId, labId)
+              )
+            : isNull(LabReportTemplatesModel.labId),
           eq(LabReportTemplatesModel.isActive, true)
         )
       );
 
-    const templateMap = new Map(globalTemplates.map((t) => [t.code, t]));
+    const templateMap = new Map<string, (typeof templates)[number]>();
+    for (const template of templates) {
+      const existing = templateMap.get(template.code);
+      if (!existing || template.labId === labId) {
+        templateMap.set(template.code, template);
+      }
+    }
+
+    const labCatalogTests = labId
+      ? await tx
+          .select({
+            id: LabTestCatalogModel.id,
+            labId: LabTestCatalogModel.labId,
+            departmentId: LabTestCatalogModel.departmentId,
+            name: LabTestCatalogModel.name,
+            code: LabTestCatalogModel.testCode,
+            sampleType: LabTestCatalogModel.sampleType,
+            price: LabTestCatalogModel.price,
+            source: LabTestCatalogModel.source,
+            status: LabTestCatalogModel.status,
+            category: LabTestCatalogModel.category,
+          })
+          .from(LabTestCatalogModel)
+          .where(
+            and(
+              eq(LabTestCatalogModel.labId, labId),
+              inArray(
+                LabTestCatalogModel.departmentId,
+                departments.map((dept) => dept.id)
+              ),
+              // eq(LabTestCatalogModel.status, 'active'),
+              isNull(LabTestCatalogModel.deletedAt)
+            )
+          )
+      : [];
+
+    const labCatalogTestsByDepartmentId = new Map<
+      string,
+      (typeof labCatalogTests)[number][]
+    >();
+
+    for (const test of labCatalogTests) {
+      if (!test.departmentId) continue;
+
+      const tests = labCatalogTestsByDepartmentId.get(test.departmentId) ?? [];
+      tests.push(test);
+      labCatalogTestsByDepartmentId.set(test.departmentId, tests);
+    }
 
     return departments.map((dept) => {
       const allCodesForDept = getTemplateCodesForDepartment(dept.code);
-      const tests = allCodesForDept
+      const mappedTemplateTests = allCodesForDept
         .map((code) => templateMap.get(code))
         .filter((t): t is Exclude<typeof t, undefined> => !!t);
+      const mappedTemplateIds = new Set(
+        mappedTemplateTests.map((test) => test.id)
+      );
+      const labCatalogTestsForDept = (
+        labCatalogTestsByDepartmentId.get(dept.id) ?? []
+      )
+        .map((test) => {
+          const templateCode = this.getCatalogTestTemplateCode({
+            testName: test.name,
+            testCode: test.code,
+            category: test.category,
+          });
+          const reportTemplate = templateMap.get(templateCode);
+
+          if (reportTemplate && mappedTemplateIds.has(reportTemplate.id)) {
+            return null;
+          }
+
+          return {
+            id: reportTemplate?.id ?? test.id,
+            labId: test.labId,
+            labTestId: test.id,
+            catalogTestId: test.id,
+            reportTemplateId: reportTemplate?.id ?? null,
+            name: test.name,
+            code: reportTemplate?.code ?? test.code,
+            sampleType: reportTemplate?.sampleType ?? test.sampleType,
+            description: reportTemplate?.description ?? null,
+            price: test.price,
+            source: test.source,
+            status: test.status,
+          };
+        })
+        .filter((test): test is Exclude<typeof test, null> => !!test);
 
       return {
         ...dept,
-        tests,
+        tests: [...mappedTemplateTests, ...labCatalogTestsForDept],
       };
     });
   }
 
-  static async getDepartments() {
-    // Global catalog only — a lab's custom departments come via getLabDepartmentsByLabId.
-    const globalActive = and(
-      eq(LabDepartmentsMasterModel.status, 'active'),
-      isNull(LabDepartmentsMasterModel.labId)
+  static async getDepartments(
+    labId?: string,
+    query?: GetLabDepartmentsQueryInput
+  ) {
+    // Global catalog plus custom departments created by the resolved lab.
+    const departmentWhere = and(
+      departmentVisibleToLab(labId ?? null),
+      // eq(LabDepartmentsMasterModel.status, 'active'),
+      query?.status
+        ? eq(LabDepartmentsMasterModel.status, query.status)
+        : undefined
     );
+
     let departments = await database
       .select()
       .from(LabDepartmentsMasterModel)
-      .where(globalActive)
+      .where(departmentWhere)
       .orderBy(LabDepartmentsMasterModel.name);
 
     if (departments.length === 0) {
@@ -666,11 +825,35 @@ export class LabService {
       departments = await database
         .select()
         .from(LabDepartmentsMasterModel)
-        .where(globalActive)
+        .where(departmentWhere)
         .orderBy(LabDepartmentsMasterModel.name);
     }
 
-    return await this.attachTestsToDepartments(database, departments);
+    departments = preferLabOwnedDepartmentRows(departments, labId);
+
+    const shouldPaginate = Boolean(query?.page || query?.limit);
+
+    if (shouldPaginate) {
+      const pageNumber = Math.max(Number(query?.page) || 1, 1);
+      const pageSize = Math.min(Math.max(Number(query?.limit) || 10, 1), 100);
+      const offset = (pageNumber - 1) * pageSize;
+      const pagedDepartments = departments.slice(offset, offset + pageSize);
+
+      return {
+        departments: await this.attachTestsToDepartments(
+          database,
+          pagedDepartments,
+          labId
+        ),
+        pagination: buildPaginationMeta(
+          departments.length,
+          pageNumber,
+          pageSize
+        ),
+      };
+    }
+
+    return await this.attachTestsToDepartments(database, departments, labId);
   }
 
   static async createDepartment(
@@ -706,16 +889,18 @@ export class LabService {
           .toUpperCase()
           .replace(/[^A-Z0-9]+/g, '_')
           .replace(/^_|_$/g, '') || 'CUSTOM';
-      const [department] = existing
-        ? [existing]
-        : await tx
-            .insert(LabDepartmentsMasterModel)
-            .values({
-              labId,
-              name,
-              code: `${slug}_${randomBytes(3).toString('hex').toUpperCase()}`,
-            })
-            .returning();
+      const department = existing
+        ? await this.ensureLabOwnedDepartment(tx, labId, existing)
+        : (
+            await tx
+              .insert(LabDepartmentsMasterModel)
+              .values({
+                labId,
+                name,
+                code: `${slug}_${randomBytes(3).toString('hex').toUpperCase()}`,
+              })
+              .returning()
+          )[0];
 
       // Link it to the lab now — catalog sync soft-deletes tests in unlinked departments.
       await tx
@@ -724,6 +909,87 @@ export class LabService {
         .onConflictDoNothing();
 
       return { ...department, tests: [] };
+    });
+  }
+
+  static async updateDepartment(
+    userId: string,
+    clinicId: string,
+    departmentId: string,
+    payload: UpdateLabDepartmentInput,
+    context?: LabPanelContext
+  ) {
+    return await database.transaction(async (tx) => {
+      const { labId } = await this.getLabAccessForUser(
+        tx,
+        userId,
+        clinicId,
+        context
+      );
+
+      const [department] = await tx
+        .select()
+        .from(LabDepartmentsMasterModel)
+        .where(
+          and(
+            eq(LabDepartmentsMasterModel.id, departmentId),
+            eq(LabDepartmentsMasterModel.labId, labId)
+          )
+        )
+        .limit(1);
+
+      if (!department) {
+        throw new HttpError(404, 'Department not found for this lab');
+      }
+
+      const nextStatus = payload.status ?? department.status;
+      const nextName = payload.name ?? department.name;
+
+      if (nextStatus === 'active') {
+        const [existing] = await tx
+          .select({
+            id: LabDepartmentsMasterModel.id,
+            code: LabDepartmentsMasterModel.code,
+          })
+          .from(LabDepartmentsMasterModel)
+          .where(
+            and(
+              eq(LabDepartmentsMasterModel.status, 'active'),
+              departmentVisibleToLab(labId),
+              sql`lower(${LabDepartmentsMasterModel.name}) = lower(${nextName})`,
+              ne(LabDepartmentsMasterModel.id, departmentId),
+              department.code.includes(LAB_SCOPED_DEPARTMENT_CODE_MARKER)
+                ? ne(
+                    LabDepartmentsMasterModel.code,
+                    getBaseDepartmentCode(department.code)
+                  )
+                : undefined
+            )
+          )
+          .limit(1);
+
+        if (existing) {
+          throw new HttpError(409, 'Department name already exists');
+        }
+      }
+
+      const [updatedDepartment] = await tx
+        .update(LabDepartmentsMasterModel)
+        .set({
+          ...(payload.name ? { name: payload.name } : {}),
+          ...(payload.status ? { status: payload.status } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(LabDepartmentsMasterModel.id, departmentId))
+        .returning();
+
+      const [departmentWithTests] = await this.attachTestsToDepartments(
+        tx,
+        [updatedDepartment],
+        labId
+      );
+
+      return departmentWithTests;
     });
   }
 
@@ -1066,7 +1332,7 @@ export class LabService {
 
   private static async insertCustomFields(
     tx: DbTransaction,
-    target: { templateId: string; labId: string; userId: string },
+    target: ResultFieldTarget,
     fields: AddLabCustomFieldInput[]
   ) {
     if (!fields.length) return;
@@ -1075,6 +1341,7 @@ export class LabService {
       fields.map((field) => ({
         templateId: target.templateId,
         labId: target.labId,
+        labTestCatalogId: target.labTestCatalogId ?? null,
         sectionName: field.sectionName,
         parameterName: field.parameterName,
         unit: field.unit,
@@ -1085,8 +1352,8 @@ export class LabService {
         isActive: true,
         sourceType: 'CUSTOM' as const,
         isCustom: true,
-        createdBy: target.userId,
-        updatedBy: target.userId,
+        createdBy: target.userId ?? null,
+        updatedBy: target.userId ?? null,
       }))
     );
   }
@@ -1100,6 +1367,80 @@ export class LabService {
     );
   }
 
+  private static activeCatalogTestCustomFieldsWhere(
+    labTestCatalogId: string,
+    labId: string
+  ) {
+    return and(
+      eq(LabReportTemplateParametersModel.labTestCatalogId, labTestCatalogId),
+      eq(LabReportTemplateParametersModel.labId, labId),
+      eq(LabReportTemplateParametersModel.isCustom, true),
+      eq(LabReportTemplateParametersModel.isActive, true)
+    );
+  }
+
+  private static async ensureCatalogTestDefaultFields(
+    tx: DbTransaction,
+    target: ResultFieldTarget
+  ) {
+    if (!target.labTestCatalogId) return;
+
+    const [existingField] = await tx
+      .select({ id: LabReportTemplateParametersModel.id })
+      .from(LabReportTemplateParametersModel)
+      .where(
+        and(
+          eq(
+            LabReportTemplateParametersModel.labTestCatalogId,
+            target.labTestCatalogId
+          ),
+          eq(LabReportTemplateParametersModel.labId, target.labId),
+          eq(LabReportTemplateParametersModel.sourceType, 'DEFAULT'),
+          eq(LabReportTemplateParametersModel.isCustom, false),
+          eq(LabReportTemplateParametersModel.isActive, true)
+        )
+      )
+      .limit(1);
+
+    if (existingField) return;
+
+    const defaultParameters = await tx
+      .select()
+      .from(LabReportTemplateParametersModel)
+      .where(
+        and(
+          eq(LabReportTemplateParametersModel.templateId, target.templateId),
+          eq(LabReportTemplateParametersModel.sourceType, 'DEFAULT'),
+          eq(LabReportTemplateParametersModel.isCustom, false),
+          eq(LabReportTemplateParametersModel.isActive, true),
+          isNull(LabReportTemplateParametersModel.labId)
+        )
+      );
+
+    if (!defaultParameters.length) return;
+
+    await tx.insert(LabReportTemplateParametersModel).values(
+      defaultParameters.map((parameter) => ({
+        templateId: target.templateId,
+        baseParameterId: parameter.id,
+        labId: target.labId,
+        labTestCatalogId: target.labTestCatalogId!,
+        sectionName: parameter.sectionName,
+        parameterName: parameter.parameterName,
+        unit: parameter.unit,
+        referenceRange: parameter.referenceRange,
+        inputType: parameter.inputType,
+        sortOrder: parameter.sortOrder,
+        isRequired: parameter.isRequired,
+        isActive: true,
+        sourceType: 'DEFAULT' as const,
+        isCustom: false,
+        createdBy: target.userId ?? null,
+        updatedBy: target.userId ?? null,
+      }))
+    );
+  }
+
   /**
    * Makes the lab's custom fields on a template match `fields`: listed ids are
    * updated, rows without one inserted, and unlisted ones deactivated — the
@@ -1107,13 +1448,20 @@ export class LabService {
    */
   private static async syncCustomFields(
     tx: DbTransaction,
-    target: { templateId: string; labId: string; userId: string },
+    target: ResultFieldTarget,
     fields: LabCustomFieldSyncInput[]
   ) {
     const existing = await tx
       .select({ id: LabReportTemplateParametersModel.id })
       .from(LabReportTemplateParametersModel)
-      .where(this.activeCustomFieldsWhere(target.templateId, target.labId));
+      .where(
+        target.labTestCatalogId
+          ? this.activeCatalogTestCustomFieldsWhere(
+              target.labTestCatalogId,
+              target.labId
+            )
+          : this.activeCustomFieldsWhere(target.templateId, target.labId)
+      );
     const existingIds = new Set(existing.map((row) => row.id));
     const keptIds = new Set<string>();
     const newFields: AddLabCustomFieldInput[] = [];
@@ -1124,7 +1472,12 @@ export class LabService {
         keptIds.add(id);
         await tx
           .update(LabReportTemplateParametersModel)
-          .set({ ...field, updatedBy: target.userId, updatedAt: new Date() })
+          .set({
+            ...field,
+            labTestCatalogId: target.labTestCatalogId ?? null,
+            updatedBy: target.userId ?? null,
+            updatedAt: new Date(),
+          })
           .where(eq(LabReportTemplateParametersModel.id, id));
       } else {
         newFields.push(field);
@@ -1139,7 +1492,7 @@ export class LabService {
         .update(LabReportTemplateParametersModel)
         .set({
           isActive: false,
-          updatedBy: target.userId,
+          updatedBy: target.userId ?? null,
           updatedAt: new Date(),
         })
         .where(inArray(LabReportTemplateParametersModel.id, removedIds));
@@ -1153,6 +1506,25 @@ export class LabService {
   ) {
     return await database.transaction(async (tx) => {
       const test = await this.getScopedLabTest(tx, testId, context);
+      const scopedFields = await tx
+        .select({
+          id: LabReportTemplateParametersModel.id,
+          parameterName: LabReportTemplateParametersModel.parameterName,
+          inputType: LabReportTemplateParametersModel.inputType,
+          unit: LabReportTemplateParametersModel.unit,
+          referenceRange: LabReportTemplateParametersModel.referenceRange,
+          isRequired: LabReportTemplateParametersModel.isRequired,
+          sortOrder: LabReportTemplateParametersModel.sortOrder,
+        })
+        .from(LabReportTemplateParametersModel)
+        .where(this.activeCatalogTestCustomFieldsWhere(test.id, test.labId!))
+        .orderBy(LabReportTemplateParametersModel.sortOrder)
+        .limit(50);
+
+      if (scopedFields.length) {
+        return scopedFields;
+      }
+
       // Read-only: look the template up, never create one just by opening Edit.
       const template = await this.getActiveReportTemplateByCode(
         tx,
@@ -1279,9 +1651,20 @@ export class LabService {
         .returning();
 
       // Inside this tx so the test and its fields save (or fail) together.
+      await this.ensureCatalogTestDefaultFields(tx, {
+        templateId: reportTemplate.id,
+        labId: assignment.labId,
+        userId,
+        labTestCatalogId: test.id,
+      });
       await this.insertCustomFields(
         tx,
-        { templateId: reportTemplate.id, labId: assignment.labId, userId },
+        {
+          templateId: reportTemplate.id,
+          labId: assignment.labId,
+          userId,
+          labTestCatalogId: test.id,
+        },
         payload.customFields ?? []
       );
 
@@ -1461,12 +1844,19 @@ export class LabService {
 
       // Omitted means "leave the fields alone"; a list (even empty) is the full set.
       if (payload.customFields) {
+        await this.ensureCatalogTestDefaultFields(tx, {
+          templateId: reportTemplate.id,
+          labId: existingTest.labId!,
+          userId: context.userId,
+          labTestCatalogId: updatedTest.id,
+        });
         await this.syncCustomFields(
           tx,
           {
             templateId: reportTemplate.id,
             labId: existingTest.labId!,
             userId: context.userId,
+            labTestCatalogId: updatedTest.id,
           },
           payload.customFields
         );
@@ -1519,7 +1909,7 @@ export class LabService {
       const [analytics] = await trx
         .select({
           totalTests: sql<number>`COUNT(*)::int`,
-          pendingTestsCount: sql<number>`COUNT(*) FILTER (WHERE ${LabOrderModel.paymentStatus}::text IN ('pending', 'PENDING') AND ${LabOrderModel.reportPdf} IS NULL)::int`,
+          pendingTestsCount: sql<number>`COUNT(*) FILTER (WHERE ${labOrderPaymentColumns.paymentStatus}::text IN ('pending', 'PENDING') AND ${LabOrderModel.reportPdf} IS NULL)::int`,
           completedTestsCount: sql<number>`COUNT(*) FILTER (WHERE ${LabOrderModel.reportStatus} = 'Completed')::int`,
           totalRevenue: sql<number>`COALESCE(SUM(${TestCatalogModel.price}) FILTER (WHERE ${LabOrderModel.reportStatus} = 'Completed'), 0)::int`,
         })
@@ -1528,11 +1918,7 @@ export class LabService {
           TestCatalogModel,
           eq(LabOrderModel.testId, TestCatalogModel.id)
         )
-        .innerJoin(
-          UserLabAssignmentsModel,
-          eq(LabOrderModel.labAssistantId, UserLabAssignmentsModel.userId)
-        )
-        .where(eq(UserLabAssignmentsModel.labId, labId));
+        .where(eq(LabOrderModel.clinicId, lab.clinicId));
 
       return {
         ...lab,
@@ -1613,6 +1999,26 @@ export class LabService {
 
   static async getTestsByLabAssistantController(labAssistantId: string) {
     return await database.transaction(async (trx) => {
+      const [assignment] = await trx
+        .select({ labId: UserLabAssignmentsModel.labId })
+        .from(UserLabAssignmentsModel)
+        .where(eq(UserLabAssignmentsModel.userId, labAssistantId))
+        .limit(1);
+
+      if (!assignment) {
+        return [];
+      }
+
+      const [lab] = await trx
+        .select({ clinicId: LabsModel.clinicId })
+        .from(LabsModel)
+        .where(eq(LabsModel.id, assignment.labId))
+        .limit(1);
+
+      if (!lab) {
+        return [];
+      }
+
       return await trx
         .select({
           id: LabOrderModel.id,
@@ -1646,8 +2052,7 @@ export class LabService {
           eq(LabOrderModel.doctorId, sql`doctor_user.id`)
         )
 
-        // ⭐ Now filter by assigned Lab Assistant ID
-        .where(eq(LabOrderModel.labAssistantId, labAssistantId))
+        .where(eq(LabOrderModel.clinicId, lab.clinicId))
 
         .orderBy(desc(LabOrderModel.createdAt));
     });
@@ -1655,14 +2060,20 @@ export class LabService {
 
   static async getTestsByLabId(labId: string) {
     return await database.transaction(async (trx) => {
+      const [lab] = await trx
+        .select({ clinicId: LabsModel.clinicId })
+        .from(LabsModel)
+        .where(eq(LabsModel.id, labId))
+        .limit(1);
+
+      if (!lab) {
+        return [];
+      }
+
       return await trx
-        .select()
+        .select(labOrderWithPaymentColumns)
         .from(LabOrderModel)
-        .innerJoin(
-          UserLabAssignmentsModel,
-          eq(LabOrderModel.labAssistantId, UserLabAssignmentsModel.userId)
-        )
-        .where(eq(UserLabAssignmentsModel.labId, labId));
+        .where(eq(LabOrderModel.clinicId, lab.clinicId));
     });
   }
 
@@ -1717,8 +2128,8 @@ export class LabService {
           testId: LabOrderModel.id,
           reportStatus: LabOrderModel.reportStatus,
           reportPdf: LabOrderModel.reportPdf,
-          price: LabOrderModel.price,
-          paymentStatus: LabOrderModel.paymentStatus,
+          price: labOrderPaymentColumns.price,
+          paymentStatus: labOrderPaymentColumns.paymentStatus,
           workflowStatus: LabOrderModel.workflowStatus,
           sampleStatus: LabOrderModel.sampleStatus,
           appointmentDate: AppointmentModel.appointmentDate,
@@ -1736,9 +2147,8 @@ export class LabService {
           doctorId: sql`doctor_user.id`,
           doctorName: sql`doctor_user.name`,
 
-          // Lab Assistant info (The one assigned to the test)
-          labAssistantId: sql`lab_assistant_user.id`,
-          labAssistantName: sql`lab_assistant_user.name`,
+          labAssistantId: sql<string | null>`null`,
+          labAssistantName: sql<string | null>`null`,
 
           // Test info
           testName: TestCatalogModel.name,
@@ -1757,22 +2167,10 @@ export class LabService {
           sql`${UserModel} as doctor_user`,
           eq(LabOrderModel.doctorId, sql`doctor_user.id`)
         )
-        .leftJoin(
-          sql`${UserModel} as lab_assistant_user`,
-          eq(LabOrderModel.labAssistantId, sql`lab_assistant_user.id`)
-        )
-        // JOIN with UserAssignments to ensure we only get tests for this LAB
-        .leftJoin(
-          UserLabAssignmentsModel,
-          eq(LabOrderModel.labAssistantId, UserLabAssignmentsModel.userId)
-        )
         .where(
           and(
             eq(AppointmentModel.clinicId, clinicId),
-            or(
-              eq(UserLabAssignmentsModel.labId, labId),
-              eq(LabOrderModel.reportStatus, 'Initiated')
-            ) // Ensure tests belong to the user's Lab OR are Initiated (unassigned)
+            eq(LabOrderModel.clinicId, clinicId)
           )
         );
 
@@ -1864,15 +2262,175 @@ export class LabService {
         )
         .orderBy(LabDepartmentsMasterModel.name);
 
-      return await this.attachTestsToDepartments(tx, departments);
+      return await this.attachTestsToDepartments(tx, departments, labId);
     });
+  }
+
+  private static async ensureLabOwnedDepartment(
+    tx: DbTransaction,
+    labId: string,
+    department: typeof LabDepartmentsMasterModel.$inferSelect
+  ) {
+    if (department.labId === labId) {
+      return department;
+    }
+
+    const labScopedCode = buildLabScopedDepartmentCode(
+      department.code,
+      labId,
+      department.id
+    );
+
+    const [existing] = await tx
+      .select()
+      .from(LabDepartmentsMasterModel)
+      .where(
+        and(
+          eq(LabDepartmentsMasterModel.labId, labId),
+          eq(LabDepartmentsMasterModel.code, labScopedCode)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      if (existing.status !== 'active') {
+        const [reactivated] = await tx
+          .update(LabDepartmentsMasterModel)
+          .set({ status: 'active', updatedAt: new Date() })
+          .where(eq(LabDepartmentsMasterModel.id, existing.id))
+          .returning();
+
+        return reactivated;
+      }
+
+      return existing;
+    }
+
+    const [created] = await tx
+      .insert(LabDepartmentsMasterModel)
+      .values({
+        labId,
+        name: department.name,
+        code: labScopedCode,
+        status: 'active',
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (created) {
+      return created;
+    }
+
+    const [conflictDepartment] = await tx
+      .select()
+      .from(LabDepartmentsMasterModel)
+      .where(
+        and(
+          eq(LabDepartmentsMasterModel.labId, labId),
+          eq(LabDepartmentsMasterModel.code, labScopedCode)
+        )
+      )
+      .limit(1);
+
+    if (!conflictDepartment) {
+      throw new HttpError(500, 'Unable to prepare department for this lab');
+    }
+
+    return conflictDepartment;
+  }
+
+  private static async resolveLabDepartmentSelection(
+    tx: DbTransaction,
+    labId: string,
+    selectedDepartmentIds: string[],
+    selectedDepartmentTestIds?: DepartmentTestSelection
+  ): Promise<DepartmentSelectionResolution> {
+    if (selectedDepartmentIds.length === 0) {
+      return {
+        departmentIds: [],
+        departmentTestIds: selectedDepartmentTestIds,
+      };
+    }
+
+    const activeDepts = await tx
+      .select()
+      .from(LabDepartmentsMasterModel)
+      .where(
+        and(
+          inArray(LabDepartmentsMasterModel.id, selectedDepartmentIds),
+          eq(LabDepartmentsMasterModel.status, 'active'),
+          departmentVisibleToLab(labId)
+        )
+      );
+
+    if (activeDepts.length !== selectedDepartmentIds.length) {
+      throw new HttpError(
+        400,
+        'One or more department IDs are invalid or inactive'
+      );
+    }
+
+    const activeDeptById = new Map(activeDepts.map((dept) => [dept.id, dept]));
+    const idMap = new Map<string, string>();
+    const resolvedDepartmentIds: string[] = [];
+
+    for (const selectedDepartmentId of selectedDepartmentIds) {
+      const department = activeDeptById.get(selectedDepartmentId);
+      if (!department) continue;
+
+      const resolvedDepartment = await this.ensureLabOwnedDepartment(
+        tx,
+        labId,
+        department
+      );
+
+      if (resolvedDepartment.id !== selectedDepartmentId) {
+        await tx
+          .update(LabTestCatalogModel)
+          .set({
+            departmentId: resolvedDepartment.id,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(LabTestCatalogModel.labId, labId),
+              eq(LabTestCatalogModel.departmentId, selectedDepartmentId)
+            )
+          );
+      }
+
+      idMap.set(selectedDepartmentId, resolvedDepartment.id);
+      idMap.set(resolvedDepartment.id, resolvedDepartment.id);
+      resolvedDepartmentIds.push(resolvedDepartment.id);
+    }
+
+    if (!selectedDepartmentTestIds) {
+      return { departmentIds: uniqueIds(resolvedDepartmentIds) };
+    }
+
+    const resolvedDepartmentTestIds: DepartmentTestSelection = {};
+    for (const [departmentId, testIds] of Object.entries(
+      selectedDepartmentTestIds
+    )) {
+      const resolvedDepartmentId = idMap.get(departmentId) ?? departmentId;
+      resolvedDepartmentTestIds[resolvedDepartmentId] = uniqueIds([
+        ...(resolvedDepartmentTestIds[resolvedDepartmentId] ?? []),
+        ...testIds,
+      ]);
+    }
+
+    return {
+      departmentIds: uniqueIds(resolvedDepartmentIds),
+      departmentTestIds: resolvedDepartmentTestIds,
+    };
   }
 
   static async updateLabDepartments(
     labId: string,
     departmentIds: string[],
     departmentTestIds?: DepartmentTestSelection,
-    clinicId?: string
+    clinicId?: string,
+    userId?: string
   ) {
     return await database.transaction(async (tx) => {
       const selectedDepartmentIds = uniqueIds(departmentIds);
@@ -1893,33 +2451,20 @@ export class LabService {
         throw new HttpError(403, 'Lab does not belong to this clinic');
       }
 
-      if (selectedDepartmentIds.length > 0) {
-        const activeDepts = await tx
-          .select({ id: LabDepartmentsMasterModel.id })
-          .from(LabDepartmentsMasterModel)
-          .where(
-            and(
-              inArray(LabDepartmentsMasterModel.id, selectedDepartmentIds),
-              eq(LabDepartmentsMasterModel.status, 'active'),
-              departmentVisibleToLab(labId)
-            )
-          );
-
-        if (activeDepts.length !== selectedDepartmentIds.length) {
-          throw new HttpError(
-            400,
-            'One or more department IDs are invalid or inactive'
-          );
-        }
-      }
+      const resolvedSelection = await this.resolveLabDepartmentSelection(
+        tx,
+        labId,
+        selectedDepartmentIds,
+        selectedDepartmentTestIds
+      );
 
       await tx
         .delete(LabDepartmentsModel)
         .where(eq(LabDepartmentsModel.labId, labId));
 
-      if (selectedDepartmentIds.length > 0) {
+      if (resolvedSelection.departmentIds.length > 0) {
         await tx.insert(LabDepartmentsModel).values(
-          selectedDepartmentIds.map((deptId) => ({
+          resolvedSelection.departmentIds.map((deptId) => ({
             labId,
             departmentId: deptId,
           }))
@@ -1930,7 +2475,9 @@ export class LabService {
         tx,
         labId,
         lab.clinicId,
-        selectedDepartmentTestIds
+        resolvedSelection.departmentTestIds,
+        false,
+        userId
       );
 
       return await tx
@@ -1960,43 +2507,143 @@ export class LabService {
   private static async getTemplatesForDepartmentSelection(
     tx: DbTransaction,
     departmentCode: string,
-    selectedTemplateIds?: string[]
+    selectedTemplateIds?: string[],
+    options?: {
+      labId?: string;
+      departmentId?: string;
+    }
   ) {
     const allCodesForDept = getTemplateCodesForDepartment(departmentCode);
+
+    if (allCodesForDept.length === 0 && !selectedTemplateIds) {
+      return [];
+    }
 
     if (selectedTemplateIds && selectedTemplateIds.length === 0) {
       return [];
     }
 
-    const templates = await tx
-      .select()
-      .from(LabReportTemplatesModel)
-      .where(
-        selectedTemplateIds
-          ? and(
-              inArray(LabReportTemplatesModel.id, selectedTemplateIds),
-              inArray(LabReportTemplatesModel.code, allCodesForDept),
-              isNull(LabReportTemplatesModel.labId),
-              eq(LabReportTemplatesModel.isActive, true)
+    const templates =
+      allCodesForDept.length > 0
+        ? await tx
+            .select()
+            .from(LabReportTemplatesModel)
+            .where(
+              and(
+                inArray(LabReportTemplatesModel.code, allCodesForDept),
+                isNull(LabReportTemplatesModel.labId),
+                eq(LabReportTemplatesModel.isActive, true)
+              )
             )
-          : and(
-              inArray(LabReportTemplatesModel.code, allCodesForDept),
-              isNull(LabReportTemplatesModel.labId),
-              eq(LabReportTemplatesModel.isActive, true)
-            )
+        : [];
+
+    if (!selectedTemplateIds) {
+      return templates;
+    }
+
+    const templateById = new Map(
+      templates.map((template) => [template.id, template])
+    );
+    const templateByCode = new Map(
+      templates.map((template) => [template.code, template])
+    );
+    const selectedTemplates = new Map<
+      string,
+      typeof LabReportTemplatesModel.$inferSelect
+    >();
+    const acceptedSelectionIds = new Set<string>();
+    const unresolvedIds: string[] = [];
+
+    for (const selectedTemplateId of selectedTemplateIds) {
+      const template = templateById.get(selectedTemplateId);
+      if (template) {
+        selectedTemplates.set(template.id, template);
+        acceptedSelectionIds.add(selectedTemplateId);
+        continue;
+      }
+
+      unresolvedIds.push(selectedTemplateId);
+    }
+
+    if (unresolvedIds.length > 0 && options?.labId && options.departmentId) {
+      const labTemplates = await tx
+        .select({
+          id: LabReportTemplatesModel.id,
+          code: LabReportTemplatesModel.code,
+        })
+        .from(LabReportTemplatesModel)
+        .where(
+          and(
+            inArray(LabReportTemplatesModel.id, unresolvedIds),
+            eq(LabReportTemplatesModel.labId, options.labId),
+            eq(LabReportTemplatesModel.isActive, true)
+          )
+        );
+      const labTemplateByCode = new Map(
+        labTemplates.map((template) => [template.code, template])
       );
 
-    if (
-      selectedTemplateIds &&
-      templates.length !== selectedTemplateIds.length
-    ) {
+      const catalogTests = await tx
+        .select({
+          id: LabTestCatalogModel.id,
+          testCode: LabTestCatalogModel.testCode,
+          source: LabTestCatalogModel.source,
+        })
+        .from(LabTestCatalogModel)
+        .where(
+          and(
+            eq(LabTestCatalogModel.labId, options.labId),
+            eq(LabTestCatalogModel.departmentId, options.departmentId),
+            or(
+              inArray(LabTestCatalogModel.id, unresolvedIds),
+              labTemplates.length > 0
+                ? inArray(
+                    LabTestCatalogModel.testCode,
+                    labTemplates.map((template) => template.code)
+                  )
+                : undefined
+            ),
+            isNull(LabTestCatalogModel.deletedAt)
+          )
+        );
+
+      for (const catalogTest of catalogTests) {
+        if (unresolvedIds.includes(catalogTest.id)) {
+          if (catalogTest.source === 'custom') {
+            acceptedSelectionIds.add(catalogTest.id);
+            continue;
+          }
+
+          const template = catalogTest.testCode
+            ? templateByCode.get(catalogTest.testCode)
+            : undefined;
+
+          if (template) {
+            selectedTemplates.set(template.id, template);
+            acceptedSelectionIds.add(catalogTest.id);
+          }
+
+          continue;
+        }
+
+        const labTemplate = catalogTest.testCode
+          ? labTemplateByCode.get(catalogTest.testCode)
+          : undefined;
+
+        if (labTemplate) {
+          acceptedSelectionIds.add(labTemplate.id);
+        }
+      }
+    }
+
+    if (acceptedSelectionIds.size !== selectedTemplateIds.length) {
       throw new HttpError(
         400,
         'One or more master test IDs are invalid for the selected department'
       );
     }
 
-    return templates;
+    return Array.from(selectedTemplates.values());
   }
 
   private static async deactivateUnselectedMasterTests(
@@ -2093,6 +2740,30 @@ export class LabService {
       );
   }
 
+  private static async getPreviousCatalogPrice(
+    tx: DbTransaction,
+    labId: string,
+    testCode: string,
+    excludeTestId?: string
+  ) {
+    const conditions = [
+      eq(LabTestCatalogModel.labId, labId),
+      eq(LabTestCatalogModel.testCode, testCode),
+      isNotNull(LabTestCatalogModel.price),
+      ne(LabTestCatalogModel.price, 0),
+      excludeTestId ? ne(LabTestCatalogModel.id, excludeTestId) : undefined,
+    ];
+
+    const [previousTest] = await tx
+      .select({ price: LabTestCatalogModel.price })
+      .from(LabTestCatalogModel)
+      .where(and(...conditions))
+      .orderBy(desc(LabTestCatalogModel.updatedAt))
+      .limit(1);
+
+    return previousTest?.price ?? null;
+  }
+
   private static async upsertSyncedMasterTest(
     tx: DbTransaction,
     payload: {
@@ -2101,10 +2772,14 @@ export class LabService {
       departmentId: string;
       departmentName: string;
       template: typeof LabReportTemplatesModel.$inferSelect;
+      userId?: string | null;
     }
   ) {
     const [existing] = await tx
-      .select({ id: LabTestCatalogModel.id })
+      .select({
+        id: LabTestCatalogModel.id,
+        price: LabTestCatalogModel.price,
+      })
       .from(LabTestCatalogModel)
       .where(
         and(
@@ -2131,17 +2806,60 @@ export class LabService {
     };
 
     if (existing) {
-      await tx
+      const previousPrice =
+        existing.price && existing.price > 0
+          ? null
+          : await this.getPreviousCatalogPrice(
+              tx,
+              payload.labId,
+              payload.template.code,
+              existing.id
+            );
+      const priceUpdate =
+        previousPrice !== null
+          ? { price: previousPrice }
+          : existing.price === 0
+            ? { price: null }
+            : {};
+      const [updatedTest] = await tx
         .update(LabTestCatalogModel)
-        .set(updatePayload)
-        .where(eq(LabTestCatalogModel.id, existing.id));
-      return;
+        .set({
+          ...updatePayload,
+          ...priceUpdate,
+        })
+        .where(eq(LabTestCatalogModel.id, existing.id))
+        .returning();
+
+      await this.ensureCatalogTestDefaultFields(tx, {
+        templateId: payload.template.id,
+        labId: payload.labId,
+        userId: payload.userId,
+        labTestCatalogId: updatedTest.id,
+      });
+      return updatedTest;
     }
 
-    await tx.insert(LabTestCatalogModel).values({
-      ...updatePayload,
-      price: 0,
+    const previousPrice = await this.getPreviousCatalogPrice(
+      tx,
+      payload.labId,
+      payload.template.code
+    );
+    const [createdTest] = await tx
+      .insert(LabTestCatalogModel)
+      .values({
+        ...updatePayload,
+        ...(previousPrice !== null ? { price: previousPrice } : {}),
+      })
+      .returning();
+
+    await this.ensureCatalogTestDefaultFields(tx, {
+      templateId: payload.template.id,
+      labId: payload.labId,
+      userId: payload.userId,
+      labTestCatalogId: createdTest.id,
     });
+
+    return createdTest;
   }
 
   static async syncLabCatalogByLabId(
@@ -2149,7 +2867,8 @@ export class LabService {
     labId: string,
     clinicId: string,
     departmentTestIds?: DepartmentTestSelection,
-    preserveDeselectedMasterTests = false
+    preserveDeselectedMasterTests = false,
+    userId?: string | null
   ) {
     const assignedDepts = await tx
       .select({
@@ -2237,7 +2956,11 @@ export class LabService {
         : await this.getTemplatesForDepartmentSelection(
             tx,
             dept.code,
-            selectedTemplateIds
+            selectedTemplateIds,
+            {
+              labId,
+              departmentId: dept.id,
+            }
           );
 
       if (departmentTestIds || preservedTemplateCodes) {
@@ -2258,6 +2981,7 @@ export class LabService {
           departmentId: dept.id,
           departmentName: dept.name,
           template,
+          userId,
         });
       }
     }

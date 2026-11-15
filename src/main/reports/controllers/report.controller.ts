@@ -1,22 +1,22 @@
 import { Request, Response } from 'express';
+import { ReportCardService } from '../services/reportCard.service';
+import { PrescriptionPrintService } from '../services/prescriptionPrint.service';
+import { ReportHistoryService } from '../services/reportHistory.service';
+import { ReportService } from '../services/report.service';
+import { DEFAULT_TEMPLATE6_COLORS } from '../utils/prescriptionSample.utils';
 import handlebars from 'handlebars';
 import { asyncHandler, HttpError } from '../../../middlewear/errorHandler';
 import {
-  DEFAULT_TEMPLATE6_COLORS,
-  ReportService,
-} from '../services/report.service';
-import {
   prescriptionLanguageSchema,
+  prescriptionPreviewClinicalSchema,
   prescriptionSectionConfigSchema,
   PrescriptionSectionsBodyDto,
   PrescriptionSectionsParamsDto,
+  LastVisitNotesParamsDto,
   PrescriptionPdfParamsDto,
   PrescriptionPdfQueryDto,
   prescriptionTemplateSchema,
-  TranslationIdParamsDto,
-  TranslationListQueryDto,
   TranslationSettingsBodyDto,
-  TranslationUpdateBodyDto,
 } from '../schemas/report.schemas';
 import { PrescriptionTranslationService } from '../services/prescriptionTranslation.service';
 import { reportCardTemplate1 } from '../../../htmltamplates/report_card1';
@@ -31,18 +31,25 @@ import {
   buildAppQrDataUrl,
 } from '../../../utils/qr.utils';
 import '../../../utils/handlebarsHelpers';
+import { buildPrescriptionSample } from '../utils/prescriptionSample.utils';
 import { sendOk } from '../../../utils/response.utils';
 import {
   PrescriptionSectionConfig,
   PrescriptionSectionService,
 } from '../services/prescriptionSection.service';
 import { layoutSectionKeys } from '../../quick-print-templates/templates/layoutRenderer';
+import { signStoredFilesDeep } from '../../files/services/fileUrl.service';
+import {
+  DEFAULT_FOOTER_NOTES,
+  QuickPrintTemplateService,
+} from '../../quick-print-templates/services/quickPrintTemplate.service';
+import { footerNotesSchema } from '../../quick-print-templates/schemas/quickPrintTemplate.schemas';
 
 export const createReportController = asyncHandler(
   async (req: Request, res: Response) => {
     const payload = req.validatedBody;
 
-    const result = await ReportService.craeteReport(payload);
+    const result = await ReportService.craeteReport(payload, req.clinicId);
     res.status(201).json({ success: true, result });
   }
 );
@@ -79,10 +86,10 @@ export const getReportController = asyncHandler(
 export const createPatientReportCardController = asyncHandler(
   async (req: Request, res: Response) => {
     const { validatedBody } = req;
-    const adminId = req.user?.id;
-    const result = await ReportService.createPatientReportCard(
+    const result = await ReportCardService.createPatientReportCard(
       validatedBody,
-      adminId
+      req.user.id,
+      req.clinicId
     );
     if (!result) {
       return res
@@ -99,7 +106,8 @@ export const getCurrentTemplateController = asyncHandler(
   async (req: Request, res: Response) => {
     const doctorId = req.user.id;
 
-    const templateInfo = await ReportService.getCurrentTemplateInfo(doctorId);
+    const templateInfo =
+      await PrescriptionPrintService.getCurrentTemplateInfo(doctorId);
 
     res.status(200).json({
       success: true,
@@ -112,7 +120,7 @@ export const getFavouritePrescriptionController = asyncHandler(
   async (req: Request, res: Response) => {
     const doctorId = req.params.doctorId as string;
     const clinicId = req.clinicId;
-    const result = await ReportService.getFavouritePrescription(
+    const result = await ReportCardService.getFavouritePrescription(
       doctorId,
       clinicId
     );
@@ -134,7 +142,7 @@ export const deleteFavouritePrescriptionController = asyncHandler(
       throw new HttpError(401, 'Unauthorized - Doctor ID not found');
     }
 
-    const result = await ReportService.deleteFavouritePrescription(
+    const result = await ReportCardService.deleteFavouritePrescription(
       id,
       doctorId
     );
@@ -150,9 +158,11 @@ export const deleteFavouritePrescriptionController = asyncHandler(
 export const updatePatientReportCardController = asyncHandler(
   async (req: Request, res: Response) => {
     const { validatedBody, validatedQuery } = req;
-    const result = await ReportService.updatePatientReportCard(
+    const result = await ReportCardService.updatePatientReportCard(
       validatedQuery,
-      validatedBody
+      validatedBody,
+      req.user.id,
+      req.clinicId
     );
     if (!result) {
       return res
@@ -170,7 +180,10 @@ export const upsertPrescriptionTemplateController = asyncHandler(
     const doctorId = req.user?.id;
     const validatedBody = prescriptionTemplateSchema.parse(req.body);
 
-    const result = await ReportService.upsertTemplate(doctorId!, validatedBody);
+    const result = await PrescriptionPrintService.upsertTemplate(
+      doctorId!,
+      validatedBody
+    );
 
     res.status(200).json({
       success: true,
@@ -184,7 +197,7 @@ export const getPrescriptionTemplateController = asyncHandler(
   async (req: Request, res: Response) => {
     const doctorId = req.user?.id;
 
-    const template = await ReportService.getTemplate(doctorId!);
+    const template = await PrescriptionPrintService.getTemplate(doctorId!);
 
     res.status(200).json({
       success: true,
@@ -224,7 +237,7 @@ export const getPrescriptionSectionsConfigController = asyncHandler(
       req.user,
       req.clinicId as string
     );
-    const result = await ReportService.getSectionConfig(doctorId);
+    const result = await PrescriptionPrintService.getSectionConfig(doctorId);
     sendOk(res, 'Prescription sections fetched successfully', result);
   }
 );
@@ -239,7 +252,7 @@ export const savePrescriptionSectionsController = asyncHandler(
       req.user,
       req.clinicId as string
     );
-    const result = await ReportService.saveSectionConfig(
+    const result = await PrescriptionPrintService.saveSectionConfig(
       doctorId,
       sectionConfig
     );
@@ -264,6 +277,22 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
       additionalInformation: userAdditionalInformation,
       previewDetail,
     } = req.body;
+    const clinical = prescriptionPreviewClinicalSchema.safeParse(
+      req.body ?? {}
+    );
+    if (!clinical.success) {
+      throw new HttpError(400, 'Invalid prescription preview details');
+    }
+    const {
+      tests: previewTests,
+      allergies: previewAllergies,
+      habits: previewHabits,
+      surgerySuggested: previewSurgery,
+      comorbidities: previewComorbidities,
+      visitingDays: previewVisitingDays,
+      visitingNotes: previewVisitingNotes,
+      dietarySuggestion: previewDietary,
+    } = clinical.data;
 
     const language = prescriptionLanguageSchema
       .optional()
@@ -276,14 +305,37 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
     // so the preview matches the final PDF even for admin-managed appointments.
     // Falls back to the logged-in user otherwise.
     const appointmentInfo = appointmentId
-      ? await ReportService.getAppointmentPreviewInfo(String(appointmentId))
+      ? await PrescriptionPrintService.getAppointmentPreviewInfo(
+          String(appointmentId),
+          String(req.clinicId)
+        )
       : null;
     const doctorId = appointmentInfo?.doctorId || req.user?.id;
 
-    // Live clinic + doctor data for the resolved doctor (patient/records stay dummy)
-    const previewContext = doctorId
-      ? await ReportService.getDoctorPreviewContext(doctorId)
-      : null;
+    // Switches the doctor is changing right now, from the settings page or the workspace Preview.
+    const postedSections = prescriptionSectionConfigSchema
+      .nullish()
+      .safeParse(req.body?.sectionConfig);
+    if (!postedSections.success) {
+      throw new HttpError(400, 'Invalid prescription section settings');
+    }
+    // Notes typed on the settings page preview before they are saved; otherwise the doctor's saved ones.
+    const postedFooterNotes = footerNotesSchema.safeParse(
+      req.body?.footerNotes
+    );
+
+    // Started now and awaited where used, so they load while the template resolves.
+    const previewContextPromise = doctorId
+      ? PrescriptionPrintService.getDoctorPreviewContext(doctorId)
+      : Promise.resolve(null);
+    const footerNotesPromise = postedFooterNotes.success
+      ? Promise.resolve(postedFooterNotes.data)
+      : doctorId
+        ? QuickPrintTemplateService.getFooterNotes(doctorId)
+        : Promise.resolve(DEFAULT_FOOTER_NOTES);
+    // Awaited below; this only stops an early throw leaving them unhandled.
+    previewContextPromise.catch(() => undefined);
+    footerNotesPromise.catch(() => undefined);
 
     let templateHtml = '';
     // templateConfig used by named/prescription templates
@@ -300,13 +352,6 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
     };
     let isQuickPrint = false;
     let elementConfig: any = null;
-    // Switches the doctor is changing right now, from the settings page or the workspace Preview.
-    const postedSections = prescriptionSectionConfigSchema
-      .nullish()
-      .safeParse(req.body?.sectionConfig);
-    if (!postedSections.success) {
-      throw new HttpError(400, 'Invalid prescription section settings');
-    }
     let sectionConfig: PrescriptionSectionConfig | null =
       postedSections.data ?? null;
 
@@ -338,7 +383,7 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
       // Designing a template but not editing the toggles (e.g. picking a
       // colour): show it with the doctor's saved sections, not the defaults.
       if (!sectionConfig && doctorId) {
-        const saved = await ReportService.getTemplate(doctorId);
+        const saved = await PrescriptionPrintService.getTemplate(doctorId);
         sectionConfig = saved?.sectionConfig ?? null;
       }
     } else if (doctorId) {
@@ -357,6 +402,7 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
         previewVitals.rbs,
         previewVitals.pulse,
         previewVitals.spo2,
+        previewVitals.respiratoryRate,
         previewVitals.temperatureC,
         previewVitals.heightCm,
         previewVitals.weightKg,
@@ -369,19 +415,27 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
         userPreDiagnosis && 'preDiagnosis',
         userAdvice && 'advice',
         userFollowUp && 'followUp',
+        previewTests.length > 0 && 'tests',
+        previewAllergies.length > 0 && 'allergies',
+        previewHabits.length > 0 && 'habits',
+        previewDietary && 'clinicalNotes',
+        appointmentInfo?.symptoms.length && 'chiefComplaints',
       ].filter((id): id is string => Boolean(id));
 
-      const resolved = await ReportService.getResolvedTemplateForPreview(
-        doctorId,
-        // Same row metrics the PDF measures, so the table reflows identically.
-        (Array.isArray(userPrescriptions) ? userPrescriptions : []).map(
-          (p: any) => ({
-            hasComposition: Boolean(p?.composition),
-          })
-        ),
-        previewFilledBlockIds,
-        sectionConfig
-      );
+      const resolved =
+        await PrescriptionPrintService.getResolvedTemplateForPreview(
+          doctorId,
+          // Same row metrics the PDF measures, so the table reflows identically.
+          (Array.isArray(userPrescriptions) ? userPrescriptions : []).map(
+            (p: any) => ({
+              hasComposition: Boolean(p?.composition),
+            })
+          ),
+          previewFilledBlockIds,
+          sectionConfig,
+          // The workspace previews the printed copy or the shared one, each with its own design.
+          req.body?.purpose === 'print' ? 'print' : 'share'
+        );
       templateHtml = resolved.templateHtml;
       resolvedTemplateConfig = resolved.templateConfig;
       isQuickPrint = resolved.isQuickPrint;
@@ -393,135 +447,19 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
 
     // Sample data for preview. The QR is the same app link the PDF carries, so
     // the preview shows the real, scannable code rather than a stand-in.
+    const [previewContext, footerNotes] = await Promise.all([
+      previewContextPromise,
+      footerNotesPromise,
+    ]);
     const sampleData = {
+      ...buildPrescriptionSample(),
+      footerNotes,
       qrCode: await buildAppQrDataUrl(),
       appDownloadUrl: buildAppDownloadUrl(),
-      clinic: {
-        name: 'My Clinic',
-        address: '12-B, Medical Street, Vijay Nagar',
-        city: 'Indore',
-        state: 'Madhya Pradesh',
-        zipcode: '452010',
-        phone: '9876543210',
-        logo: 'https://res.cloudinary.com/ddzkedas8/image/upload/v1773045466/image_rx09np.png',
-        tagline: 'Your Health, Our Priority',
-      },
-      doctor: {
-        name: 'Udit Chouhan',
-        email: 'udit.chouhan@ims.com',
-        qualification: 'MBBS, MD',
-        speciality: 'General Physician',
-        registrationNumber: 'DVGCS456123612',
-        availability: [
-          {
-            day: 'Mon',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Tue',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Wed',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Thu',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          {
-            day: 'Fri',
-            isAvailable: true,
-            startTime: '09:00 AM',
-            endTime: '05:00 PM',
-          },
-          { day: 'Sat', isAvailable: false, startTime: '', endTime: '' },
-          { day: 'Sun', isAvailable: false, startTime: '', endTime: '' },
-        ],
-        groupedAvailability: [
-          {
-            days: 'Mon - Fri',
-            isAvailable: true,
-            display: '09:00 AM - 05:00 PM',
-          },
-          { days: 'Sat - Sun', isAvailable: false, display: 'Off' },
-        ],
-      },
-      patient: {
-        name: 'Amrendra Kumar',
-        age: '35',
-        gender: 'Male',
-        address: '789 Health City, Palasia, Indore',
-      },
-      appointmentDate: '15-Mar-2024',
-      appointmentTime: '10:30 AM',
-      token: '20',
       // A sample in the settings preview; the live preview shows the visit's own number.
       registrationNo: templateName
         ? '00125'
         : (appointmentInfo?.registrationNo ?? ''),
-      symptoms: [{ name: 'Headache' }, { name: 'Fever' }, { name: 'Cough' }],
-      hasTests: 2,
-      testNames: 'CBC, Vitamin B12',
-      diagnosis: 'Viral Fever, Respiratory Tract Infection',
-      habits: ['Smoking', 'Tobacco'],
-      allergies: ['Dust', 'Syrup'],
-      visitingDays: ['10-Mar-2026', '16-Mar-2026'],
-      visitingNotes: 'To checkup of health condition',
-      surgerySuggested: ['Mole Removal', 'Suturing Wounds'],
-      vitalsMoreThanOne: true,
-      vitals: {
-        bpSys: 120,
-        bpDia: 80,
-        fbs: 95,
-        ppbs: 140,
-        rbs: 110,
-        pulse: 72,
-        spo2: 98,
-        temperatureC: 98.6,
-        weightKg: 70,
-        heightCm: 170,
-        bmi: 24.2,
-      },
-      prescriptions: [
-        {
-          medicineName: 'Paracip 500',
-          form: 'Tablet',
-          composition: 'Paracetamol',
-          strength: '500 mg',
-          dosage: '2 tablet',
-          frequency: '1-0-1',
-          duration: '5 days',
-          notes: 'After Food',
-        },
-        {
-          medicineName: 'Asthakind',
-          form: 'Syrup',
-          composition: 'Chlorpheniramine + Codeine',
-          strength: 'Syrup',
-          dosage: '1 spoon',
-          frequency: '1-0-1',
-          duration: '3 days',
-          notes: 'Shake well before use',
-        },
-      ],
-      advice:
-        'Take adequate rest. Drink plenty of warm water. Avoid cold food items. Follow up in 3 days if symptoms persist.',
-      preDiagnosis: 'Suspected viral fever, pending confirmation.',
-      dietarySuggestion: 'Please drink orange juice twice a day.',
-      followUpDate: '18-Mar-2024',
-      additionalInformation: {
-        'Tooth-1': 'Cavity',
-        'Tooth-2': 'Cleaning required',
-      },
     };
 
     // Replace dummy clinic/doctor with the doctor's real, current data when found.
@@ -573,6 +511,7 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
         (cleanVitals as any).rbs,
         (cleanVitals as any).pulse,
         (cleanVitals as any).spo2,
+        (cleanVitals as any).respiratoryRate,
         (cleanVitals as any).temperatureC,
         (cleanVitals as any).heightCm,
         (cleanVitals as any).weightKg,
@@ -595,7 +534,8 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
       (sampleData as any).provisionalDiagnosis = userDiagnosis || '';
       (sampleData as any).advice = userAdvice || '';
       (sampleData as any).preDiagnosis = userPreDiagnosis || '';
-      (sampleData as any).dietarySuggestion = '';
+      (sampleData as any).dietarySuggestion = previewDietary;
+      (sampleData as any).comorbidities = previewComorbidities;
       (sampleData as any).followUpDate = userFollowUp || '';
       (sampleData as any).additionalInformation =
         userAdditionalInformation &&
@@ -604,17 +544,23 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
           : {};
       (sampleData as any).vitals = cleanVitals;
       (sampleData as any).vitalsMoreThanOne = cleanVitalsCount > 0;
-      (sampleData as any).symptoms = [];
-      (sampleData as any).habits = [];
-      (sampleData as any).allergies = [];
-      (sampleData as any).surgerySuggested = [];
-      (sampleData as any).visitingDays = [];
-      (sampleData as any).visitingNotes = '';
-      (sampleData as any).hasTests = false;
-      (sampleData as any).testNames = '';
-      (sampleData as any).appointmentDate = todayStr;
+      // Same values and formatting the saved PDF uses, so the preview matches it.
+      (sampleData as any).symptoms = appointmentInfo?.symptoms ?? [];
+      (sampleData as any).habits = previewHabits;
+      (sampleData as any).allergies = previewAllergies;
+      (sampleData as any).surgerySuggested = previewSurgery;
+      (sampleData as any).treatmentPlans =
+        appointmentInfo?.treatmentPlans ?? [];
+      (sampleData as any).visitingDays = previewVisitingDays.map(
+        (day) => PrescriptionPrintService.formatPrescriptionDate(day) || day
+      );
+      (sampleData as any).visitingNotes = previewVisitingNotes;
+      (sampleData as any).hasTests = previewTests.length > 0;
+      (sampleData as any).testNames = previewTests.join(', ');
+      (sampleData as any).appointmentDate =
+        appointmentInfo?.appointmentDate || todayStr;
       (sampleData as any).appointmentTime = '';
-      (sampleData as any).token = '';
+      (sampleData as any).token = appointmentInfo?.token ?? '';
     }
 
     /**
@@ -632,6 +578,7 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
     if (!isLivePreview && previewDetail === 'standard') {
       (sampleData as any).habits = [];
       (sampleData as any).surgerySuggested = [];
+      (sampleData as any).treatmentPlans = [];
       (sampleData as any).additionalInformation = {};
       (sampleData as any).dietarySuggestion = '';
       (sampleData as any).visitingDays = [];
@@ -663,6 +610,7 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
       showClinicalNotes: true,
       showAdvice: true,
       showPreDiagnosis: true,
+      showTreatmentPlan: true,
       showFollowUp: true,
       showDoctorName: true,
       showDoctorQualification: true,
@@ -774,8 +722,12 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
             ).style
           )
         : undefined;
+    // The logo sits inside the HTML, where the JSON response signer can't reach it.
+    const signedData = (await signStoredFilesDeep(
+      previewData
+    )) as typeof previewData;
     const finalHtml = handlebars.compile(templateHtml)({
-      ...previewData,
+      ...signedData,
       i18n,
     });
 
@@ -792,48 +744,32 @@ export const getPreviewPrescriptionTemplateController = asyncHandler(
 );
 
 /** A saved prescription as a PDF in any language, rendered on demand and never stored. */
+export const getLastVisitNotesController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { validatedParams, clinicId, user } = req;
+    const { appointmentId } = validatedParams as LastVisitNotesParamsDto;
+    const result = await ReportHistoryService.getLastVisitNotes(
+      appointmentId,
+      clinicId as string,
+      user
+    );
+    sendOk(res, 'Last visit notes fetched successfully', result);
+  }
+);
+
 export const getPrescriptionPdfController = asyncHandler(
   async (req: Request, res: Response) => {
     const { reportId } = req.validatedParams as PrescriptionPdfParamsDto;
-    const { lang } = req.validatedQuery as PrescriptionPdfQueryDto;
-    const pdf = await ReportService.renderPrescriptionPdf(
+    const { lang, purpose } = req.validatedQuery as PrescriptionPdfQueryDto;
+    const pdf = await PrescriptionPrintService.renderPrescriptionPdf(
       reportId,
       req.clinicId as string,
-      lang
+      lang,
+      purpose
     );
 
     // A binary body, so the JSON envelope helpers don't apply.
     res.type('application/pdf').send(pdf);
-  }
-);
-
-/** The signed-in doctor's translation memory for one language, for the Translations tab. */
-export const getTranslationsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { lang, status, pageNumber, pageSize } =
-      req.validatedQuery as TranslationListQueryDto;
-    const result = await PrescriptionTranslationService.listForDoctor(
-      { clinicId: req.clinicId as string, doctorId: req.user.id },
-      lang,
-      status,
-      pageNumber,
-      pageSize
-    );
-    return sendOk(res, 'Translations fetched successfully', result);
-  }
-);
-
-/** A doctor's correction to one of their own phrases; it always wins over a machine translation. */
-export const updateTranslationController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { id } = req.validatedParams as TranslationIdParamsDto;
-    const { translatedText } = req.validatedBody as TranslationUpdateBodyDto;
-    const result = await PrescriptionTranslationService.saveManual(
-      { clinicId: req.clinicId as string, doctorId: req.user.id },
-      id,
-      translatedText
-    );
-    return sendOk(res, 'Translation saved', result);
   }
 );
 
@@ -873,11 +809,12 @@ export const getTranslationLanguagesController = asyncHandler(
 
 export const getAppoinmentsPrescriptionsReportController = asyncHandler(
   async (req: Request, res: Response) => {
-    const { validatedParams, validatedQuery, clinicId } = req;
-    const result = await ReportService.getAppoinmentsPrescriptionsReport(
+    const { validatedParams, validatedQuery, clinicId, user } = req;
+    const result = await ReportHistoryService.getAppoinmentsPrescriptionsReport(
       validatedParams,
       validatedQuery,
-      clinicId
+      clinicId,
+      user
     );
     if (!result) {
       return res
@@ -892,7 +829,11 @@ export const getAppoinmentsPrescriptionsReportController = asyncHandler(
 export const getReportCardController = asyncHandler(
   async (req: Request, res: Response) => {
     const { validatedQuery, clinicId } = req;
-    const result = await ReportService.getReportCard(validatedQuery, clinicId);
+    const result = await ReportHistoryService.getReportCard(
+      validatedQuery,
+      clinicId,
+      req.user?.userType
+    );
     res
       .status(201)
       .json({ success: true, message: 'Report card retrieved', result });

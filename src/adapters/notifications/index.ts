@@ -8,9 +8,11 @@
 
 import type { Server } from 'socket.io';
 import {
+  registerAttachmentPort,
   registerDirectoryPort,
   registerEmitPort,
 } from '../../main/notifications/ports';
+import { attachmentAdapter } from './attachment.adapter';
 import { directoryAdapter } from './directory.adapter';
 import { emitAdapter } from './emit.adapter';
 
@@ -18,4 +20,5 @@ export function initNotificationPorts(io: Server): void {
   emitAdapter.attach(io);
   registerDirectoryPort(directoryAdapter);
   registerEmitPort(emitAdapter);
+  registerAttachmentPort(attachmentAdapter);
 }

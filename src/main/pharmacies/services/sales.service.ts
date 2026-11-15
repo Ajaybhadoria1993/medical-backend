@@ -814,14 +814,18 @@ export class PharmacySalesService {
       );
     }
 
-    await enqueueWhatsAppTemplate(saleData.patientMobile, {
-      key: 'pharmacyInvoice',
-      params: {
-        customerName: saleData.patientName || 'Customer',
-        pharmacyName: pharmacy.name,
-        invoiceUrl: pdfUrl,
+    await enqueueWhatsAppTemplate(
+      saleData.patientMobile,
+      {
+        key: 'pharmacyInvoice',
+        params: {
+          customerName: saleData.patientName || 'Customer',
+          pharmacyName: pharmacy.name,
+          invoiceUrl: pdfUrl,
+        },
       },
-    });
+      { clinicId: pharmacy.clinicId }
+    );
 
     return {
       success: true,

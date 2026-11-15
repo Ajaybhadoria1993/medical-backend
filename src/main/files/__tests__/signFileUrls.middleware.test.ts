@@ -51,6 +51,14 @@ describe('signFileUrlsInResponses', () => {
     expect(out.data.url).toBe(url);
   });
 
+  // A signed link a form saved into a row: dead after 12h unless renewed here.
+  it('re-signs a stored URL whose signature has expired', async () => {
+    const url =
+      'https://b.s3.ap-south-1.amazonaws.com/production/c/1/clinic_logos/a.png?X-Amz-Date=20261006T100000Z&X-Amz-Expires=43200&X-Amz-Signature=abc';
+    const out = await send({ data: { clinicLogo: url } });
+    expect(out.data.clinicLogo).toBe('SIGNED');
+  });
+
   it('signs inside arrays and nested objects', async () => {
     const out = await send({
       data: { items: [{ profileImage: 'staging/profile_pictures/a.jpg' }] },

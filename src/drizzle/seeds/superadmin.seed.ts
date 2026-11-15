@@ -1,45 +1,55 @@
+import { eq } from 'drizzle-orm';
 import { database } from '../../configurations/dbConnection';
 import { UserModel } from '../../main/users/models/user.model';
 import { hashPassword } from '../../utils/authUtils';
 import { envConfig } from '../../utils/envConfig';
 import logger from '../../utils/logger';
-import { eq } from 'drizzle-orm';
 
+/** Creates the env Super Admin once, or reactivates it; never changes the password. */
 export async function seedSuperAdmin() {
-  try {
-    logger.info('Seeding superadmin credentials...');
+  const email = envConfig.SUPER_ADMIN_EMAIL;
 
-    const superAdminEmail = envConfig.SUPER_ADMIN_EMAIL;
-    const superAdminName = envConfig.SUPER_ADMIN_NAME;
-    const superAdminPassword = envConfig.SUPER_ADMIN_PASSWORD;
+  const [existing] = await database
+    .select({
+      id: UserModel.id,
+      userType: UserModel.userType,
+      userStatus: UserModel.userStatus,
+    })
+    .from(UserModel)
+    .where(eq(UserModel.email, email))
+    .limit(1);
 
-    // Check if superadmin already exists
-    const existingAdmin = await database
-      .select()
-      .from(UserModel)
-      .where(eq(UserModel.email, superAdminEmail))
-      .limit(1);
-
-    if (existingAdmin.length > 0) {
-      logger.info('Superadmin already exists. Skipping...');
-      return;
-    }
-
-    const hashedPassword = await hashPassword(superAdminPassword);
-
+  if (!existing) {
     await database.insert(UserModel).values({
-      name: superAdminName,
-      email: superAdminEmail,
-      password: hashedPassword,
+      name: envConfig.SUPER_ADMIN_NAME,
+      email,
+      password: await hashPassword(envConfig.SUPER_ADMIN_PASSWORD),
       userType: 'Super_Admin',
       userStatus: 'Active',
       emailVerifiedAt: new Date(),
       isAdminDoctorAccess: true,
     });
-
-    logger.info('Superadmin seeded successfully!');
-  } catch (error) {
-    logger.error('Error seeding superadmin:', error);
-    throw error;
+    logger.info('[seed] super admin: 1 created');
+    return;
   }
+
+  // Never promote another account: that would hand Super Admin to whoever owns this email.
+  if (existing.userType !== 'Super_Admin') {
+    throw new Error(
+      `SUPER_ADMIN_EMAIL belongs to a ${existing.userType} account; use a different email for the Super Admin`
+    );
+  }
+
+  if (existing.userStatus !== 'Active') {
+    await database
+      .update(UserModel)
+      .set({ userStatus: 'Active', updatedAt: new Date() })
+      .where(eq(UserModel.id, existing.id));
+    logger.warn(
+      `[seed] super admin: reactivated (was ${existing.userStatus}); password unchanged`
+    );
+    return;
+  }
+
+  logger.info('[seed] super admin: 0 created, 1 unchanged');
 }

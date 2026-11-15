@@ -12,10 +12,6 @@ describe('DynamicSplitEngine Unit Tests', () => {
       rateOrAmount: 2, // 2%
       taxRate: 18,
       taxTreatment: 'TAX_EXCLUSIVE',
-      feePayer: 'PATIENT',
-      feeRecipient: 'PLATFORM',
-      deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
-      applicationLevel: 'APPOINTMENT_LEVEL',
       priority: 1,
       effectiveFrom: new Date('2020-01-01'),
       effectiveTo: null,
@@ -29,10 +25,6 @@ describe('DynamicSplitEngine Unit Tests', () => {
       rateOrAmount: 5, // 5%
       taxRate: 18,
       taxTreatment: 'TAX_EXCLUSIVE',
-      feePayer: 'PATIENT',
-      feeRecipient: 'PLATFORM',
-      deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
-      applicationLevel: 'APPOINTMENT_LEVEL',
       priority: 2,
       effectiveFrom: new Date('2020-01-01'),
       effectiveTo: null,
@@ -46,10 +38,6 @@ describe('DynamicSplitEngine Unit Tests', () => {
       rateOrAmount: 2, // 2%
       taxRate: 18,
       taxTreatment: 'TAX_EXCLUSIVE',
-      feePayer: 'PATIENT',
-      feeRecipient: 'PAYMENT_GATEWAY',
-      deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
-      applicationLevel: 'APPOINTMENT_LEVEL',
       priority: 3,
       effectiveFrom: new Date('2020-01-01'),
       effectiveTo: null,
@@ -89,6 +77,14 @@ describe('DynamicSplitEngine Unit Tests', () => {
     expect(Number(pricingSum.toFixed(2))).toBe(
       Number(result.patientPricingSummary.totalPayable.toFixed(2))
     );
+
+    // Patient fee lines add up to the fee totals, so the app's breakdown matches the charge.
+    const { fees, platformFee, platformFeeGst } = result.patientPricingSummary;
+    const lineFees = fees.reduce((s, l) => s + l.amount, 0);
+    const lineGst = fees.reduce((s, l) => s + l.gst, 0);
+    expect(Number(lineFees.toFixed(2))).toBe(platformFee);
+    expect(Number(lineGst.toFixed(2))).toBe(platformFeeGst);
+    expect(fees.map((l) => l.type)).not.toContain('CLINIC_COMMISSION');
   });
 
   it('should collectively aggregate all patient-borne fee components and their GST', () => {
@@ -130,10 +126,6 @@ describe('DynamicSplitEngine Unit Tests', () => {
         rateOrAmount: 25.0, // flat 25 INR
         taxRate: 18,
         taxTreatment: 'TAX_EXCLUSIVE',
-        feePayer: 'PATIENT',
-        feeRecipient: 'PLATFORM',
-        deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
-        applicationLevel: 'APPOINTMENT_LEVEL',
         priority: 1,
         effectiveFrom: new Date('2020-01-01'),
         effectiveTo: null,
@@ -151,38 +143,26 @@ describe('DynamicSplitEngine Unit Tests', () => {
     expect(result.patientPricingSummary.platformFeeGst).toBe(4.5);
     expect(result.patientPricingSummary.totalPayable).toBe(1029.5);
   });
+});
 
-  it('should handle CLAMPED_PERCENTAGE calculation method', () => {
-    const clampedConfigs: IFeeConfig[] = [
+describe('DynamicSplitEngine: a new fee type', () => {
+  it('is charged and counted without engine changes', () => {
+    const r = DynamicSplitEngine.calculate(500, [
       {
-        feeName: 'Clamped Fee',
-        feeType: 'CONVENIENCE_FEE',
+        feeName: 'sms',
+        feeType: 'SMS_FEE',
         enabled: true,
-        calculationMethod: 'CLAMPED_PERCENTAGE',
+        calculationMethod: 'FIXED',
         calculationBase: 'CLINIC_SERVICE_PRICE',
-        rateOrAmount: 10, // 10%
-        minAmount: 10, // min 10 INR
-        maxAmount: 30, // max 30 INR
-        taxRate: 0,
-        taxTreatment: 'TAX_EXEMPT',
-        feePayer: 'PATIENT',
-        feeRecipient: 'PLATFORM',
-        deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
-        applicationLevel: 'APPOINTMENT_LEVEL',
-        priority: 1,
-        effectiveFrom: new Date('2020-01-01'),
-        effectiveTo: null,
+        rateOrAmount: 5,
+        taxRate: 18,
+        taxTreatment: 'TAX_EXCLUSIVE',
+        priority: 5,
+        effectiveFrom: new Date(),
       },
-    ];
-
-    // For 1000 INR, 10% is 100, clamped to max 30
-    const resultHigh = DynamicSplitEngine.calculate(1000, clampedConfigs);
-    expect(resultHigh.breakdown.convenienceFee).toBe(30);
-    expect(resultHigh.patientPricingSummary.platformFee).toBe(30);
-
-    // For 50 INR, 10% is 5, clamped to min 10
-    const resultLow = DynamicSplitEngine.calculate(50, clampedConfigs);
-    expect(resultLow.breakdown.convenienceFee).toBe(10);
-    expect(resultLow.patientPricingSummary.platformFee).toBe(10);
+    ]);
+    expect(r.patientTotal).toBe(505.9);
+    expect(r.platformAmount).toBe(5);
+    expect(r.clinicAmount).toBe(500);
   });
 });

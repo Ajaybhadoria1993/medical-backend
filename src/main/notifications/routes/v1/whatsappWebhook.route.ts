@@ -1,6 +1,6 @@
 // src/main/notifications/routes/v1/whatsappWebhook.route.ts
 import { Router } from 'express';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   verifyWhatsappWebhookHandler,
   receiveWhatsappWebhookHandler,

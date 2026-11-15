@@ -1,9 +1,17 @@
 import {
+  PatientClinicTiming,
+  PatientShift,
   PublicClinic,
   PublicClinicTiming,
   PublicDoctorProfile,
   PublicDoctorReview,
 } from '../types/doctorPublicProfile.types';
+import {
+  minutesToTime12h,
+  shiftWindowsForDay,
+} from '../../../utils/timeWindow.util';
+import { splitSpecializations } from '../../../utils/specialtyCatalog';
+import { doctorDegreeLine } from '../../../utils/qualificationCatalog';
 
 export function maskReviewerName(name: string | null): string {
   const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
@@ -24,6 +32,25 @@ export function toPublicTimings(availability: any[]): PublicClinicTiming[] {
       startTime: b.startTime ?? null,
       endTime: b.endTime ?? null,
     })),
+  }));
+}
+
+// Patient app gets each day's shifts instead of the gaps between them.
+export function toPatientTimings(availability: any[]): PatientClinicTiming[] {
+  return (availability ?? []).map((slot: any) => ({
+    dayOfWeek: slot.dayOfWeek,
+    startTime: slot.startTime ?? null,
+    endTime: slot.endTime ?? null,
+    isAvailable: slot.isAvailable === true,
+    shifts: toShifts(slot),
+  }));
+}
+
+function toShifts(slot: any): PatientShift[] {
+  const active = (slot.breaks ?? []).filter((b: any) => b.status !== false);
+  return shiftWindowsForDay(slot, active).map((w) => ({
+    startTime: minutesToTime12h(w.start),
+    endTime: minutesToTime12h(w.end),
   }));
 }
 
@@ -87,7 +114,12 @@ export function toPublicDoctorProfile(
       profileImage: profile.profileImage ?? null,
       speciality: profile.speciality ?? null,
       specialization: profile.specialization ?? [],
+      ...splitSpecializations(profile.speciality, profile.specialization ?? []),
       qualification: profile.qualification ?? null,
+      degreeLine: doctorDegreeLine(
+        profile.qualifications ?? [],
+        profile.qualification
+      ),
       yearsOfExperience: profile.yearsOfExperience ?? null,
       about: profile.about ?? null,
       isVerified: profile.isVerified === true,
@@ -100,6 +132,18 @@ export function toPublicDoctorProfile(
         specialization: q.specialization ?? null,
         boardOrUniversity: q.boardOrUniversity ?? null,
         yearOfCompletion: q.yearOfCompletion ?? null,
+        notes: q.notes ?? null,
+      })),
+      languagesSpoken: profile.languagesSpoken ?? [],
+      experiences: (profile.experiences ?? []).map((e: any) => ({
+        organisation: e.organisation,
+        role: e.role,
+        city: e.city ?? null,
+        startMonth: e.startMonth,
+        startYear: e.startYear,
+        endMonth: e.endMonth ?? null,
+        endYear: e.endYear ?? null,
+        isCurrent: e.isCurrent === true,
       })),
     },
     rating: {

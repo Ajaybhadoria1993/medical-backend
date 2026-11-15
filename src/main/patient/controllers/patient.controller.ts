@@ -6,10 +6,9 @@ import {
   sendOk,
 } from '../../../utils/response.utils';
 import { PatientService } from '../services/patient.service';
+import { PatientSharedImagesService } from '../services/sharedImages.service';
 import { DelayTrackerService } from '../../appointment-engine/services';
-import { verifyWebhookSignature } from '../../../utils/razorpay';
-import { envConfig } from '../../../utils/envConfig';
-import { ClinicService } from '../../clinic/services/clinic.service';
+import { razorpayWebhookController } from '../../payment';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Self Profile
@@ -115,6 +114,14 @@ export const updateFamilyMemberController = asyncHandler(
  * DELETE /api/v1/patient/family/:familyMemberId
  * Remove the family link (does not delete the linked patient record).
  */
+/** DELETE /api/v1/patient/account — the patient switches their own login off. */
+export const deactivateOwnAccountController = asyncHandler(
+  async (req: Request, res: Response) => {
+    await PatientService.deactivateOwnAccount(req.user.id);
+    return sendNoContent(res, 'Account deactivated successfully');
+  }
+);
+
 export const removeFamilyMemberController = asyncHandler(
   async (req: Request, res: Response) => {
     const { familyMemberId } = req.validatedParams;
@@ -183,7 +190,10 @@ export const updateFamilyMemberProfileImageController = asyncHandler(
  */
 export const searchDirectoryController = asyncHandler(
   async (req: Request, res: Response) => {
-    const result = await PatientService.searchDirectory(req.validatedQuery);
+    const result = await PatientService.searchDirectory(
+      req.validatedQuery,
+      req.user.id
+    );
     return sendOk(res, 'Directory search completed successfully', result);
   }
 );
@@ -195,7 +205,7 @@ export const searchDirectoryController = asyncHandler(
 export const getDoctorPublicProfileController = asyncHandler(
   async (req: Request, res: Response) => {
     const { doctorId } = req.validatedParams;
-    const result = await PatientService.getDoctorPublicProfile(
+    const result = await PatientService.getDoctorProfileForPatient(
       doctorId,
       req.user.id
     );
@@ -253,6 +263,19 @@ export const getDoctorPublicSlotsController = asyncHandler(
       'Doctor availability slots fetched successfully',
       result
     );
+  }
+);
+
+/**
+ * GET /api/v1/patient/directory/clinics/:clinicId/symptoms
+ * Symptoms the patient can pick from while booking at the clinic.
+ */
+export const getClinicSymptomsController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await PatientService.getClinicSymptoms(
+      req.validatedParams.clinicId
+    );
+    return sendOk(res, 'Clinic symptoms fetched successfully', result);
   }
 );
 
@@ -871,80 +894,15 @@ export const verifyAppointmentPaymentController = asyncHandler(
   }
 );
 
-/**
- * POST /api/v1/patient/appointments/webhook
- * Razorpay webhook handler for capturing patient appointment payments or failures.
- */
-export const razorpayAppointmentWebhookController = async (
-  req: Request,
-  res: Response
-) => {
-  const signature = req.headers['x-razorpay-signature'] as string;
-  const stashRawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
-  const rawBody = stashRawBody
-    ? stashRawBody.toString('utf8')
-    : req.body instanceof Buffer
-      ? req.body.toString('utf8')
-      : JSON.stringify(req.body);
+/** POST /api/v1/patient/appointments/webhook — old app webhook URL; the one Razorpay router handles it. */
+export const razorpayAppointmentWebhookController = razorpayWebhookController;
 
-  if (
-    !verifyWebhookSignature(
-      rawBody,
-      signature,
-      envConfig.RAZORPAY_WEBHOOK_APP_SECRET
-    )
-  ) {
-    return res.status(400).json({ error: 'Invalid webhook signature' });
+export const getPatientSharedImagesController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await PatientSharedImagesService.listForAppointment(
+      req.user.id,
+      req.validatedParams.appointmentId
+    );
+    return sendOk(res, 'Shared images fetched successfully', result);
   }
-
-  let eventData;
-  try {
-    eventData = JSON.parse(rawBody);
-  } catch {
-    return res.status(400).json({ error: 'Invalid JSON body' });
-  }
-
-  const { event, payload } = eventData;
-
-  try {
-    if (event === 'payment.captured') {
-      const payment = payload.payment.entity;
-      const notes = payment.notes || {};
-      const appointmentId = notes.appointmentId;
-      const patientId = notes.patientId;
-
-      if (appointmentId && patientId) {
-        await PatientService.confirmPaymentAndAppoint(
-          appointmentId,
-          payment.id,
-          patientId
-        );
-      }
-    } else if (event === 'payment.failed') {
-      const payment = payload.payment.entity;
-      const notes = payment.notes || {};
-      const appointmentId = notes.appointmentId;
-      const patientId = notes.patientId;
-
-      if (appointmentId && patientId) {
-        await PatientService.handlePaymentFailure(
-          appointmentId,
-          payment.id,
-          patientId
-        );
-      }
-    } else if (
-      event === 'account.activated' ||
-      event === 'account.updated' ||
-      event === 'product.activated'
-    ) {
-      await ClinicService.handleRazorpayAccountWebhook(event, payload);
-    }
-
-    return res.json({ received: true });
-  } catch (error: any) {
-    return res
-      .status(500)
-      .json({ error: error.message || 'Internal server error' });
-  }
-};
+);

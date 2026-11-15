@@ -8,6 +8,7 @@ import {
   PRESCRIPTION_LANGUAGE_CODES,
   PRESCRIPTION_PRINT_STYLES,
 } from '../utils/prescriptionLanguages.utils';
+import { noteProblem } from '../../examination';
 
 /**
  * Built from the section catalogue rather than a hand-written key list, so a
@@ -88,6 +89,13 @@ export type PrescriptionSectionsParamsDto = z.infer<
   typeof prescriptionSectionsParamsSchema
 >;
 
+export const lastVisitNotesParamsSchema = z.object({
+  appointmentId: z.string().uuid('appointmentId must be a valid id'),
+});
+export type LastVisitNotesParamsDto = z.infer<
+  typeof lastVisitNotesParamsSchema
+>;
+
 export const prescriptionPdfParamsSchema = z.object({
   reportId: z.string().uuid('reportId must be a valid id'),
 });
@@ -97,36 +105,11 @@ export type PrescriptionPdfParamsDto = z.infer<
 
 export const prescriptionPdfQuerySchema = z.object({
   lang: prescriptionLanguageSchema.default('en'),
+  /** Which output to render; the doctor's share/print choice decides its design. */
+  purpose: z.enum(['print', 'share']).default('share'),
 });
 export type PrescriptionPdfQueryDto = z.infer<
   typeof prescriptionPdfQuerySchema
->;
-
-/** Translations tab: one language at a time; English has nothing to translate. */
-export const translationListQuerySchema = z.object({
-  lang: prescriptionLanguageSchema.exclude(['en']),
-  status: z.enum(['pending', 'machine', 'manual']).optional(),
-  pageNumber: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-});
-export type TranslationListQueryDto = z.infer<
-  typeof translationListQuerySchema
->;
-
-export const translationIdParamsSchema = z.object({
-  id: z.string().uuid('id must be a valid id'),
-});
-export type TranslationIdParamsDto = z.infer<typeof translationIdParamsSchema>;
-
-export const translationUpdateBodySchema = z.object({
-  translatedText: z
-    .string()
-    .trim()
-    .min(1, 'Translation is required')
-    .max(1000, 'Translation is too long'),
-});
-export type TranslationUpdateBodyDto = z.infer<
-  typeof translationUpdateBodySchema
 >;
 
 /** Translations tab: the doctor's print language and style; 'en' prints English only. */
@@ -137,6 +120,34 @@ export const translationSettingsBodySchema = z.object({
 export type TranslationSettingsBodyDto = z.infer<
   typeof translationSettingsBodySchema
 >;
+
+const previewListSchema = z
+  .array(z.string().trim())
+  .default([])
+  .transform((list) => list.filter(Boolean));
+
+/** Chart and exam-table notes; a dotted key must be a real exam field and numbers must be in range. */
+const additionalInformationSchema = z
+  .record(z.string(), z.string())
+  .superRefine((notes, ctx) => {
+    for (const [key, value] of Object.entries(notes)) {
+      const problem = noteProblem(key, value);
+      if (problem)
+        ctx.addIssue({ code: 'custom', message: problem, path: [key] });
+    }
+  });
+
+/** Live preview: the visit's clinical lists and notes, before they are saved. */
+export const prescriptionPreviewClinicalSchema = z.object({
+  tests: previewListSchema,
+  allergies: previewListSchema,
+  habits: previewListSchema,
+  surgerySuggested: previewListSchema,
+  comorbidities: previewListSchema,
+  visitingDays: previewListSchema,
+  visitingNotes: z.string().trim().default(''),
+  dietarySuggestion: z.string().trim().default(''),
+});
 
 export type createReportDto = z.infer<typeof createReportSchema>;
 export type updateReportDto = z.infer<typeof updateReportSchema>;
@@ -189,7 +200,7 @@ export const reportCardPostSchema = z.object({
   visitingDays: z.array(z.string()).optional().nullable(),
   visitingNotes: z.string().optional().nullable(),
   prescriptionPdf: z.string().optional().nullable(),
-  additionalInformation: z.record(z.string(), z.string()).optional().nullable(),
+  additionalInformation: additionalInformationSchema.optional().nullable(),
   followUpInDays: z.string().optional().nullable(),
   followUpDate: z.coerce.date().optional().nullable(),
 });
@@ -258,7 +269,7 @@ export const reportCardPutSchema = z.object({
   surgerySuggested: z.array(z.string()).optional().nullable(),
   visitingDays: z.array(z.string()).optional().nullable(),
   visitingNotes: z.string().optional().nullable(),
-  additionalInformation: z.record(z.string(), z.string()).optional().nullable(),
+  additionalInformation: additionalInformationSchema.optional().nullable(),
   followUpInDays: z.string().optional().nullable(),
   followUpDate: z.coerce.date().optional().nullable(),
 });
@@ -321,7 +332,24 @@ export const getPatientIdQuerySchema = z.object({
   pageNumber: z.string().min(1, 'pageNumber is required').optional(),
   searchBy: z.string().optional(),
   typeOfPaginations: z
-    .enum(['Appointments', 'Prescriptions', 'Medcial history'])
+    .enum(['Appointments', 'Prescriptions', 'Medcial history', 'Visits'])
+    .optional(),
+  // Visits only: inclusive YYYY-MM-DD bounds and an Admin-only doctor filter.
+  fromDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  toDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  doctorId: z.string().uuid().optional(),
+  // Visits only: comma list of detail sections to return; absent returns all.
+  sections: z
+    .string()
+    .regex(
+      /^(diagnosis|vitals|medicines|allergies|tests|notes)(,(diagnosis|vitals|medicines|allergies|tests|notes))*$/
+    )
     .optional(),
 });
 export type GetPatientIdQueryDto = z.infer<typeof getPatientIdQuerySchema>;

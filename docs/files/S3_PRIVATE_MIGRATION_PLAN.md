@@ -39,7 +39,7 @@ thing worth having now.
 
 **This is reversible, cheaply, at any time.** Closing them needs no migration
 and no code — one bucket policy on the old bucket keeping only `ims/*` and
-`docoter_refernce_images/*` public, plus turning the ACL blocks on. The brand
+`assets/*` (doctor teaching images) public, plus turning the ACL blocks on. The brand
 logo keeps working; everything else in that bucket goes private and is signed
 by code that already exists. Recorded here so the option is not lost.
 

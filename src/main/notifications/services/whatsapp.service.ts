@@ -2,10 +2,18 @@ import axios from 'axios';
 import { envConfig } from '../../../utils/envConfig';
 import logger from '../../../utils/logger';
 
-export interface WhatsAppTemplateComponent {
-  type: 'body';
-  parameters: Array<{ type: 'text'; text: string }>;
-}
+export type WhatsAppTemplateComponent =
+  | {
+      type: 'header';
+      parameters: Array<{ type: 'image'; image: { link: string } }>;
+    }
+  | { type: 'body'; parameters: Array<{ type: 'text'; text: string }> }
+  | {
+      type: 'button';
+      sub_type: 'url';
+      index: string;
+      parameters: Array<{ type: 'text'; text: string }>;
+    };
 
 /**
  * Bounded so a hung Meta connection can't stall the caller indefinitely —
@@ -50,14 +58,17 @@ export class WhatsAppService {
    * Sends a pre-approved template message via the Meta WhatsApp Business Cloud API.
    * Business-initiated messages must use an approved template — free-form text
    * is only permitted within an open 24h customer-service session, which this
-   * outbound-only integration does not track.
+   * outbound-only integration does not track. Returns Meta's message id.
    */
   static async sendTemplateMessage(
     to: string,
     templateName: string,
     languageCode: string,
-    bodyParams: string[]
-  ): Promise<void> {
+    bodyParams: string[],
+    // Suffix for each dynamic URL button, by button index. Static buttons need none.
+    urlButtonParams: string[] = [],
+    headerImageUrl?: string
+  ): Promise<string | undefined> {
     const components: WhatsAppTemplateComponent[] = bodyParams.length
       ? [
           {
@@ -66,6 +77,19 @@ export class WhatsAppService {
           },
         ]
       : [];
+    if (headerImageUrl)
+      components.unshift({
+        type: 'header',
+        parameters: [{ type: 'image', image: { link: headerImageUrl } }],
+      });
+    urlButtonParams.forEach((text, index) =>
+      components.push({
+        type: 'button',
+        sub_type: 'url',
+        index: String(index),
+        parameters: [{ type: 'text', text }],
+      })
+    );
 
     const payload = {
       messaging_product: 'whatsapp',
@@ -85,10 +109,11 @@ export class WhatsAppService {
         headers: this.authHeaders(),
         timeout: REQUEST_TIMEOUT_MS,
       });
-      const messageId = response.data?.messages?.[0]?.id;
+      const messageId: string | undefined = response.data?.messages?.[0]?.id;
       logger.info(
         `WhatsApp template "${templateName}" sent to ${to} successfully — message id: ${messageId}`
       );
+      return messageId;
     } catch (err) {
       const details = axios.isAxiosError(err)
         ? JSON.stringify(err.response?.data)

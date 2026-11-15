@@ -19,10 +19,28 @@ export function normalizePaymentMode(mode?: string | null): string {
     return PaymentMode.CASH;
   }
   const clean = mode.trim().toLowerCase();
-  if (['online', 'razorpay', 'cashfree'].includes(clean)) {
+  if (
+    [
+      'online',
+      'razorpay',
+      'cashfree',
+      'payment gateway',
+      'card online',
+      'netbanking',
+      'gateway',
+    ].includes(clean)
+  ) {
     return PaymentMode.ONLINE;
   }
-  if (['pay later', 'paylater'].includes(clean)) {
+  if (
+    [
+      'pay later',
+      'paylater',
+      'pay at clinic',
+      'pay_at_clinic',
+      'payatclinic',
+    ].includes(clean)
+  ) {
     return PaymentMode.PAY_LATER;
   }
   if (['cash', 'offline', 'manual'].includes(clean)) {
@@ -48,7 +66,11 @@ export function normalizePaymentMode(mode?: string | null): string {
   return matchedEnum || mode;
 }
 
-export function isOnlinePaymentMode(mode?: string | null): boolean {
+export function isOnlinePaymentMode(
+  mode?: string | null,
+  gatewayId?: string | null
+): boolean {
+  if (gatewayId) return true;
   const normalized = normalizePaymentMode(mode);
   return normalized === PaymentMode.ONLINE;
 }

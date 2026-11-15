@@ -122,67 +122,6 @@ export const getDoctorDashboardProfileController = asyncHandler(
   }
 );
 
-export const getSuperAdminDashboardController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const opts = req.validatedQuery as {
-      startDate: string;
-      endDate: string;
-    };
-
-    const result = await DashboardService.getSuperAdminDashboardData(opts);
-    res.json({ success: true, result });
-  }
-);
-
-export const getSuperAdminRevenueOverviewController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const opts = req.validatedQuery as { period?: string } | undefined;
-    const result = await DashboardService.getSuperAdminRevenueOverview(opts);
-    res.json({ success: true, result });
-  }
-);
-
-export const getSuperAdminRevenueByPlanController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const opts = req.validatedQuery as { period?: string } | undefined;
-    const result = await DashboardService.getSuperAdminRevenueByPlan(opts);
-    res.json({ success: true, result });
-  }
-);
-
-export const getSuperAdminRevenueAnalyticsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const opts = req.validatedQuery as { period?: string } | undefined;
-    const result = await DashboardService.getSuperAdminRevenueAnalytics(opts);
-    res.json({ success: true, result });
-  }
-);
-
-export const getSuperAdminTopPerformingClinicsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const opts = req.validatedQuery as { period?: string } | undefined;
-    const result =
-      await DashboardService.getSuperAdminTopPerformingClinics(opts);
-    res.json({ success: true, result });
-  }
-);
-
-export const getSuperAdminRegistrationTrendsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const opts = req.validatedQuery as { period?: string } | undefined;
-    const result = await DashboardService.getSuperAdminRegistrationTrends(opts);
-    res.json({ success: true, result });
-  }
-);
-
-export const getSuperAdminUsersSubscriptionsSummaryController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const result =
-      await DashboardService.getSuperAdminUsersSubscriptionsSummary();
-    res.json({ success: true, result });
-  }
-);
-
 export const getRevenueOverviewController = asyncHandler(
   async (req: Request, res: Response) => {
     const clinicId = req.clinicId;

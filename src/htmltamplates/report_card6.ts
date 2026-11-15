@@ -1,5 +1,10 @@
+import { brandLogoHtml } from './brandLogo';
 /** Template 6 — "Clinical Card": band header, ruled patient + vitals lines, findings rail beside a dose-slot ℞ table.
- * Print-first (hairlines, no boxed cards); must fit ONE A4 page with six medicines. Spec: docs/prescription-templates.md. */
+ * Print-first (hairlines, no boxed cards); must fit ONE A4 page with six medicines. Spec: docs/prescription/prescription-templates.md. */
+import { FOOTER_NOTES_HTML } from './footerNotes';
+import { treatmentPlanHtml } from './treatmentPlan';
+import { specialtySectionsHtml } from './specialtySections';
+
 export const reportCardTemplate6 = `
 <!DOCTYPE html>
 <html lang="en">
@@ -175,6 +180,13 @@ export const reportCardTemplate6 = `
     .info-label { font-size: 8.5px; font-weight: 600; color: var(--color4); text-transform: uppercase; letter-spacing: 0.9px; }
     .info-value { font-size: 13px; font-weight: 600; color: var(--color9); margin-top: 2px; }
     .info-sub { font-size: 9.5px; color: var(--color4); margin-top: 1px; }
+    /* Shifts stack in their own column so S2 lines up under S1. */
+    /* One row per day group; the days share a column so every group's shifts line up. */
+    .t-rows { display: grid; grid-template-columns: auto auto; gap: 2px 4px; justify-content: start; }
+    .hours-row { display: contents; white-space: nowrap; }
+    /* Two shifts per line keeps a busy week short enough for the one-page sign-off row. */
+    .t-shifts { display: grid; grid-template-columns: repeat(2, auto); gap: 1px 10px; }
+    .t-sl { font-weight: 600; color: var(--color1); }
     .qr-item { display: flex; align-items: center; gap: 10px; }
     .qr-item img { width: 56px; height: 56px; display: block; }
     .qr-text { font-size: 9.5px; color: var(--color4); line-height: 1.45; max-width: 120px; }
@@ -279,6 +291,7 @@ export const reportCardTemplate6 = `
             {{#if vitals.bpSys}}{{#if vitals.bpDia}}<div class="vital"><div class="vk">BP</div><div class="vv">{{vitals.bpSys}}/{{vitals.bpDia}}<span class="vu">mmHg</span></div></div>{{/if}}{{/if}}
             {{#if vitals.pulse}}<div class="vital"><div class="vk">Pulse</div><div class="vv">{{vitals.pulse}}<span class="vu">bpm</span></div></div>{{/if}}
             {{#if vitals.spo2}}<div class="vital"><div class="vk">SpO&#8322;</div><div class="vv">{{vitals.spo2}}%</div></div>{{/if}}
+            {{#if vitals.respiratoryRate}}<div class="vital"><div class="vk">RR</div><div class="vv">{{vitals.respiratoryRate}}<span class="vu">/min</span></div></div>{{/if}}
             {{#if vitals.temperatureC}}<div class="vital"><div class="vk">Temp.</div><div class="vv">{{vitals.temperatureC}}&deg;C</div></div>{{/if}}
             {{#if vitals.fbs}}<div class="vital"><div class="vk">FBS</div><div class="vv">{{vitals.fbs}}<span class="vu">mg/dL</span></div></div>{{/if}}
             {{#if vitals.ppbs}}<div class="vital"><div class="vk">PPBS</div><div class="vv">{{vitals.ppbs}}<span class="vu">mg/dL</span></div></div>{{/if}}
@@ -303,7 +316,7 @@ export const reportCardTemplate6 = `
             (whenShown config.elements.showDietarySuggestion dietarySuggestion)
             (whenShown config.elements.showSurgerySuggested surgerySuggested)
             (whenShown config.elements.showVisitingDays visitingDays)
-            (whenShown config.elements.showAdditionalInformation additionalInformation))}}
+            (whenShown config.elements.showAdditionalInformation additionalInformation) comorbidities)}}
         <div class="rail">
             <!-- Clinical reading order: findings first, allergies before anything is prescribed, advice last. -->
             {{#if config.elements.showChiefComplaints}}{{#if symptoms.length}}
@@ -338,7 +351,7 @@ export const reportCardTemplate6 = `
 
             {{#if config.elements.showPreDiagnosis}}{{#if preDiagnosis}}
             <div class="rail-block">
-                <div class="rail-title">Pre-Diagnosis</div>
+                <div class="rail-title">Chief Complaints</div>
                 <div class="rail-text">{{preDiagnosis}}</div>
             </div>
             {{/if}}{{/if}}
@@ -359,18 +372,7 @@ export const reportCardTemplate6 = `
             </div>
             {{/if}}{{/if}}
 
-            {{#if config.elements.showAdditionalInformation}}
-            {{#with (objectEntries additionalInformation) as |additionalInfoEntries|}}
-            {{#if additionalInfoEntries.length}}
-            <div class="rail-block">
-                <div class="rail-title">Extra Diagnosis Details</div>
-                <ul class="dot-list">
-                    {{#each additionalInfoEntries}}<li>{{this.key}} &ndash; {{this.value}}</li>{{/each}}
-                </ul>
-            </div>
-            {{/if}}
-            {{/with}}
-            {{/if}}
+            ${specialtySectionsHtml('<div class="rail-block"><div class="rail-title">{{this.heading}}</div><div class="rail-text">', '</div></div>', 'dot-list', 'lists')}
 
             {{#if config.elements.showAdvice}}{{#if advice}}
             <div class="rail-block">
@@ -414,7 +416,7 @@ export const reportCardTemplate6 = `
         {{/if}}
 
         <div class="main">
-            {{#if config.elements.showRxSymbol}}
+            {{#if (anyValue (whenShown config.elements.showRxSymbol prescriptions))}}
             <div class="rx-head">
                 <svg class="rx-glyph" viewBox="0 0 384 512">
                     <path d="M301.26 352l78.06-78.06c6.25-6.25 6.25-16.38 0-22.63l-22.63-22.63c-6.25-6.25-16.38-6.25-22.63 0L256 306.74l-83.96-83.96C219.31 216.8 256 176.89 256 128c0-53.02-42.98-96-96-96H16C7.16 32 0 39.16 0 48v256c0 8.84 7.16 16 16 16h32c8.84 0 16-7.16 16-16v-80h18.75l128 128-78.06 78.06c-6.25 6.25-6.25 16.38 0 22.63l22.63 22.63c6.25 6.25 16.38 6.25 22.63 0L256 397.25l78.06 78.06c6.25 6.25 16.38 6.25 22.63 0l22.63-22.63c6.25-6.25 6.25-16.38 0-22.63L301.26 352zM64 96h96c17.64 0 32 14.36 32 32s-14.36 32-32 32H64V96z"/>
@@ -488,11 +490,15 @@ export const reportCardTemplate6 = `
                 <div class="tests-text">{{testNames}}</div>
             </div>
             {{/if}}{{/if}}
+
+            <!-- Exam tables need width, so they sit here, not in the side column. -->
+            ${specialtySectionsHtml('<div class="tests"><div class="tests-title">{{this.heading}}</div><div class="tests-text">', '</div></div>', 'dot-list', 'tables')}
+            ${treatmentPlanHtml('<div class="tests"><div class="tests-title">Treatment Plan</div><div class="tests-text">', '</div></div>')}
         </div>
     </div>
 
-    <!-- Sign-off. No separate hours strip: the hours sit under Emergency Contact (one home per field). -->
-    {{#if (anyValue (whenShown config.elements.showFollowUp followUpDate) config.elements.showQrCode config.elements.showDoctorSignature config.elements.showClinicPhone)}}
+    <!-- Sign-off. Hours get their own item, not tucked under Emergency Contact. -->
+    {{#if (anyValue (whenShown config.elements.showFollowUp followUpDate) config.elements.showQrCode config.elements.showDoctorSignature config.elements.showClinicPhone (whenShown config.elements.showConsultationHours doctor.groupedAvailability))}}
     <div class="sign-off">
         <div class="sign-left">
             {{#if config.elements.showFollowUp}}{{#if followUpDate}}
@@ -505,18 +511,23 @@ export const reportCardTemplate6 = `
             <div class="sign-item">
                 <div class="info-label">Emergency Contact</div>
                 <div class="info-value">{{clinic.phone}}</div>
-                {{#if config.elements.showConsultationHours}}{{#if doctor.groupedAvailability}}
+            </div>
+            {{/if}}{{/if}}
+            {{#if config.elements.showConsultationHours}}{{#if doctor.groupedAvailability}}
+            <div class="sign-item">
+                <div class="info-label">Consultation Hours</div>
+                <div class="info-sub t-rows">
                 {{#each doctor.groupedAvailability}}
                     {{#if this.isAvailable}}
-                    <div class="info-sub">{{this.days}} | {{{this.display}}}</div>
+                    <div class="hours-row"><span>{{this.days}}:</span><span class="t-shifts">{{#each this.shifts}}<span>{{#if this.label}}<b class="t-sl">{{this.label}}</b> ({{this.time}}){{else}}{{this.time}}{{/if}}</span>{{/each}}</span></div>
                     {{/if}}
                 {{/each}}
-                {{/if}}{{/if}}
+                </div>
             </div>
             {{/if}}{{/if}}
             {{#if config.elements.showQrCode}}{{#if qrCode}}
             <div class="sign-item qr-item">
-                <img src="{{{qrCode}}}" alt="Scan to get the Infinity Medisetu app" />
+                <img src="{{{qrCode}}}" alt="Scan to get the MediArogya app" />
                 <span class="qr-text">Scan to get the app &mdash; prescriptions &amp; follow-ups</span>
             </div>
             {{/if}}{{/if}}
@@ -534,15 +545,16 @@ export const reportCardTemplate6 = `
     {{#if i18n.bilingual}}<div class="tr-note">{{bi "Translation for patient convenience. The English text prevails."}}</div>{{/if}}
 
     <!-- Footer -->
+    ${FOOTER_NOTES_HTML}
     {{#if config.elements.showFooter}}
     <div class="footer">
         <span class="footer-note">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/></svg>
-            {{bi "This prescription is computer-generated. Valid without signature."}}
+            This prescription is computer-generated. Valid without signature.
         </span>
         <span class="footer-brand">
             Powered by
-            <img src="https://infninity-medisatu.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png" alt="Infinity Medisetu" />
+            ${brandLogoHtml(14, 10)}
         </span>
     </div>
     {{/if}}

@@ -119,6 +119,14 @@ export const getAvailableClinicsController = asyncHandler(
   }
 );
 
+export const lookupClinicsController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { search, ids, limit } = req.validatedQuery;
+    const clinics = await ClinicService.lookupClinics({ search, ids, limit });
+    return sendOk(res, 'Clinics retrieved successfully', clinics);
+  }
+);
+
 export const updateClinicStatusController = asyncHandler(
   async (req: Request, res: Response) => {
     const { clinicId } = req.validatedParams;
@@ -349,115 +357,6 @@ export const getClinicsWithDoctorsController = asyncHandler(
       },
       total: result.length,
     });
-  }
-);
-
-export const onboardClinicRouteController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic context required');
-    }
-    const payload = req.body;
-    const clientIp =
-      req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1';
-
-    const result = await ClinicService.onboardRouteAccount(
-      clinicId,
-      payload,
-      clientIp
-    );
-    return sendOk(res, 'Clinic Razorpay Route onboarding initiated', result);
-  }
-);
-
-export const activateClinicRouteController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic context required');
-    }
-    const clientIp =
-      req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1';
-
-    const result = await ClinicService.activateRouteAccount(clinicId, clientIp);
-    return sendOk(res, 'Clinic Razorpay Route activation initiated', result);
-  }
-);
-
-export const onboardDocumentsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic context required');
-    }
-
-    const file = req.file;
-    const { documentType } = req.body;
-
-    if (!file) {
-      throw new HttpError(400, 'KYC document file is required');
-    }
-    if (!documentType) {
-      throw new HttpError(400, 'documentType is required');
-    }
-
-    const result = await ClinicService.uploadKYCDocuments(
-      clinicId,
-      documentType,
-      file.buffer,
-      file.originalname,
-      file.mimetype
-    );
-
-    return sendOk(res, 'Document uploaded to Razorpay successfully', result);
-  }
-);
-
-export const updateClinicBankDetailsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic context required');
-    }
-
-    const bankDetails = req.body;
-    const clientIp =
-      req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1';
-
-    const result = await ClinicService.updateSettlementBank(
-      clinicId,
-      bankDetails,
-      clientIp
-    );
-    return sendOk(
-      res,
-      'Settlement bank details update request submitted',
-      result
-    );
-  }
-);
-
-export const getClinicOnboardingStatusController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic context required');
-    }
-
-    const result = await ClinicService.getOnboardingStatus(clinicId);
-    return sendOk(res, 'Onboarding status retrieved successfully', result);
-  }
-);
-
-export const getClinicBankDetailsController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic context required');
-    }
-    const result = await ClinicService.getActiveBankDetails(clinicId);
-    return sendOk(res, 'Active bank details retrieved successfully', result);
   }
 );
 

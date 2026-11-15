@@ -38,6 +38,15 @@ const sampleCtx = {
   amount: '1000',
   when: 'Sat 12 Sept at 4:30 PM',
   detail: 'something happened',
+  ownerUserId: 'owner1',
+  title: 'Need help finishing setup?',
+  body: 'Our team can walk you through it.',
+  used: 800,
+  limit: 1000,
+  resetsOn: '20 Dec 2026',
+  grantId: 'g1',
+  creditsLeft: 150,
+  expiresOn: '12 Oct 2027',
 } as never;
 
 describe('registry contract', () => {

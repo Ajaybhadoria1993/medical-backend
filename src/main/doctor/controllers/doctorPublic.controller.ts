@@ -1,23 +1,34 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../../../middlewear/errorHandler';
 import { sendOk } from '../../../utils/response.utils';
-import {
-  DoctorPublicService,
-  PUBLIC_PROFILE_TTL_SECONDS,
-} from '../services/doctorPublic.service';
+import { DoctorPublicService } from '../services/doctorPublic.service';
+import { DoctorPublicSearchQueryDto } from '../schemas/doctorPublic.schemas';
 
 export const getDoctorPublicProfileController = asyncHandler(
   async (req: Request, res: Response) => {
     const { doctorId } = req.validatedParams;
     const result = await DoctorPublicService.getPublicProfile(doctorId);
 
-    // Unauthenticated and identical for every visitor, so it is safe for
-    // shared caches (CDN/proxy) as well as the browser.
-    res.set(
-      'Cache-Control',
-      `public, max-age=${PUBLIC_PROFILE_TTL_SECONDS}, stale-while-revalidate=60`
-    );
+    // no-cache: revalidate every load (cheap 304 via ETag), since Redis is cleared
+    // on writes but a browser max-age would keep showing a switched-off "Book".
+    res.set('Cache-Control', 'public, no-cache');
 
     return sendOk(res, 'Doctor public profile fetched successfully', result);
+  }
+);
+
+export const getPublicSearchCitiesController = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const result = await DoctorPublicService.getSearchCities();
+    return sendOk(res, 'Cities fetched successfully', result);
+  }
+);
+
+export const searchPublicDoctorsController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const result = await DoctorPublicService.searchDoctors(
+      req.validatedQuery as DoctorPublicSearchQueryDto
+    );
+    return sendOk(res, 'Doctors fetched successfully', result);
   }
 );

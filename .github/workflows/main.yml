@@ -119,8 +119,9 @@ jobs:
           set -e
 
           SCRIPT=$(cat <<EOF
-          cd /home/ubuntu/medisatu/MediSetu_backend
-          git pull origin staging
+          cd /home/ubuntu/infinity_medisetu/MediSetu_backend || exit 1
+          # SSM runs as root; the checkout and its GitHub key belong to ubuntu. Stop if the pull fails.
+          sudo -u ubuntu -H git pull --no-rebase --no-edit origin staging || { echo "git pull failed"; exit 1; }
 
           echo " Logging in to Docker registry..."
           docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
@@ -319,8 +320,9 @@ jobs:
           set -e
 
           SCRIPT=$(cat <<EOF
-          cd /home/ubuntu/medisetu/InfinityMedisetu_BE
-          git pull origin main
+          cd /home/ubuntu/medisetu/InfinityMedisetu_BE || exit 1
+          # SSM runs as root; the checkout and its GitHub key belong to ubuntu. Stop if the pull fails.
+          sudo -u ubuntu -H git pull --no-rebase --no-edit origin main || { echo "git pull failed"; exit 1; }
 
           echo " Logging in to Docker registry..."
           docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
@@ -430,7 +432,7 @@ jobs:
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "[IMS Backend] Deploy ${{ needs.deploy.outputs.status }} for main"
-          to: harshitsharma@igtechso.com,anujbhadoriya@igtechso.com,uditchouhan@igtechso.com,vishalsharma@igtechso.com
+          to: harshitsharma@igtechso.com,anujbhadoriya@igtechso.com,uditchouhan@igtechso.com,update@igtechso.com
           from: ${{ secrets.SMTP_FROM }}
           secure: false
           html_body: |

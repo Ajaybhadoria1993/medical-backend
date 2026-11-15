@@ -88,7 +88,7 @@ ${clinicalNotesSection}
   {{#if config.elements.showQrCode}}<div class="qr-box">QR<br/>Code</div>{{/if}}
 </div>
 
-<div style="position:fixed;bottom:4mm;left:0;right:0;text-align:center;font-size:8px;color:#999;">Powered by Infinity Medisetu | www.infinitymedisetu.com</div>
+<div style="position:fixed;bottom:4mm;left:0;right:0;text-align:center;font-size:8px;color:#999;">Powered by MediArogya | www.infinitymedisetu.com</div>
 
 </body>
 </html>`;

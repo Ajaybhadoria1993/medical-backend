@@ -3,31 +3,7 @@ import { getISTDateString, startOfDayIST } from './istDateTime';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Single source of truth for "is this subscription still valid?".
- *
- * Three places used to answer this differently, and a clinic could sit in the
- * gap between them for hours:
- *   - `clinic.service` pushed `expiresAt` to end-of-day before comparing, so
- *     GET /clinic/user still reported the paid plan;
- *   - `requireUserSubscription` compared the raw timestamp, so the same clinic
- *     got a 403 (and the FE force-logged them out);
- *   - `getClinicSubscription` also compared the raw timestamp, so the billing
- *     screen showed no active plan.
- *
- * End-of-day is the rule we keep: a plan that "expires on the 14th" is expected
- * to work for all of the 14th, not until 11:19 that morning.
- *
- * The day boundary is resolved in IST, not the server's local timezone. The old
- * inline `setHours(23, 59, 59, 999)` used whatever timezone the process ran in,
- * so a UTC container and an IST dev machine disagreed by 5½ hours about when a
- * subscription lapsed.
- */
-
-/**
- * The instant a subscription stops being valid — the end of its expiry day in
- * IST. Returns null when the input isn't a usable date.
- */
+/** A plan "until the 14th" works all of the 14th: end of that day in IST, whatever the server zone; null if unusable. */
 export function subscriptionGraceEnd(
   expiresAt: Date | string | null | undefined
 ): Date | null {

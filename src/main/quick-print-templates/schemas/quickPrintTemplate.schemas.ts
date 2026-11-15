@@ -56,6 +56,19 @@ const blockLayoutItemSchema = z.object({
   }),
 });
 
+/** Which design each output uses: split, the prescription template for both, or Quick Print for both. */
+export const templateUsages = [
+  'separate',
+  'prescription',
+  'quickPrint',
+] as const;
+export type TemplateUsage = (typeof templateUsages)[number];
+
+/** Footer lines printed on every prescription; at most two, short enough to stay on the page. */
+export const footerNotesSchema = z
+  .array(z.string().trim().min(1).max(120))
+  .max(2);
+
 export const elementConfigSchema = z.object({
   showClinicHeader: z.boolean().optional(),
   showClinicLogo: z.boolean().optional(),
@@ -92,6 +105,10 @@ export const elementConfigSchema = z.object({
   tableStyle: z.enum(tableStyles).optional(),
   layoutMode: z.enum(['flow', 'exact']).optional(),
   design: z.enum(['original', 'modern']).optional(),
+  bottomMarginMm: z.number().min(0).max(80).optional(),
+  textScale: z.number().min(0.8).max(1.3).optional(),
+  templateUsage: z.enum(templateUsages).optional(),
+  footerNotes: footerNotesSchema.optional(),
 });
 
 export const saveQuickPrintTemplateSchema = z.object({
@@ -104,3 +121,15 @@ export const saveQuickPrintTemplateSchema = z.object({
 export type SaveQuickPrintTemplateDto = z.infer<
   typeof saveQuickPrintTemplateSchema
 >;
+
+export const templateUsageSchema = z.object({
+  templateUsage: z.enum(templateUsages),
+});
+
+export type TemplateUsageDto = z.infer<typeof templateUsageSchema>;
+
+export const footerNotesBodySchema = z.object({
+  footerNotes: footerNotesSchema,
+});
+
+export type FooterNotesDto = z.infer<typeof footerNotesBodySchema>;

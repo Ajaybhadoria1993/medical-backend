@@ -56,7 +56,7 @@ describe('MfaService.initEnrollment', () => {
   const userEmail = 'user@example.com';
   const fakeSecret = 'JBSWY3DPEHPK3PXP1234';
   const fakeEncrypted = 'abc123:def456:ghi789';
-  const fakeOtpauthUri = `otpauth://totp/Medisetu:${userEmail}?secret=${fakeSecret}&issuer=Medisetu`;
+  const fakeOtpauthUri = `otpauth://totp/MediArogya:${userEmail}?secret=${fakeSecret}&issuer=MediArogya`;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -230,7 +230,7 @@ describe('MfaService.initEnrollment', () => {
     await MfaService.initEnrollment(userId);
 
     expect(mockGenerateURI).toHaveBeenCalledWith({
-      issuer: 'Infinity Medisetu',
+      issuer: 'MediArogya',
       label: userEmail,
       secret: fakeSecret,
     });

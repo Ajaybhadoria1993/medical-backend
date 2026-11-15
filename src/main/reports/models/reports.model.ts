@@ -6,9 +6,11 @@ import {
   text,
   pgEnum,
   uniqueIndex,
+  index,
   json,
   integer,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { UserModel } from '../../users/models/user.model';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { MedicineModel } from '../../medicine/models/medicine.model';
@@ -43,68 +45,85 @@ export const ReportsModel = pgTable(
   (t) => [uniqueIndex('ux_report').on(t.reportType, t.petientId)]
 );
 
-export const ReportCardModel = pgTable('report_cards', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  petientId: uuid('petient_id')
-    .references(() => UserModel.id)
-    .notNull(),
-  appointmentId: uuid('appointment_id')
-    .references(() => AppointmentModel.id)
-    .notNull(),
-  reportId: uuid('report_id').references(() => ReportsModel.id),
-  comorbidities: text('comorbidities').array(),
-  habits: text('habits').array(),
-  // vitals: json('vitals'),
-  generalExamination: text('general_examination').array(),
-  systemExamination: text('system_examination'),
-  provisionalDiagnosis: text('provisional_diagnosis'),
-  differentialDiagnosis: text('differential_diagnosis'),
-  finalDiagnosis: text('final_diagnosis'),
-  investigations: text('investigations'),
-  advice: text('advice'),
-  preDiagnosis: text('pre_diagnosis'),
-  clinicalNotes: text('clinical_notes'),
-  allergies: text('allergies').array(),
-  surgerySuggested: text('surgerySuggested').array(),
-  visitingDays: text('visitingDays').array(),
-  visitingNotes: varchar('visiting_notes'),
-  prescriptionPdf: text('prescription_pdf'),
-  /** Language picked in the workspace Preview for this prescription; null uses the doctor's default. */
-  printLanguage: varchar('print_language', { length: 8 }),
-  followUpInDays: varchar('follow_up_in_days'),
-  followUpDate: timestamp('follow_up_date'),
-  additionalInformation: jsonb('additional_information').$type<
-    Record<string, string>
-  >(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
+export const ReportCardModel = pgTable(
+  'report_cards',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    petientId: uuid('petient_id')
+      .references(() => UserModel.id)
+      .notNull(),
+    appointmentId: uuid('appointment_id')
+      .references(() => AppointmentModel.id)
+      .notNull(),
+    reportId: uuid('report_id').references(() => ReportsModel.id),
+    comorbidities: text('comorbidities').array(),
+    habits: text('habits').array(),
+    // vitals: json('vitals'),
+    generalExamination: text('general_examination').array(),
+    systemExamination: text('system_examination'),
+    provisionalDiagnosis: text('provisional_diagnosis'),
+    differentialDiagnosis: text('differential_diagnosis'),
+    finalDiagnosis: text('final_diagnosis'),
+    investigations: text('investigations'),
+    advice: text('advice'),
+    preDiagnosis: text('pre_diagnosis'),
+    clinicalNotes: text('clinical_notes'),
+    allergies: text('allergies').array(),
+    surgerySuggested: text('surgerySuggested').array(),
+    visitingDays: text('visitingDays').array(),
+    visitingNotes: varchar('visiting_notes'),
+    prescriptionPdf: text('prescription_pdf'),
+    /** Language picked in the workspace Preview for this prescription; null uses the doctor's default. */
+    printLanguage: varchar('print_language', { length: 8 }),
+    followUpInDays: varchar('follow_up_in_days'),
+    followUpDate: timestamp('follow_up_date'),
+    additionalInformation: jsonb('additional_information').$type<
+      Record<string, string>
+    >(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (table) => [
+    index('report_cards_appointment_idx').on(table.appointmentId),
+    // Follow-ups list narrows by date; partial, as most cards have no follow-up.
+    index('report_cards_follow_up_date_idx')
+      .on(table.followUpDate)
+      .where(sql`${table.followUpDate} IS NOT NULL`),
+  ]
+);
 
-export const PrescriptionModel = pgTable('prescriptions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  reportCardId: uuid('report_card_id')
-    .references(() => ReportCardModel.id)
-    .notNull(),
-  petientId: uuid('petient_id')
-    .references(() => UserModel.id)
-    .notNull(),
-  medicineId: uuid('medicine_id').references(() => MedicineModel.id),
-  prescribedBy: uuid('prescribed_by').references(() => UserModel.id),
-  medicineName: varchar('medicine_name').notNull(),
-  composition: varchar('composition'),
-  strength: varchar('strength'),
-  dosage: varchar('dosage').notNull(),
-  frequency: varchar('frequency').notNull(),
-  duration: varchar('duration').notNull(),
-  manufacturer: varchar('manufacturer'),
-  medicineCount: varchar('medicine_count'),
-  marketer: varchar('marketer'),
-  imageUrl: text('image_url'),
-  notes: text('notes'),
-  uses: json('uses'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
+export const PrescriptionModel = pgTable(
+  'prescriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reportCardId: uuid('report_card_id')
+      .references(() => ReportCardModel.id)
+      .notNull(),
+    petientId: uuid('petient_id')
+      .references(() => UserModel.id)
+      .notNull(),
+    medicineId: uuid('medicine_id').references(() => MedicineModel.id),
+    prescribedBy: uuid('prescribed_by').references(() => UserModel.id),
+    medicineName: varchar('medicine_name').notNull(),
+    composition: varchar('composition'),
+    strength: varchar('strength'),
+    dosage: varchar('dosage').notNull(),
+    frequency: varchar('frequency').notNull(),
+    duration: varchar('duration').notNull(),
+    manufacturer: varchar('manufacturer'),
+    medicineCount: varchar('medicine_count'),
+    marketer: varchar('marketer'),
+    imageUrl: text('image_url'),
+    notes: text('notes'),
+    uses: json('uses'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (table) => [
+    // Medicines are always read per report card (workspace, visit history, medicine search).
+    index('prescriptions_report_card_idx').on(table.reportCardId),
+  ]
+);
 
 export const favouritePrescriptionModel = pgTable('favourite_prescription', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   registerDeviceHandler,
   unregisterDeviceHandler,

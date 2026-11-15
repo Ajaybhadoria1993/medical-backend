@@ -11,6 +11,11 @@ jest.mock('../../../configurations/dbConnection', () => ({
 
 jest.mock('../../../utils/logger');
 
+// Refunds come from the ledger (6c); none here.
+jest.mock('../../money', () => ({
+  MoneyReadService: { refundsOf: jest.fn(async () => new Map()) },
+}));
+
 jest.mock('../../permissions/services/staffScope.service', () => ({
   StaffScopeService: { assertDoctorAllowed: jest.fn() },
 }));

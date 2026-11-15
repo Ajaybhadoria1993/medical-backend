@@ -33,15 +33,22 @@ const chain = (value: unknown) => {
 /** Captures every `set()` the transaction applies, keyed in call order. */
 const updates: Array<Record<string, unknown>> = [];
 
-const mockDb = (selects: unknown[][]) => {
+/** Rows given as [no-show, later appts, availability, breaks]; replayed in the service's read order. */
+const mockDb = (selects: unknown[][], lockedStatus = 'NoShow') => {
+  const [noShow, later, avail, breaks] = selects;
+  const ordered = later
+    ? [noShow, [{ status: lockedStatus }], later, avail ?? [], breaks ?? []]
+    : [noShow];
   const select = database.select as jest.Mock;
   select.mockReset();
-  selects.forEach((rows) => select.mockReturnValueOnce(chain(rows)));
+  ordered.forEach((rows) => select.mockReturnValueOnce(chain(rows)));
   select.mockReturnValue(chain([]));
 
   (database.transaction as jest.Mock).mockImplementation(
     async (cb: (tx: unknown) => Promise<unknown>) =>
       cb({
+        execute: jest.fn().mockResolvedValue(undefined),
+        select: (...a: unknown[]) => select(...a),
         update: () => ({
           set: (values: Record<string, unknown>) => {
             updates.push(values);
@@ -170,6 +177,15 @@ describe('NoShowShiftService.shiftForward', () => {
       [],
       [],
     ]);
+
+    const result = await new NoShowShiftService().shiftForward('ns-1');
+
+    expect(updates).toEqual([]);
+    expect(result.shiftedAppointments).toEqual([]);
+  });
+
+  it('skips the shift when the no-show was undone before the lock was taken', async () => {
+    mockDb([[noShowAppt()], [shiftable()], [], []], 'Patient Arrived');
 
     const result = await new NoShowShiftService().shiftForward('ns-1');
 

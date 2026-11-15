@@ -1,15 +1,12 @@
 // src/main/users/models/refreshToken.model.ts
 //
-// One row per (user, platform) — enforced by the unique index below. Every
-// login/refresh on a given platform replaces that platform's row rather than
-// adding a new one, so the table never accumulates historical/stale sessions,
-// but a user can hold one web session AND one app session (ios/android)
-// simultaneously without either kicking the other out. See TokenService.
+// One row per logged-in device; a user can hold many sessions at once. See TokenService.
 import {
   pgTable,
   uuid,
   varchar,
   timestamp,
+  index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { UserModel } from './user.model';
@@ -29,10 +26,7 @@ export const RefreshTokenModel = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex('unique_refresh_token_user_platform').on(
-      table.userId,
-      table.platform
-    ),
+    index('idx_refresh_token_user_platform').on(table.userId, table.platform),
     uniqueIndex('unique_refresh_token_hash').on(table.tokenHash),
   ]
 );

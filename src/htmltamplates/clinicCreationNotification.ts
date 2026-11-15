@@ -26,7 +26,7 @@ export const clinicCreationNotificationTemplate = ({
     preview: `A new clinic "${clinicName}" has been successfully created.`,
     greeting: `Dear ${superAdminName} 👋`,
     headline: 'New Clinic Registered.',
-    message: `This is a notification that a new clinic has been successfully registered on the Medisetu platform.`,
+    message: `This is a notification that a new clinic has been successfully registered on the MediArogya platform.`,
     bodyHtml: `
       ${renderDetailsCard('Registered Clinic Details', [
         { label: 'Clinic Name:', value: clinicName },

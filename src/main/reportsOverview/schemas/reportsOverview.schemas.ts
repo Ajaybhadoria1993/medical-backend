@@ -26,6 +26,13 @@ export type ReportsOverviewQueryDto = z.infer<
   typeof reportsOverviewQuerySchema
 >;
 
+/** Query schema for GET /api/v1/reports-overview/comparison-range */
+export const reportsComparisonRangeQuerySchema =
+  reportsOverviewQuerySchema.pick({
+    startDate: true,
+    endDate: true,
+  });
+
 /**
  * Query schema for GET /api/v1/reports-overview/trend
  */

@@ -52,12 +52,12 @@ ${sampleTemplate().html}
 
 6. DYNAMIC PLACEHOLDERS & CONTENT
 - Never hardcode patient, doctor, clinic, prescription, vitals, or appointment values.
-- Never use remote hardcoded branding assets/images, EXCEPT for the Rx symbol and Infinity Medisetu logo URLs shown in the sample template.
+- Never use remote hardcoded branding assets/images, EXCEPT for the Rx symbol and MediArogya logo URLs shown in the sample template.
 - Forbidden example: <img src="https://other-site.com/logo.png">.
 - Allowed image source usage: 
     a. <img src="{{clinic.logo}}"> (optionally wrapped in {{#if clinic.logo}}).
     b. https://res.cloudinary.com/ddzkedas8/image/upload/v1772172278/download_zafkmm.png (Rx symbol).
-    c. https://infinitymedisetu.com/app/assets/images/new-logo.svg (Infinity Medisetu logo).
+    c. https://infinitymedisetu.com/app/assets/images/mediarogya-logo.png (MediArogya logo).
 - Use the following placeholders exactly as listed. Maintain exact names, capitalization, and nesting syntax. Do not rename, omit, flatten, or alter any placeholder or loop:
 ${buildDynamicPlaceholderContract()}
 - Crucial: If the provided image lacks space for any of the required dynamic placeholders, you MUST integrate them into reasonable locations within the layout instead of omitting them.

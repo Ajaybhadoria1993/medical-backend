@@ -1,5 +1,10 @@
+import { brandLogoHtml } from './brandLogo';
 /** Template 3 — "Handwritten Pad": cream paper, Inter labels with Caveat handwriting values.
- * The warm cream boxes are this layout's paper identity — keep them. Spec: docs/prescription-templates.md. */
+ * The warm cream boxes are this layout's paper identity — keep them. Spec: docs/prescription/prescription-templates.md. */
+import { FOOTER_NOTES_HTML } from './footerNotes';
+import { treatmentPlanHtml } from './treatmentPlan';
+import { specialtySectionsHtml } from './specialtySections';
+
 export const reportCardTemplate3 = `
 <!DOCTYPE html>
 <html lang="en">
@@ -148,7 +153,16 @@ export const reportCardTemplate3 = `
         background: #faf6ed; border-top: 1px solid var(--color5);
     }
     .timings .lbl { font-weight: 700; color: var(--color1); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px; }
-    .timing-item span:first-child { font-weight: 700; color: var(--color1); }
+    /* Shifts side by side with a thin divider; they wrap together when the strip runs out. */
+    /* One row per day group; the days share a column so every group's shifts line up. */
+    .t-rows { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 6px; align-items: baseline; }
+    .timing-item { display: contents; }
+    .timing-item .t-days { white-space: nowrap; font-weight: 700; color: var(--color1); }
+    /* Separators sit in the gap left of each shift; clip-path hides the one that opens a wrapped line. */
+    .t-shifts { display: flex; flex-wrap: wrap; row-gap: 2px; min-width: 0; margin-left: -20px; clip-path: inset(0 0 0 20px); }
+    .t-shifts > span { position: relative; margin-left: 20px; }
+    .t-shifts > span::before { content: ""; position: absolute; left: -10px; top: 2px; bottom: 2px; width: 1px; background: var(--color5); }
+    .t-sl { font-weight: 600; color: var(--color1); }
 
     /* ---------- Footer ---------- */
     .footer {
@@ -208,7 +222,7 @@ export const reportCardTemplate3 = `
         <div class="info-row"><span class="k">Habits</span><span class="v">{{#each habits}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}</span></div>
         {{/if}}{{/if}}
         {{#if config.elements.showVitals}}{{#if vitalsMoreThanOne}}
-        <div class="info-row"><span class="k">Vitals</span><span class="v">{{#if vitals.bpSys}}{{#if vitals.bpDia}}BP {{vitals.bpSys}}/{{vitals.bpDia}} mmHg &nbsp;{{/if}}{{/if}}{{#if vitals.fbs}}FBS {{vitals.fbs}} mg/dL &nbsp;{{/if}}{{#if vitals.ppbs}}PPBS {{vitals.ppbs}} mg/dL &nbsp;{{/if}}{{#if vitals.rbs}}RBS {{vitals.rbs}} mg/dL &nbsp;{{/if}}{{#if vitals.pulse}}Pulse {{vitals.pulse}}/min &nbsp;{{/if}}{{#if vitals.spo2}}SpO2 {{vitals.spo2}}% &nbsp;{{/if}}{{#if vitals.temperatureC}}Temp {{vitals.temperatureC}}&deg;C &nbsp;{{/if}}{{#if vitals.weightKg}}Wt {{vitals.weightKg}} kg &nbsp;{{/if}}{{#if vitals.heightCm}}Ht {{vitals.heightCm}} cm &nbsp;{{/if}}{{#if vitals.bmi}}BMI {{vitals.bmi}}{{/if}}</span></div>
+        <div class="info-row"><span class="k">Vitals</span><span class="v">{{#if vitals.bpSys}}{{#if vitals.bpDia}}BP {{vitals.bpSys}}/{{vitals.bpDia}} mmHg &nbsp;{{/if}}{{/if}}{{#if vitals.fbs}}FBS {{vitals.fbs}} mg/dL &nbsp;{{/if}}{{#if vitals.ppbs}}PPBS {{vitals.ppbs}} mg/dL &nbsp;{{/if}}{{#if vitals.rbs}}RBS {{vitals.rbs}} mg/dL &nbsp;{{/if}}{{#if vitals.pulse}}Pulse {{vitals.pulse}}/min &nbsp;{{/if}}{{#if vitals.spo2}}SpO2 {{vitals.spo2}}% &nbsp;{{/if}}{{#if vitals.respiratoryRate}}RR {{vitals.respiratoryRate}}/min &nbsp;{{/if}}{{#if vitals.temperatureC}}Temp {{vitals.temperatureC}}&deg;C &nbsp;{{/if}}{{#if vitals.weightKg}}Wt {{vitals.weightKg}} kg &nbsp;{{/if}}{{#if vitals.heightCm}}Ht {{vitals.heightCm}} cm &nbsp;{{/if}}{{#if vitals.bmi}}BMI {{vitals.bmi}}{{/if}}</span></div>
         {{/if}}{{/if}}
         {{#if config.elements.showDiagnosis}}{{#if diagnosis}}
         <div class="info-row"><span class="k">Diagnosis</span><span class="v">{{diagnosis}}</span></div>
@@ -220,7 +234,7 @@ export const reportCardTemplate3 = `
 
     <!-- Rx / Medications -->
     <div class="rx-body">
-        {{#if config.elements.showRxSymbol}}
+        {{#if (anyValue (whenShown config.elements.showRxSymbol prescriptions))}}
         <svg class="rx-glyph" viewBox="0 0 384 512">
             <path d="M301.26 352l78.06-78.06c6.25-6.25 6.25-16.38 0-22.63l-22.63-22.63c-6.25-6.25-16.38-6.25-22.63 0L256 306.74l-83.96-83.96C219.31 216.8 256 176.89 256 128c0-53.02-42.98-96-96-96H16C7.16 32 0 39.16 0 48v256c0 8.84 7.16 16 16 16h32c8.84 0 16-7.16 16-16v-80h18.75l128 128-78.06 78.06c-6.25 6.25-6.25 16.38 0 22.63l22.63 22.63c6.25 6.25 16.38 6.25 22.63 0L256 397.25l78.06 78.06c6.25 6.25 16.38 6.25 22.63 0l22.63-22.63c6.25-6.25 6.25-16.38 0-22.63L301.26 352zM64 96h96c17.64 0 32 14.36 32 32s-14.36 32-32 32H64V96z"/>
         </svg>
@@ -271,7 +285,7 @@ export const reportCardTemplate3 = `
     <div class="advice-section"><div class="advice-block"><span class="advice-title">Investigations</span><span class="advice-text">{{testNames}}</span></div></div>
     {{/if}}{{/if}}
     {{#if config.elements.showPreDiagnosis}}{{#if preDiagnosis}}
-    <div class="advice-section"><div class="advice-block"><span class="advice-title">Pre-Diagnosis</span><span class="advice-text">{{preDiagnosis}}</span></div></div>
+    <div class="advice-section"><div class="advice-block"><span class="advice-title">Chief Complaints</span><span class="advice-text">{{preDiagnosis}}</span></div></div>
     {{/if}}{{/if}}
     {{#if config.elements.showAdvice}}{{#if advice}}
     <div class="advice-section"><div class="advice-block"><span class="advice-title">{{bi "Advice"}}</span><span class="advice-text">{{bi advice}}</span></div></div>
@@ -282,24 +296,8 @@ export const reportCardTemplate3 = `
     {{#if config.elements.showSurgerySuggested}}{{#if surgerySuggested.length}}
     <div class="advice-section"><div class="advice-block"><span class="advice-title">Surgery Suggested</span><div class="advice-text"><ul>{{#each surgerySuggested}}<li>{{this}}</li>{{/each}}</ul></div></div></div>
     {{/if}}{{/if}}
-    {{#if config.elements.showAdditionalInformation}}
-    {{#with (objectEntries additionalInformation) as |additionalInfoEntries|}}
-    {{#if additionalInfoEntries.length}}
-    <div class="advice-section">
-        <div class="advice-block">
-            <span class="advice-title">Extra Diagnosis Details</span>
-            <div class="advice-text">
-                <ul>
-                    {{#each additionalInfoEntries}}
-                    <li>{{this.key}} - {{this.value}}</li>
-                    {{/each}}
-                </ul>
-            </div>
-        </div>
-    </div>
-    {{/if}}
-    {{/with}}
-    {{/if}}
+    ${treatmentPlanHtml('<div class="advice-section"><div class="advice-block"><span class="advice-title">Treatment Plan</span><div class="advice-text" style="flex:1;min-width:0">', '</div></div></div>')}
+    ${specialtySectionsHtml('<div class="advice-section"><div class="advice-block"><span class="advice-title">{{this.heading}}</span><div class="advice-text">', '</div></div></div>')}
     {{#if config.elements.showFollowUp}}{{#if followUpDate}}
     <div class="follow-up"><div class="info-row"><span class="k">{{bi "Next Visit"}}</span><span class="v">{{followUpDate}}</span></div></div>
     {{/if}}{{/if}}
@@ -313,7 +311,7 @@ export const reportCardTemplate3 = `
     <div class="sign-off">
         {{#if config.elements.showQrCode}}{{#if qrCode}}
         <div class="qr-item">
-            <img src="{{{qrCode}}}" alt="Scan to get the Infinity Medisetu app" />
+            <img src="{{{qrCode}}}" alt="Scan to get the MediArogya app" />
             <span class="qr-text">Scan to get the app &mdash; prescriptions &amp; follow-ups</span>
         </div>
         {{/if}}{{/if}}
@@ -331,23 +329,26 @@ export const reportCardTemplate3 = `
     {{#if config.elements.showConsultationHours}}{{#if doctor.groupedAvailability}}
     <div class="timings">
         <span class="lbl">Consultation Hours</span>
+        <span class="t-rows">
         {{#each doctor.groupedAvailability}}
             {{#if this.isAvailable}}
-            <span class="timing-item"><span>{{this.days}}:</span> {{{this.display}}}</span>
+            <span class="timing-item"><span class="t-days">{{this.days}}:</span><span class="t-shifts">{{#each this.shifts}}<span>{{#if this.label}}<b class="t-sl">{{this.label}}</b> ({{this.time}}){{else}}{{this.time}}{{/if}}</span>{{/each}}</span></span>
             {{/if}}
         {{/each}}
+        </span>
     </div>
     {{/if}}{{/if}}
 
     {{#if i18n.bilingual}}<div class="tr-note">{{bi "Translation for patient convenience. The English text prevails."}}</div>{{/if}}
 
     <!-- Footer: no clinic name — the letterhead already carries it (one home per field). -->
+    ${FOOTER_NOTES_HTML}
     {{#if config.elements.showFooter}}
     <div class="footer">
-        <span>{{bi "This prescription is computer-generated. Valid without signature."}}</span>
+        <span>This prescription is computer-generated. Valid without signature.</span>
         <span class="footer-brand">
             Powered by
-            <img src="https://infninity-medisatu.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png" alt="Infinity Medisetu" />
+            ${brandLogoHtml(14, 10)}
         </span>
     </div>
     {{/if}}

@@ -1,16 +1,3 @@
-/**
- * Coordinates engine operations after an appointment status change, dispatching
- * by the new status:
- *
- * - Completed / Patient Arrived → recalculate delay, evaluate running-late,
- *   compute time-to-next, then broadcast queue and patient updates.
- * - NoShow → shift subsequent appointments forward first, then the same
- *   recalculate/evaluate/broadcast chain (without time-to-next).
- *
- * All fire-and-forget: errors are caught and logged, never propagated, so the
- * original status change cannot fail because of the engine.
- */
-
 import redisClient from '../../../configurations/redisConfig';
 import logger from '../../../utils/logger';
 import { endConsultationIfOccupant } from './queueHoldStore.service';
@@ -26,12 +13,7 @@ import {
   REPEAT_INTERVAL_MS,
 } from './runningLateQueue.service';
 
-/**
- * The activity flag must outlive the entire running-late repeat window, or
- * RunningLateQueue's "recent activity" gap check silently stops applying
- * during the final stretch of repeat attempts. Add a margin on top of the
- * max repeat duration so the two never drift out of sync again.
- */
+/** Outlives the whole running-late repeat window, or the queue's "recent activity" check lapses near its end. */
 const LAST_ACTIVITY_TTL_SECONDS =
   Math.ceil((MAX_REPEAT_ATTEMPTS * REPEAT_INTERVAL_MS) / 1000) + 3600;
 import { TimeToNextService } from './timeToNext.service';
@@ -47,7 +29,6 @@ export class AppointmentEngineOrchestrator {
   private queueBroadcastService: QueueBroadcastService;
 
   constructor() {
-    // Single shared instance of DelayTrackerService — avoids redundant cache reads
     this.delayTrackerService = new DelayTrackerService();
     this.runningLateNotifier = new RunningLateNotifier();
     this.noShowShiftService = new NoShowShiftService();
@@ -55,16 +36,7 @@ export class AppointmentEngineOrchestrator {
     this.queueBroadcastService = new QueueBroadcastService();
   }
 
-  /**
-   * Called after an appointment status change has been committed to the database.
-   * Dispatches to the appropriate engine services based on the new appointment status.
-   *
-   * This method is fire-and-forget — it catches all errors internally and never
-   * throws, ensuring the original status change operation is not affected.
-   *
-   * @param appointment - The appointment record with the updated status
-   * @param previousStatus - The appointment's status before the change
-   */
+  /** Runs after a committed status change; never throws, so the engine can't fail the change itself. */
   async onStatusChange(
     appointment: AppointmentRecord,
     previousStatus: AppointmentStatus
@@ -78,18 +50,12 @@ export class AppointmentEngineOrchestrator {
           ? getISTDateString(appointmentDate)
           : String(appointmentDate).split('T')[0];
 
-      logger.info(
-        `[AppointmentEngine] Orchestrator handling status change for appointment=${id}: ` +
-          `${previousStatus} → ${appointmentStatus}`
-      );
-
-      // Cancel running-late delayed jobs — doctor is now active
+      // Any status change means the doctor is active, so pending running-late checks are moot.
       runningLateQueue.cancelAllForDoctor(clinicId, doctorId).catch(() => {});
 
       switch (appointmentStatus) {
         case 'Completed':
-          // Before the recalculation below, which reads the room pointer and
-          // the end instant this writes.
+          // Before the recalculation, which reads the room pointer and end instant this writes.
           await endConsultationIfOccupant(clinicId, doctorId, date, id);
           this.stampDoctorActivity(clinicId, doctorId);
           await this.handleCompletedOrArrived(clinicId, doctorId, date);
@@ -108,14 +74,9 @@ export class AppointmentEngineOrchestrator {
           break;
 
         default:
-          logger.info(
-            `[AppointmentEngine] No engine action for status="${appointmentStatus}" on appointment=${id}`
-          );
           break;
       }
     } catch (error) {
-      // Fire-and-forget: log the error and do not re-throw.
-      // The orchestrator must never affect the original status change operation.
       logger.error(
         `[AppointmentEngine] Orchestrator error for appointment=${id}, ` +
           `status change ${previousStatus} → ${appointmentStatus}`,
@@ -124,22 +85,13 @@ export class AppointmentEngineOrchestrator {
     }
   }
 
-  /**
-   * Called after staff announce or clear a session override. The override is
-   * already written and mirrored to Redis, and DelayTrackerService reads it in
-   * the recalculation below — so this reuses the status-change fan-out rather
-   * than growing a parallel notification path. Fire-and-forget.
-   */
+  /** After a session override is saved: the recalculation reads it, so the status-change fan-out is reused. */
   async onSessionOverride(
     clinicId: string,
     doctorId: string,
     date: string
   ): Promise<void> {
     try {
-      logger.info(
-        `[AppointmentEngine] Orchestrator handling session override for ` +
-          `clinic=${clinicId}, doctor=${doctorId}, date=${date}`
-      );
       await this.handleCompletedOrArrived(clinicId, doctorId, date);
     } catch (error) {
       logger.error(
@@ -157,10 +109,6 @@ export class AppointmentEngineOrchestrator {
     date: string
   ): Promise<void> {
     try {
-      logger.info(
-        `[AppointmentEngine] Orchestrator handling doctor arrival for ` +
-          `clinic=${clinicId}, doctor=${doctorId}, date=${date}`
-      );
       this.stampDoctorActivity(clinicId, doctorId);
       await this.handleCompletedOrArrived(clinicId, doctorId, date);
     } catch (error) {
@@ -172,21 +120,13 @@ export class AppointmentEngineOrchestrator {
     }
   }
 
-  /**
-   * Called after a queue-board action (send-in / hold / skip / resume) changes
-   * the room or the waiting list without a status write. QueueService commits
-   * the Redis pointer before calling this, so it is safe immediately after.
-   */
+  /** After a send-in/hold/skip/resume, which moves the room or line without a status write. */
   async onQueueAction(
     clinicId: string,
     doctorId: string,
     date: string
   ): Promise<void> {
     try {
-      logger.info(
-        `[AppointmentEngine] Orchestrator handling queue action for ` +
-          `clinic=${clinicId}, doctor=${doctorId}, date=${date}`
-      );
       await this.handleCompletedOrArrived(clinicId, doctorId, date);
     } catch (error) {
       logger.error(
@@ -197,21 +137,13 @@ export class AppointmentEngineOrchestrator {
     }
   }
 
-  /**
-   * Called after a reschedule changes date or time without necessarily changing
-   * status. The move shifts where this appointment — and everyone cascading
-   * from it — lands, so it needs the same refresh a status change gets.
-   */
+  /** After a reschedule: the move shifts everyone behind it, so it gets a status change's refresh. */
   async onReschedule(
     clinicId: string,
     doctorId: string,
     date: string
   ): Promise<void> {
     try {
-      logger.info(
-        `[AppointmentEngine] Orchestrator handling reschedule for ` +
-          `clinic=${clinicId}, doctor=${doctorId}, date=${date}`
-      );
       await this.handleCompletedOrArrived(clinicId, doctorId, date);
     } catch (error) {
       logger.error(
@@ -221,12 +153,8 @@ export class AppointmentEngineOrchestrator {
       );
     }
   }
-  /**
-   * `/queue-state` serves the snapshot just recalculated, so this is the first
-   * moment a refetch reads the new times; earlier signals raced the recompute.
-   */
+  /** Signals only after the recalculation, the first moment a refetch reads the new times. */
   private signalQueue(clinicId: string, doctorId: string, date: string): void {
-    // Dashboard caches retired first, for the same refetch-reads-stale reason.
     void invalidateClinicDashboardCaches(clinicId).finally(() => {
       realtimeBus.notify(
         target.queue(clinicId, doctorId, date),
@@ -236,6 +164,7 @@ export class AppointmentEngineOrchestrator {
     });
   }
 
+  /** Records when the doctor last acted, read by the running-late gap check. */
   private stampDoctorActivity(clinicId: string, doctorId: string): void {
     redisClient
       .set(
@@ -247,17 +176,12 @@ export class AppointmentEngineOrchestrator {
       .catch(() => {});
   }
 
-  /**
-   * Handles Completed or Patient Arrived: recalculate the queue's delay, then
-   * evaluate running-late, compute time-to-next, and emit queue.updated and
-   * appointment.updated. `queueData` is passed down so nothing re-reads it.
-   */
+  /** Recalculates once, then running-late, time-to-next and broadcasts all reuse that queue data. */
   private async handleCompletedOrArrived(
     clinicId: string,
     doctorId: string,
     date: string
   ): Promise<void> {
-    // Step 1: Recalculate delay (1 DB query — fetchDailyQueue)
     const queueDelayData = await this.delayTrackerService.recalculate(
       clinicId,
       doctorId,
@@ -265,7 +189,6 @@ export class AppointmentEngineOrchestrator {
     );
     this.signalQueue(clinicId, doctorId, date);
 
-    // Step 2: Evaluate running-late notifications using pre-fetched data (0 extra DB queries)
     try {
       await this.runningLateNotifier.evaluateFromCache(
         clinicId,
@@ -280,7 +203,6 @@ export class AppointmentEngineOrchestrator {
       );
     }
 
-    // Step 3: Compute and broadcast time-to-next using pre-fetched queue data (0 extra DB for cache read)
     try {
       await this.timeToNextService.computeAndBroadcastFromQueue(
         clinicId,
@@ -295,7 +217,6 @@ export class AppointmentEngineOrchestrator {
       );
     }
 
-    // Step 4: Emit queue.updated to clinic room
     try {
       this.queueBroadcastService.emitQueueUpdated(clinicId, queueDelayData);
     } catch (error) {
@@ -305,7 +226,6 @@ export class AppointmentEngineOrchestrator {
       );
     }
 
-    // Step 5: Emit appointment.updated to each affected patient
     this.queueBroadcastService
       .emitPatientUpdated(queueDelayData)
       .catch((error) => {
@@ -316,18 +236,13 @@ export class AppointmentEngineOrchestrator {
       });
   }
 
-  /**
-   * Handles NoShow: shift subsequent appointments forward, recalculate the
-   * queue's delay, then evaluate running-late and emit queue.updated and
-   * appointment.updated.
-   */
+  /** Shifts later bookings first so the recalculation sees their new times. */
   private async handleNoShow(
     appointmentId: string,
     clinicId: string,
     doctorId: string,
     date: string
   ): Promise<void> {
-    // Step 1: Shift forward subsequent appointments
     try {
       await this.noShowShiftService.shiftForward(appointmentId);
     } catch (error) {
@@ -338,7 +253,6 @@ export class AppointmentEngineOrchestrator {
       // Even if shift fails, still proceed with recalculation and broadcast
     }
 
-    // Step 2: Recalculate delay (reflects shifts and removed no-show)
     const queueDelayData = await this.delayTrackerService.recalculate(
       clinicId,
       doctorId,
@@ -346,7 +260,6 @@ export class AppointmentEngineOrchestrator {
     );
     this.signalQueue(clinicId, doctorId, date);
 
-    // Step 3: Evaluate running-late notifications using pre-fetched data
     try {
       await this.runningLateNotifier.evaluateFromCache(
         clinicId,
@@ -361,7 +274,6 @@ export class AppointmentEngineOrchestrator {
       );
     }
 
-    // Step 4: Emit queue.updated to clinic room
     try {
       this.queueBroadcastService.emitQueueUpdated(clinicId, queueDelayData);
     } catch (error) {
@@ -371,7 +283,6 @@ export class AppointmentEngineOrchestrator {
       );
     }
 
-    // Step 5: Emit appointment.updated to each affected patient
     this.queueBroadcastService
       .emitPatientUpdated(queueDelayData)
       .catch((error) => {

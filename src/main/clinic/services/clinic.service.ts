@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   and,
-  between,
   desc,
   eq,
   gt,
@@ -9,34 +8,23 @@ import {
   inArray,
   isNotNull,
   isNull,
-  lte,
   ne,
   notInArray,
   or,
   sql,
 } from 'drizzle-orm';
-import {
-  createRazorpayRouteAccount,
-  fetchRazorpayRouteAccountProducts,
-  createRazorpayStakeholder,
-  requestRazorpayProductConfig,
-  updateRazorpayProductSettlements,
-  uploadRazorpayDocument,
-  fetchRazorpayRouteAccountAllProducts,
-} from '../../../utils/razorpay';
-import {
-  OnboardRouteDto,
-  UpdateBankDetailsDto,
-} from '../schemas/clinic.schemas';
 import { database } from '../../../configurations/dbConnection';
 import { notifyClinicCreated } from '../../../utils/notificationHelpers';
 import redisClient from '../../../configurations/redisConfig';
-import { deleteFromS3 } from '../../../configurations/s3';
 import { HttpError } from '../../../middlewear/errorHandler';
 import { doctorRutineDufet } from '../../../utils/avaliblity';
 import logger from '../../../utils/logger';
+import { doctorDegreeLine } from '../../../utils/qualificationCatalog';
 import { NoShowPolicyModel } from '../../appointments/models/noShowPolicy.model';
-import { DoctorQualificationModel } from '../../doctor/models/doctor.model';
+import {
+  DoctorExperienceModel,
+  DoctorQualificationModel,
+} from '../../doctor/models/doctor.model';
 import { DoctorServices } from '../../doctor/services/doctor.service';
 import { ConsultationDurationService } from '../../appointment-engine/services/consultationDuration.service';
 import { AppointmentEngineOrchestrator } from '../../appointment-engine/services/orchestrator.service';
@@ -48,9 +36,13 @@ import { whatsAppReminderQueue } from '../../notifications/services/appointmentW
 import { LabsModel } from '../../lab/models/lab.model';
 import { PharmacyModel } from '../../pharmacy/models/pharmacy.model';
 import {
-  ClinicSubscriptionModel,
-  SubscriptionPlanModel,
-} from '../../subscription/models/subscription.model';
+  AutoPayService,
+  FirstPlanService,
+  LimitationService,
+  OwnerSubscriptionService,
+  SubscriptionActivityService,
+  SubscriptionReadService,
+} from '../../subscription';
 import { UserModel } from '../../users/models/user.model';
 import { UserProfileModel } from '../../users/models/userProfile.model';
 import { UserProfessionalModel } from '../../users/models/userProfessional.model';
@@ -60,12 +52,9 @@ import {
   ClinicAvailability,
   ClinicModel,
 } from '../models/clinic.model';
-import { LimitationService } from '../../subscription/services/limitation.service';
 import { ClinicOnboardingResetModel } from '../models/clinicOnboardingReset.model';
-import { ClinicPaymentAccountModel } from '../models/clinicPaymentAccount.model';
 import { ClinicReminderModel } from '../models/clinicReminder.model';
 import { ClinicSettingsModel } from '../models/clinicSettings.model';
-import { ClinicBankHistoryModel } from '../models/clinicBankHistory.model';
 import {
   FullDoctorClinicDto,
   FulUpdateClinicSchemaDto,
@@ -74,10 +63,12 @@ import {
 } from '../schemas/clinic.schemas';
 import {
   CacheKeys,
+  getOrSetCache,
   invalidateCacheMany,
   withCacheInvalidation,
 } from '../../../utils/cache.util';
-import { isSubscriptionValid } from '../../../utils/subscriptionExpiry';
+import { deleteFromS3 } from '../../../configurations/s3';
+
 import {
   comparePassword,
   generateOTP,
@@ -86,6 +77,7 @@ import {
 import { realtimeBus } from '../../realtime/services/realtimeBus.service';
 import { sendSMS } from '../../../utils/smsClient';
 import { envConfig } from '../../../utils/envConfig';
+import { getReferrerNames } from '../../referral';
 
 const CLINIC_OTP_RESEND_COOLDOWN_SECS = envConfig.OTP_RESEND_COOLDOWN_SECS;
 const CLINIC_OTP_MAX_RESEND_COUNT = envConfig.OTP_MAX_RESEND_COUNT;
@@ -160,6 +152,13 @@ export class ClinicService {
           latitude: ClinicModel.latitude,
           longitude: ClinicModel.longitude,
         });
+
+      // Every clinic gets a settings row at the column defaults; booking queries require one.
+      await tx
+        .insert(ClinicSettingsModel)
+        .values({ clinicId: clinic.id })
+        .onConflictDoNothing({ target: ClinicSettingsModel.clinicId });
+
       if (
         payload.adminProfile &&
         Object.keys(payload.adminProfile).length > 0
@@ -287,77 +286,17 @@ export class ClinicService {
     return result;
   }
 
-  /**
-   * Assigns the default free plan to a newly created clinic.
-   * This ensures every clinic starts with the free tier limits.
-   * If the free plan doesn't exist, it logs a warning and skips.
-   */
+  /** Gives the clinic the Free plan; a no-op when it already has a current plan. */
   static async assignDefaultFreePlan(clinicId: string): Promise<void> {
-    try {
-      // 1. Find the free plan
-      const [freePlan] = await database
-        .select({
-          id: SubscriptionPlanModel.id,
-          slug: SubscriptionPlanModel.slug,
-        })
-        .from(SubscriptionPlanModel)
-        .where(inArray(SubscriptionPlanModel.slug, ['solo', 'Free']))
-        .limit(1);
-
-      if (!freePlan) {
-        logger.warn(
-          `[ClinicService] Free plan not found in subscription_plans. Skipping default assignment for clinic ${clinicId}.`
-        );
-        return;
-      }
-
-      // 2. Check if clinic already has an active subscription (idempotent)
-      const [existingSub] = await database
-        .select({ id: ClinicSubscriptionModel.id })
-        .from(ClinicSubscriptionModel)
-        .where(
-          and(
-            eq(ClinicSubscriptionModel.clinicId, clinicId),
-            eq(ClinicSubscriptionModel.active, true)
-          )
-        )
-        .limit(1);
-
-      if (existingSub) {
-        // Already has a subscription, skip
-        return;
-      }
-
-      // 3. Create free subscription (no expiry)
-      await database.insert(ClinicSubscriptionModel).values({
-        clinicId,
-        planId: freePlan.id,
-        startsAt: new Date(),
-        expiresAt: null, // Free plan never expires
-        active: true,
-        provider: 'system',
-        providerSubscriptionId: 'default-free',
-        paymentMode: 'free',
-        transactionId: `free_${Date.now()}`,
-        paymentStatus: 'success',
-        price: '0.00',
-      });
-
-      // 4. Invalidate any cached subscription data
-      await redisClient.del(`clinic_active_subscription:${clinicId}`);
-      await redisClient.del(`clinic_plan:${clinicId}`);
-      await redisClient.del(`clinic_details:${clinicId}`);
-
-      logger.info(
-        `[ClinicService] Default free plan assigned to clinic ${clinicId}`
-      );
-    } catch (error) {
-      // Don't fail clinic creation if plan assignment fails
+    // Clinic creation must not fail on this, so it is logged, not thrown.
+    await FirstPlanService.assignFreePlan('clinic', clinicId).catch((error) =>
       logger.error(
-        `[ClinicService] Failed to assign default free plan to clinic ${clinicId}:`,
+        `[ClinicService] Failed to assign the Free plan to clinic ${clinicId}:`,
         error
-      );
-    }
+      )
+    );
+    await LimitationService.invalidateClinicCache(clinicId);
+    await redisClient.del(CacheKeys.clinicDetails(clinicId));
   }
 
   static async updateClinic(
@@ -610,11 +549,7 @@ export class ClinicService {
     }
 
     try {
-      await redisClient.del(`clinic_details:${clinicId}`);
-      await invalidateCacheMany(
-        CacheKeys.doctorPublicProfileAll(existingClinic.userId)
-      );
-      await redisClient.del(`clinic_geo:${clinicId}`);
+      await ClinicService.clearClinicDisplayCaches(clinicId);
     } catch (err) {
       logger.error(
         `[Cache] Error invalidating clinic/doctor cache in updateClinicById for clinic ${clinicId}:`,
@@ -688,6 +623,8 @@ export class ClinicService {
           speciality: UserProfessionalModel.speciality,
           specialization: UserProfessionalModel.specialization,
           registrationNumber: UserProfessionalModel.registrationNumber,
+          languagesSpoken: UserProfessionalModel.languagesSpoken,
+          about: UserProfessionalModel.about,
         })
         .from(UserModel)
         .leftJoin(UserProfileModel, eq(UserProfileModel.userId, UserModel.id))
@@ -709,6 +646,9 @@ export class ClinicService {
         providerSubscriptionId: null,
         expiresAt: null,
         active: true,
+        isTrial: false,
+        state: 'free',
+        graceUntil: null,
       };
 
       if (
@@ -716,66 +656,48 @@ export class ClinicService {
         profile.userType === 'Doctor' ||
         profile.userType === 'Receptionist'
       ) {
-        const [subscription] = await tx
-          .select({
-            expiresAt: ClinicSubscriptionModel.expiresAt,
-            paymentStatus: ClinicSubscriptionModel.paymentStatus,
-            active: ClinicSubscriptionModel.active,
-            slug: SubscriptionPlanModel.slug,
-            planName: SubscriptionPlanModel.name,
-            price: SubscriptionPlanModel.price,
-            providerSubscriptionId:
-              ClinicSubscriptionModel.providerSubscriptionId,
-          })
-          .from(ClinicSubscriptionModel)
-          .leftJoin(
-            SubscriptionPlanModel,
-            eq(ClinicSubscriptionModel.planId, SubscriptionPlanModel.id)
-          )
-          .where(
-            and(
-              eq(ClinicSubscriptionModel.clinicId, clinicId),
-              eq(ClinicSubscriptionModel.active, true)
-            )
-          )
-          .orderBy(desc(ClinicSubscriptionModel.createdAt))
-          .limit(1);
-        // 4️⃣ If subscription exists → override FREE plan
-        if (
-          subscription &&
-          subscription.paymentStatus === 'success' &&
-          subscription.active
-        ) {
-          // Expiry rule (end of the expiry day, IST) is shared with the
-          // subscription middleware and the billing endpoint so the three
-          // cannot disagree about when a plan lapses.
-          const isValid = isSubscriptionValid(subscription.expiresAt);
-
-          if (isValid) {
-            subscriptionDetails = {
-              planName: subscription.planName ?? 'Solo',
-              price:
-                subscription.providerSubscriptionId === 'pro-yearly'
-                  ? Number(subscription.price ?? 0) * 12 * 0.9
-                  : (subscription.price ?? '0.00'),
-              slug: subscription.slug ?? 'solo',
-              expiresAt: subscription.expiresAt ?? null,
-              active: subscription.active,
-              providerSubscriptionId:
-                subscription.providerSubscriptionId ?? null,
-            };
-          }
+        const current = await SubscriptionReadService.current(clinicId);
+        if (current?.active) {
+          subscriptionDetails = {
+            planName: current.planName,
+            price: current.price.toFixed(2),
+            slug: current.slug,
+            expiresAt: current.expiresAt,
+            active: true,
+            // Same access decision as the billing page, so the header and popup need no extra call.
+            isTrial: current.isTrial,
+            state: current.state,
+            graceUntil: current.graceUntil,
+            // Admin only (the renewal popup); other roles skip the lookup.
+            ...(profile.userType === 'Admin'
+              ? { autoPayOn: await SubscriptionReadService.autoPayOn(clinicId) }
+              : {}),
+            // Readers detect a yearly plan from the "-yearly" suffix.
+            providerSubscriptionId: `${current.slug}-${current.billingCycle}`,
+          };
         }
       }
       const qualifications = await database
         .select()
         .from(DoctorQualificationModel)
         .where(eq(DoctorQualificationModel.userId, userId));
+      const experiences = await database
+        .select()
+        .from(DoctorExperienceModel)
+        .where(eq(DoctorExperienceModel.userId, userId))
+        .orderBy(
+          desc(DoctorExperienceModel.isCurrent),
+          desc(DoctorExperienceModel.startYear),
+          desc(DoctorExperienceModel.startMonth)
+        );
       return {
         clinic,
         profile,
         subscription: subscriptionDetails,
         qualifications,
+        // Same 3-degree line the prescription prints, for the quick-print preview.
+        degreeLine: doctorDegreeLine(qualifications, profile?.qualification, 3),
+        experiences,
         noShowPolicyActive: policy?.isActive ?? false,
       };
     });
@@ -857,7 +779,7 @@ export class ClinicService {
   static async getClinicDetailsById(
     clinicId: string
   ): Promise<FullClinicResponse | null> {
-    const cacheKey = `clinic_details:${clinicId}`;
+    const cacheKey = CacheKeys.clinicDetails(clinicId);
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
@@ -925,45 +847,22 @@ export class ClinicService {
         .leftJoin(ClinicModel, eq(ClinicModel.userId, UserModel.id))
         .where(eq(UserModel.id, clinic.userId));
 
-      // Fetch subscription details
-      const [subscription] = await tx
-        .select({
-          planName: SubscriptionPlanModel.name,
-          price: SubscriptionPlanModel.price,
-          slug: SubscriptionPlanModel.slug,
-          expiresAt: ClinicSubscriptionModel.expiresAt,
-          active: ClinicSubscriptionModel.active,
-        })
-        .from(ClinicSubscriptionModel)
-        .innerJoin(
-          SubscriptionPlanModel,
-          eq(ClinicSubscriptionModel.planId, SubscriptionPlanModel.id)
-        )
-        .where(
-          and(
-            eq(ClinicSubscriptionModel.clinicId, clinicId),
-            eq(ClinicSubscriptionModel.active, true)
-          )
-        )
-        .limit(1);
-
-      // Fetch subscription history
-      const subscriptionHistory = await tx
-        .select({
-          planName: SubscriptionPlanModel.name,
-          price: SubscriptionPlanModel.price,
-          slug: SubscriptionPlanModel.slug,
-          expiresAt: ClinicSubscriptionModel.expiresAt,
-          active: ClinicSubscriptionModel.active,
-          startsAt: ClinicSubscriptionModel.startsAt,
-        })
-        .from(ClinicSubscriptionModel)
-        .innerJoin(
-          SubscriptionPlanModel,
-          eq(ClinicSubscriptionModel.planId, SubscriptionPlanModel.id)
-        )
-        .where(eq(ClinicSubscriptionModel.clinicId, clinicId))
-        .orderBy(desc(ClinicSubscriptionModel.startsAt));
+      const current = await SubscriptionReadService.current(clinicId);
+      const subscription = current
+        ? {
+            planName: current.planName,
+            price: current.price.toFixed(2),
+            slug: current.slug,
+            expiresAt: current.expiresAt,
+            active: current.active,
+          }
+        : undefined;
+      const subscriptionHistory = (
+        await SubscriptionReadService.history(clinicId)
+      ).map((h) => ({
+        ...h,
+        price: h.price.toFixed(2),
+      }));
 
       // Fetch counts, users, pharmacies, labs in parallel (with limits)
       const [
@@ -1081,7 +980,7 @@ export class ClinicService {
     clinicId: string,
     userId: string
   ): Promise<ClinicAssignRow[]> {
-    return await database
+    const rows = await database
       .insert(ClinicAssignModel)
       .values({
         userId,
@@ -1094,6 +993,9 @@ export class ClinicService {
         },
       })
       .returning();
+    // The doctor's cached profile lists their clinics.
+    await invalidateCacheMany(CacheKeys.doctorPublicProfileAll(userId));
+    return rows;
   }
 
   /**
@@ -1131,9 +1033,42 @@ export class ClinicService {
       .set({ userStatus: status, updatedAt: new Date() })
       .where(eq(UserModel.id, clinic.userId));
 
+    // A closed clinic stops billing; reopening starts it on Free (no-op if it already has a plan).
+    if (status === 'Active') {
+      await ClinicService.assignDefaultFreePlan(clinicId);
+    } else {
+      const reason = `Clinic set to ${status} by super admin`;
+      const endedPlanId = await OwnerSubscriptionService.onOwnerClosed(
+        'clinic',
+        clinicId,
+        reason
+      );
+      await ClinicService.logPlanClosed(clinicId, endedPlanId, reason, null);
+    }
+
     await ClinicService.clearClinicAccessCaches(clinicId, clinic.userId);
 
     return updatedClinic;
+  }
+
+  /** Timeline entry for a plan ended because the clinic was closed. */
+  private static async logPlanClosed(
+    clinicId: string,
+    endedPlanId: string | null,
+    reason: string,
+    actorUserId: string | null
+  ) {
+    // Decision N: a closed clinic is never charged again; restoring it needs AutoPay turned on anew.
+    await AutoPayService.stop(clinicId, reason);
+    if (!endedPlanId) return;
+    await SubscriptionActivityService.record({
+      clinicId,
+      type: 'account_closed',
+      title: 'Plan ended: clinic closed',
+      description: reason,
+      actorUserId,
+      metadata: { subscriptionId: endedPlanId },
+    });
   }
 
   /** Re-checks the super admin's own password before a destructive clinic action. */
@@ -1180,6 +1115,7 @@ export class ClinicService {
 
     if (!clinic) throw new HttpError(404, 'Clinic not found');
 
+    let endedPlanId: string | null = null;
     const updatedClinic = await database.transaction(async (tx) => {
       // The wizard redirect needs all three gates open: onboarding unfinished,
       // no approval pending, owner not Active. A partial reset does nothing.
@@ -1209,25 +1145,13 @@ export class ClinicService {
         .set({ userStatus: 'New', updatedAt: new Date() })
         .where(eq(UserModel.id, clinic.userId));
 
-      // End the current plan so the owner chooses one again. The row is kept:
-      // the "first subscription" offer reads history, so deactivating alone
-      // can never hand out a second free month.
-      await tx
-        .update(ClinicSubscriptionModel)
-        .set({
-          active: false,
-          autoRenew: false,
-          cancelAtPeriodEnd: true,
-          cancelledAt: new Date(),
-          cancellationReason: 'Onboarding reset by super admin',
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(ClinicSubscriptionModel.clinicId, clinicId),
-            eq(ClinicSubscriptionModel.active, true)
-          )
-        );
+      // Ends the current plan so the owner chooses one again; the row stays as history.
+      endedPlanId = await OwnerSubscriptionService.onOwnerClosed(
+        'clinic',
+        clinicId,
+        'Onboarding reset by super admin',
+        tx
+      );
 
       // resetAt is set here, not left to the column default: defaultNow() writes
       // the DB's IST wall clock, 5h30m off the updatedAt values written above.
@@ -1240,6 +1164,13 @@ export class ClinicService {
 
       return updated;
     });
+
+    await ClinicService.logPlanClosed(
+      clinicId,
+      endedPlanId,
+      'Onboarding reset by super admin',
+      superAdminId
+    );
 
     // Hands the clinic back the free tier a new signup starts on, and clears
     // the subscription/plan caches. Idempotent, and only assigns anything
@@ -1281,6 +1212,7 @@ export class ClinicService {
 
     if (!clinic) throw new HttpError(404, 'Clinic not found');
 
+    let endedPlanId: string | null = null;
     const deleted = await database.transaction(async (tx) => {
       // 'Inactive' already blocks the owner at login, staff in requireClinic
       // and the clinic in patient search, so no new checks are needed.
@@ -1305,23 +1237,12 @@ export class ClinicService {
         .set({ userStatus: 'Inactive', updatedAt: new Date() })
         .where(eq(UserModel.id, clinic.userId));
 
-      // Stops renewals from charging a deleted clinic; the row stays as history.
-      await tx
-        .update(ClinicSubscriptionModel)
-        .set({
-          active: false,
-          autoRenew: false,
-          cancelAtPeriodEnd: true,
-          cancelledAt: new Date(),
-          cancellationReason: 'Clinic deleted by super admin',
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(ClinicSubscriptionModel.clinicId, clinicId),
-            eq(ClinicSubscriptionModel.active, true)
-          )
-        );
+      endedPlanId = await OwnerSubscriptionService.onOwnerClosed(
+        'clinic',
+        clinicId,
+        'Clinic deleted by super admin',
+        tx
+      );
 
       // Open bookings from today on are cancelled; past and in-progress visits stay as history.
       const cancelled = await tx
@@ -1365,6 +1286,13 @@ export class ClinicService {
         cancelledAppointmentIds: cancelled.map((a) => a.id),
       };
     });
+
+    await ClinicService.logPlanClosed(
+      clinicId,
+      endedPlanId,
+      'Clinic deleted by super admin',
+      superAdminId
+    );
 
     // Queued reminders and auto no-show jobs would still fire for cancelled visits.
     await Promise.allSettled(
@@ -1476,14 +1404,61 @@ export class ClinicService {
 
     // requireClinic caches "<clinicId>:status:<status>" per member, not just the owner.
     await invalidateCacheMany([
-      `clinic_details:${clinicId}`,
+      CacheKeys.clinicDetails(clinicId),
       `user:${ownerId}`,
       `user_clinic:${ownerId}`,
       CacheKeys.clinicProfileOverview(clinicId),
       ...members.map((m) => `user_clinic:${m.userId}`),
+      // The cached doctor profile lists only Active clinics, so a status
+      // change or delete must drop it for every doctor attached here.
+      ...members.flatMap((m) => CacheKeys.doctorPublicProfileAll(m.userId)),
     ]);
 
     return members.map((m) => m.userId);
+  }
+
+  /** Drops every cache showing this clinic's details: its own, its location, and each member doctor's profile. */
+  static async clearClinicDisplayCaches(clinicId: string) {
+    const members = await database
+      .select({ userId: ClinicAssignModel.userId })
+      .from(ClinicAssignModel)
+      .where(eq(ClinicAssignModel.clinicId, clinicId));
+    await invalidateCacheMany([
+      CacheKeys.clinicDetails(clinicId),
+      `clinic_geo:${clinicId}`,
+      ...members.flatMap((m) => CacheKeys.doctorPublicProfileAll(m.userId)),
+    ]);
+  }
+
+  /** Picker lookup: id, name and code only, managed clinics, capped small. */
+  static async lookupClinics(opts: {
+    search?: string;
+    ids?: string[];
+    limit: number;
+  }) {
+    const filters = [
+      sql`${ClinicModel.status} IN ('Active', 'Inactive', 'Blocked')`,
+    ];
+    if (opts.ids?.length) filters.push(inArray(ClinicModel.id, opts.ids));
+    else if (opts.search) {
+      const like = `%${opts.search}%`;
+      filters.push(
+        or(
+          sql`${ClinicModel.clinicName} ILIKE ${like}`,
+          sql`${ClinicModel.clinicCode} ILIKE ${like}`
+        )!
+      );
+    }
+    return database
+      .select({
+        id: ClinicModel.id,
+        name: ClinicModel.clinicName,
+        code: ClinicModel.clinicCode,
+      })
+      .from(ClinicModel)
+      .where(and(...filters))
+      .orderBy(ClinicModel.clinicName)
+      .limit(opts.ids?.length ?? opts.limit);
   }
 
   static async getAvailableClinics(opts: {
@@ -1527,6 +1502,7 @@ export class ClinicService {
       .select({
         id: ClinicModel.id,
         clinicName: ClinicModel.clinicName,
+        clinicCode: ClinicModel.clinicCode,
         clinicPhone: ClinicModel.clinicPhone,
         Tagline: ClinicModel.Tagline,
         clinicAddress: ClinicModel.clinicAddress,
@@ -1538,7 +1514,6 @@ export class ClinicService {
         status: ClinicModel.status,
         latitude: ClinicModel.latitude,
         longitude: ClinicModel.longitude,
-        planName: SubscriptionPlanModel.name,
         userStatus: UserModel.userStatus,
       })
       .from(ClinicModel)
@@ -1546,25 +1521,13 @@ export class ClinicService {
         UserModel,
         and(eq(UserModel.id, ClinicModel.userId), ownerIsListable)
       )
-      .leftJoin(
-        ClinicSubscriptionModel,
-        and(
-          eq(ClinicModel.id, ClinicSubscriptionModel.clinicId),
-          eq(ClinicSubscriptionModel.active, true),
-          or(
-            isNull(ClinicSubscriptionModel.expiresAt),
-            gt(ClinicSubscriptionModel.expiresAt, new Date())
-          )
-        )
-      )
-      .leftJoin(
-        SubscriptionPlanModel,
-        eq(ClinicSubscriptionModel.planId, SubscriptionPlanModel.id)
-      )
       .where(whereClause)
       .limit(opts.limit)
       .offset(offset);
 
+    const planNames = await SubscriptionReadService.currentPlanNames(
+      results.map((r) => r.id)
+    );
     const clinics = results.map((row) => ({
       id: row.id,
       clinicName: row.clinicName,
@@ -1579,7 +1542,7 @@ export class ClinicService {
       status: row.status,
       latitude: row.latitude,
       longitude: row.longitude,
-      planName: row.planName || 'Solo',
+      planName: planNames.get(row.id) || 'Solo',
     }));
 
     const [totalCount] = await database
@@ -1745,12 +1708,25 @@ export class ClinicService {
       };
     });
 
+    // Own try: logs and swallows, so a Redis error can't skip it or fail the saved write.
+    await invalidateCacheMany(CacheKeys.clinicSettingsAll(clinicId));
+
     try {
-      await redisClient.del(`clinic_settings:${clinicId}`);
-      await redisClient.del(`clinic_autologout:${clinicId}`);
       // Invalidate appointment engine threshold cache so running-late
       // notifications use the updated value immediately
       await redisClient.del(`appointment_engine:threshold:${clinicId}`);
+
+      // Cached doctor profiles embed this clinic's booking/payment flags (2h),
+      // so clear them for every assigned doctor.
+      const assignedDoctors = await database
+        .select({ userId: ClinicAssignModel.userId })
+        .from(ClinicAssignModel)
+        .where(eq(ClinicAssignModel.clinicId, clinicId));
+      await invalidateCacheMany(
+        assignedDoctors.flatMap((doctor) =>
+          CacheKeys.doctorPublicProfileAll(doctor.userId)
+        )
+      );
     } catch (err) {
       logger.error(
         `[Cache] Failed to invalidate settings cache for clinic ${clinicId}:`,
@@ -1801,21 +1777,22 @@ export class ClinicService {
   }
 
   static async getSetting(clinicId: string) {
-    const cacheKey = `clinic_settings:${clinicId}`;
-    const usesTokenBooking = await this.usesTokenBooking(clinicId);
+    const [cached, usesTokenBooking] = await Promise.all([
+      this.getCachedSetting(clinicId),
+      this.usesTokenBooking(clinicId),
+    ]);
+    // The token flag is intentionally not part of the cached blob.
+    return { ...cached, usesTokenBooking };
+  }
 
-    try {
-      const cached = await redisClient.get(cacheKey);
-      if (cached) {
-        return { ...JSON.parse(cached), usesTokenBooking };
-      }
-    } catch (err) {
-      logger.error(
-        `[Cache] Error reading settings cache for clinic ${clinicId}:`,
-        err
-      );
-    }
+  /** Settings + reminders, cached 24h; writers clear `CacheKeys.clinicSettingsAll`. */
+  static getCachedSetting(clinicId: string) {
+    return getOrSetCache(CacheKeys.clinicSettings(clinicId), 86400, () =>
+      this.loadSetting(clinicId)
+    );
+  }
 
+  private static async loadSetting(clinicId: string) {
     const [settings] = await database
       .select({
         id: ClinicSettingsModel.id,
@@ -1830,6 +1807,7 @@ export class ClinicService {
         onlineBookingEnabled: ClinicSettingsModel.onlineBookingEnabled,
         payOnlineEnabled: ClinicSettingsModel.payOnlineEnabled,
         payAtClinicEnabled: ClinicSettingsModel.payAtClinicEnabled,
+        showClinicNumberPublicly: ClinicSettingsModel.showClinicNumberPublicly,
       })
       .from(ClinicSettingsModel)
       .where(eq(ClinicSettingsModel.clinicId, clinicId))
@@ -1853,19 +1831,23 @@ export class ClinicService {
       )
       .orderBy(ClinicReminderModel.createdAt);
 
-    const result = { settings, reminders };
-
-    try {
-      // The token flag is intentionally not part of the cached blob.
-      await redisClient.setex(cacheKey, 86400, JSON.stringify(result));
-    } catch (err) {
-      logger.error(
-        `[Cache] Error writing settings cache for clinic ${clinicId}:`,
-        err
-      );
-    }
-
-    return result;
+    // No row yet (clinic never saved settings): report the column defaults, as the DB would.
+    return {
+      settings: settings ?? {
+        id: null,
+        clinicId,
+        voiceCallEnabled: false,
+        smsEnabled: false,
+        whatsappEnabled: true,
+        loginAlertsEnabled: false,
+        autoLogoutMinutes: null,
+        runningLateThresholdMinutes: 10,
+        onlineBookingEnabled: true,
+        payOnlineEnabled: false,
+        payAtClinicEnabled: false,
+      },
+      reminders,
+    };
   }
 
   static async getDoctorOnlineBooking(clinicId: string, doctorId: string) {
@@ -1936,6 +1918,10 @@ export class ClinicService {
       .set(setPayload)
       .where(eq(ClinicAssignModel.id, assignment.id))
       .returning();
+
+    // The cached public profile carries this doctor's onlineBookingEnabled
+    // and maxAdvanceBookingDays per clinic.
+    await invalidateCacheMany(CacheKeys.doctorPublicProfileAll(doctorId));
 
     return updated;
   }
@@ -2043,15 +2029,7 @@ export class ClinicService {
       throw new HttpError(404, 'Reminder not found');
     }
 
-    try {
-      await redisClient.del(`clinic_settings:${clinicId}`);
-      await redisClient.del(`clinic_autologout:${clinicId}`);
-    } catch (err) {
-      logger.error(
-        `[Cache] Failed to invalidate settings cache for clinic ${clinicId}:`,
-        err
-      );
-    }
+    await invalidateCacheMany(CacheKeys.clinicSettingsAll(clinicId));
 
     return updated;
   }
@@ -2062,17 +2040,24 @@ export class ClinicService {
   }) {
     const { startDate, endDate } = filters || {};
 
+    // A reset clinic goes through approval again, so its request dates from the
+    // latest reset, not the owner's original signup (which fell outside the range).
+    const lastResetAt = sql`(SELECT MAX(${ClinicOnboardingResetModel.resetAt}) FROM ${ClinicOnboardingResetModel} WHERE ${ClinicOnboardingResetModel.clinicId} = ${ClinicModel.id})`;
+    const requestedAt = sql<Date>`GREATEST(${UserModel.createdAt}, COALESCE(${lastResetAt}, ${UserModel.createdAt}))`;
+
     const clinicConditions: ReturnType<typeof eq>[] = [];
     const userConditions = [sql`${UserModel.userType} IN ('Admin')`];
 
-    if (startDate && endDate) {
+    // Raw sql params need ISO text, not Dates (WORKFLOW §6).
+    if (startDate) {
       userConditions.push(
-        between(UserModel.createdAt, new Date(startDate), new Date(endDate))
+        sql`${requestedAt} >= ${new Date(startDate).toISOString()}`
       );
-    } else if (startDate) {
-      userConditions.push(gte(UserModel.createdAt, new Date(startDate)));
-    } else if (endDate) {
-      userConditions.push(lte(UserModel.createdAt, new Date(endDate)));
+    }
+    if (endDate) {
+      userConditions.push(
+        sql`${requestedAt} <= ${new Date(endDate).toISOString()}`
+      );
     }
 
     const doctorsWithClinics = await database
@@ -2093,9 +2078,14 @@ export class ClinicService {
           isArchive: UserModel.isArchive,
           userType: UserModel.userType,
           createdAt: UserModel.createdAt,
+          requestedAt,
         },
         clinic: {
           id: ClinicModel.id,
+          clinicCode: ClinicModel.clinicCode,
+          // Lets the board tell "still setting up" apart from "ready to approve".
+          approvalRequestSent: ClinicModel.approvalRequestSent,
+          onboardingStatus: ClinicModel.onboardingStatus,
           clinicName: ClinicModel.clinicName,
           tagline: ClinicModel.Tagline,
           clinicAddress: ClinicModel.clinicAddress,
@@ -2127,7 +2117,11 @@ export class ClinicService {
           : eq(ClinicModel.id, ClinicAssignModel.clinicId)
       )
       .where(and(...userConditions))
-      .orderBy(desc(UserModel.createdAt));
+      .orderBy(desc(requestedAt));
+
+    const referrers = await getReferrerNames(
+      doctorsWithClinics.map((item) => item.doctor.id)
+    );
 
     const result = doctorsWithClinics.map((item) => ({
       id: item.doctor.id,
@@ -2144,715 +2138,14 @@ export class ClinicService {
       userStatus: item.doctor.userStatus,
       userType: item.doctor.userType,
       isArchive: item.doctor.isArchive,
-      createdAt: item.doctor.createdAt,
+      // The card's date: when this approval round started (signup, or the latest reset).
+      createdAt: item.doctor.requestedAt ?? item.doctor.createdAt,
+      signedUpAt: item.doctor.createdAt,
+      referredBy: referrers.get(item.doctor.id) ?? null,
       clinic: item.clinic,
     }));
 
     return result;
-  }
-
-  static async onboardRouteAccount(
-    clinicId: string,
-    data: OnboardRouteDto,
-    _clientIp: string
-  ) {
-    const [clinic] = await database
-      .select({
-        id: ClinicModel.id,
-        clinicName: ClinicModel.clinicName,
-        userId: ClinicModel.userId,
-        razorpayAccountId: ClinicPaymentAccountModel.gatewayAccountId,
-        razorpayStakeholderId: ClinicPaymentAccountModel.gatewayStakeholderId,
-        routeStatus: ClinicPaymentAccountModel.routeStatus,
-      })
-      .from(ClinicModel)
-      .leftJoin(
-        ClinicPaymentAccountModel,
-        and(
-          eq(ClinicModel.id, ClinicPaymentAccountModel.clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .where(eq(ClinicModel.id, clinicId))
-      .limit(1);
-
-    if (!clinic) throw new HttpError(404, 'Clinic not found');
-    if (clinic.razorpayAccountId && clinic.routeStatus === 'ACTIVE') {
-      throw new HttpError(400, 'Clinic is already active on Razorpay Route');
-    }
-
-    let accountId = clinic.razorpayAccountId;
-    let stakeholderId = clinic.razorpayStakeholderId;
-
-    // 1. Create Base Account if not already created
-    if (!accountId) {
-      const razorpayAccount = await createRazorpayRouteAccount({
-        email: data.stakeholder.email,
-        phone: data.stakeholder.phone,
-        name: data.legalBusinessName,
-        referenceId: clinic.id,
-        contactName: data.stakeholder.name,
-        address: {
-          street: data.address.street,
-          city: data.address.city,
-          state: data.address.state,
-          postalCode: data.address.postalCode,
-          country: 'IN',
-        },
-      });
-      accountId = razorpayAccount.id;
-    }
-
-    // 2. Create Stakeholder if not already created
-    if (accountId && !stakeholderId) {
-      const stakeholder = await createRazorpayStakeholder(accountId, {
-        name: data.stakeholder.name,
-        email: data.stakeholder.email,
-        phone: data.stakeholder.phone,
-        pan: data.stakeholder.pan,
-        dob: data.stakeholder.dob,
-        address: {
-          street: data.address.street,
-          city: data.address.city,
-          state: data.address.state,
-          postalCode: data.address.postalCode,
-          country: 'IN',
-        },
-      });
-      stakeholderId = stakeholder.id;
-    }
-
-    if (!accountId || !stakeholderId) {
-      throw new HttpError(
-        500,
-        'Razorpay account or stakeholder configuration failed'
-      );
-    }
-
-    // 3. Update/Upsert the ClinicPaymentAccountModel
-    const [existingAccount] = await database
-      .select({ id: ClinicPaymentAccountModel.id })
-      .from(ClinicPaymentAccountModel)
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.clinicId, clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .limit(1);
-
-    if (existingAccount) {
-      await database
-        .update(ClinicPaymentAccountModel)
-        .set({
-          gatewayAccountId: accountId,
-          gatewayStakeholderId: stakeholderId,
-          routeStatus: 'DRAFT',
-          routeOnboardingRejectionReason: null,
-          onboardingDraftData: JSON.stringify(data),
-          updatedAt: new Date(),
-        })
-        .where(eq(ClinicPaymentAccountModel.id, existingAccount.id));
-    } else {
-      await database.insert(ClinicPaymentAccountModel).values({
-        clinicId,
-        paymentProvider: 'razorpay',
-        gatewayAccountId: accountId,
-        gatewayStakeholderId: stakeholderId,
-        routeStatus: 'DRAFT',
-        routeOnboardingRejectionReason: null,
-        onboardingDraftData: JSON.stringify(data),
-      });
-    }
-
-    try {
-      await redisClient.del(`clinic_details:${clinicId}`);
-    } catch (err) {
-      logger.error(
-        `[Cache] Error invalidating clinic details cache in onboardRouteAccount for clinic ${clinicId}:`,
-        err
-      );
-    }
-
-    return {
-      ...clinic,
-      razorpayAccountId: accountId,
-      razorpayStakeholderId: stakeholderId,
-      routeStatus: 'DRAFT',
-    };
-  }
-
-  /**
-   * Activates the Razorpay Route product configuration and updates settlements for a clinic.
-   * This is typically called at the end of the onboarding flow after documents are uploaded.
-   */
-  static async activateRouteAccount(clinicId: string, clientIp: string) {
-    const [clinic] = await database
-      .select({
-        id: ClinicPaymentAccountModel.id,
-        razorpayAccountId: ClinicPaymentAccountModel.gatewayAccountId,
-        onboardingDraftData: ClinicPaymentAccountModel.onboardingDraftData,
-        routeStatus: ClinicPaymentAccountModel.routeStatus,
-      })
-      .from(ClinicPaymentAccountModel)
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.clinicId, clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .limit(1);
-
-    if (!clinic) {
-      throw new HttpError(
-        404,
-        'Clinic has not initiated Route onboarding details'
-      );
-    }
-    if (!clinic.razorpayAccountId) {
-      throw new HttpError(400, 'Razorpay account has not been created yet');
-    }
-    if (clinic.routeStatus === 'ACTIVE') {
-      throw new HttpError(400, 'Clinic is already active on Razorpay Route');
-    }
-    if (!clinic.onboardingDraftData) {
-      throw new HttpError(400, 'No onboarding details found to activate');
-    }
-
-    let parsedDraft: any;
-    try {
-      parsedDraft = JSON.parse(clinic.onboardingDraftData);
-    } catch {
-      throw new HttpError(400, 'Invalid onboarding details data');
-    }
-
-    if (!parsedDraft.bankDetails) {
-      throw new HttpError(
-        400,
-        'Bank details are required to activate Route onboarding'
-      );
-    }
-
-    const accountId = clinic.razorpayAccountId;
-
-    // 1. Request Route product config
-    const productsRes = await fetchRazorpayRouteAccountAllProducts(accountId);
-    const products = productsRes?.items || [];
-    const routeProduct = products.find((p: any) => p.product_name === 'route');
-    let productId = routeProduct?.id;
-
-    if (!productId) {
-      const productConfig = await requestRazorpayProductConfig(
-        accountId,
-        clientIp
-      );
-      productId = productConfig.id;
-    }
-
-    if (!productId) {
-      throw new HttpError(
-        500,
-        'Razorpay product activation configuration failed'
-      );
-    }
-
-    // 2. Update product settlements configuration with bank details
-    await updateRazorpayProductSettlements(accountId, productId, {
-      beneficiaryName: parsedDraft.bankDetails.beneficiaryName,
-      accountNumber: parsedDraft.bankDetails.accountNumber,
-      ifscCode: parsedDraft.bankDetails.ifscCode,
-      accountType: parsedDraft.bankDetails.accountType,
-    });
-
-    // 3. Transition status to PENDING
-    await database
-      .update(ClinicPaymentAccountModel)
-      .set({
-        routeStatus: 'PENDING',
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.clinicId, clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      );
-
-    try {
-      await redisClient.del(`clinic_details:${clinicId}`);
-    } catch (err) {
-      logger.error(
-        `[Cache] Error invalidating clinic details cache in activateRouteAccount for clinic ${clinicId}:`,
-        err
-      );
-    }
-
-    return {
-      accountId,
-      routeStatus: 'PENDING',
-    };
-  }
-
-  /**
-   * Uploads KYC verification documents for sub-merchant onboarding.
-   */
-  static async uploadKYCDocuments(
-    clinicId: string,
-    documentType: string,
-    fileBuffer: Buffer,
-    fileName: string,
-    mimeType: string
-  ) {
-    const [clinic] = await database
-      .select({
-        razorpayAccountId: ClinicPaymentAccountModel.gatewayAccountId,
-        razorpayStakeholderId: ClinicPaymentAccountModel.gatewayStakeholderId,
-      })
-      .from(ClinicPaymentAccountModel)
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.clinicId, clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .limit(1);
-
-    if (!clinic) throw new HttpError(404, 'Clinic not found');
-    if (!clinic.razorpayAccountId) {
-      throw new HttpError(
-        400,
-        'Clinic has not initiated Razorpay Route onboarding'
-      );
-    }
-
-    // personal documents (e.g. pan, passport, aadhaar) need stakeholder association
-    const isStakeholderDoc = [
-      'pan',
-      'passport',
-      'aadhaar_front',
-      'aadhaar_back',
-    ].includes(documentType);
-    const stakeholderId = isStakeholderDoc
-      ? clinic.razorpayStakeholderId
-      : null;
-
-    const docUploadRes = await uploadRazorpayDocument(
-      clinic.razorpayAccountId,
-      stakeholderId,
-      documentType,
-      fileBuffer,
-      fileName,
-      mimeType
-    );
-
-    return docUploadRes;
-  }
-
-  /**
-   * Updates settlement bank details on active or pending accounts.
-   */
-  static async updateSettlementBank(
-    clinicId: string,
-    bankDetails: UpdateBankDetailsDto,
-    _clientIp: string
-  ) {
-    const [clinic] = await database
-      .select({
-        id: ClinicPaymentAccountModel.id,
-        razorpayAccountId: ClinicPaymentAccountModel.gatewayAccountId,
-        onboardingDraftData: ClinicPaymentAccountModel.onboardingDraftData,
-      })
-      .from(ClinicPaymentAccountModel)
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.clinicId, clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .limit(1);
-
-    if (!clinic) throw new HttpError(404, 'Clinic payment profile not found');
-    if (!clinic.razorpayAccountId) {
-      throw new HttpError(
-        400,
-        'Clinic has not initiated Razorpay Route onboarding'
-      );
-    }
-
-    const accountId = clinic.razorpayAccountId;
-
-    // Resolve target Route product ID dynamically
-    const productsRes = await fetchRazorpayRouteAccountAllProducts(accountId);
-    const products = productsRes?.items || [];
-    const routeProduct = products.find((p: any) => p.product_name === 'route');
-
-    if (!routeProduct) {
-      throw new HttpError(
-        400,
-        'Route product configuration not found on Razorpay sub-account'
-      );
-    }
-
-    const productId = routeProduct.id;
-
-    // PATCH product configuration Settlements with updated details
-    await updateRazorpayProductSettlements(accountId, productId, bankDetails);
-
-    // Save updated details into the local onboarding draft store
-    let updatedDraft = '';
-    if (clinic.onboardingDraftData) {
-      try {
-        const parsed = JSON.parse(clinic.onboardingDraftData);
-        parsed.bankDetails = bankDetails;
-        updatedDraft = JSON.stringify(parsed);
-      } catch {
-        // Fallback if parsing failed
-        updatedDraft = JSON.stringify({ bankDetails });
-      }
-    } else {
-      updatedDraft = JSON.stringify({ bankDetails });
-    }
-
-    // Set local routeStatus back to PENDING while Razorpay runs penny verification
-    const [updatedClinic] = await database
-      .update(ClinicPaymentAccountModel)
-      .set({
-        routeStatus: 'PENDING',
-        routeOnboardingRejectionReason: null,
-        onboardingDraftData: updatedDraft,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.clinicId, clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .returning();
-
-    try {
-      await redisClient.del(`clinic_details:${clinicId}`);
-    } catch (err) {
-      logger.error(
-        `[Cache] Error invalidating clinic details cache in updateSettlementBank for clinic ${clinicId}:`,
-        err
-      );
-    }
-
-    return updatedClinic;
-  }
-
-  /**
-   * Retrieves current onboarding status and parsed draft submission details.
-   */
-  static async getOnboardingStatus(clinicId: string) {
-    const [clinic] = await database
-      .select({
-        razorpayAccountId: ClinicPaymentAccountModel.gatewayAccountId,
-        routeStatus: ClinicPaymentAccountModel.routeStatus,
-        routeOnboardingRejectionReason:
-          ClinicPaymentAccountModel.routeOnboardingRejectionReason,
-        onboardingDraftData: ClinicPaymentAccountModel.onboardingDraftData,
-      })
-      .from(ClinicPaymentAccountModel)
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.clinicId, clinicId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .limit(1);
-
-    if (!clinic) {
-      return {
-        accountId: null,
-        routeStatus: 'INACTIVE',
-        rejectionReason: null,
-        submittedDetails: null,
-      };
-    }
-
-    let submittedDetails = null;
-    if (clinic.onboardingDraftData) {
-      try {
-        submittedDetails = JSON.parse(clinic.onboardingDraftData);
-      } catch {
-        // Safe fallback
-      }
-    }
-
-    return {
-      accountId: clinic.razorpayAccountId,
-      routeStatus: clinic.routeStatus,
-      rejectionReason: clinic.routeOnboardingRejectionReason,
-      submittedDetails,
-    };
-  }
-
-  /**
-   * Syncs and snapshots the current active bank details config from Razorpay to local database history.
-   */
-  static async syncClinicBankHistory(accountId: string, productId: string) {
-    // 1. Fetch clinic matching the razorpayAccountId
-    const [account] = await database
-      .select({ clinicId: ClinicPaymentAccountModel.clinicId })
-      .from(ClinicPaymentAccountModel)
-      .where(
-        and(
-          eq(ClinicPaymentAccountModel.gatewayAccountId, accountId),
-          eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-        )
-      )
-      .limit(1);
-
-    if (!account) {
-      logger.warn(`No clinic found matching Razorpay account ID: ${accountId}`);
-      return;
-    }
-    const clinic = { id: account.clinicId };
-
-    // 2. Fetch configurations from Razorpay
-    const products = await fetchRazorpayRouteAccountProducts(
-      accountId,
-      productId
-    );
-
-    // Safely extract settlements active configuration
-    const settlements =
-      products?.requested_configuration?.settlements ||
-      products?.active_configuration?.settlements;
-    if (!settlements) {
-      logger.warn(
-        `No settlement configuration found for account: ${accountId}`
-      );
-      return;
-    }
-
-    const newAccNum = settlements.account_number;
-    const newIfsc = settlements.ifsc_code;
-    const newName = settlements.beneficiary_name;
-    const newBankName = settlements.bank_name || null;
-
-    // 3. Query the current active snapshot in the DB
-    const [currentActive] = await database
-      .select()
-      .from(ClinicBankHistoryModel)
-      .where(
-        and(
-          eq(ClinicBankHistoryModel.clinicId, clinic.id),
-          eq(ClinicBankHistoryModel.isActive, true)
-        )
-      )
-      .limit(1);
-
-    // 4. Compare and update versions if they differ
-    const hasChanged =
-      !currentActive ||
-      currentActive.maskedAccountNumber !== newAccNum ||
-      currentActive.ifscCode !== newIfsc ||
-      currentActive.beneficiaryName !== newName ||
-      currentActive.bankName !== newBankName;
-
-    if (hasChanged) {
-      const now = new Date();
-
-      if (currentActive) {
-        // Mark the old snapshot as inactive and set ending date
-        await database
-          .update(ClinicBankHistoryModel)
-          .set({
-            isActive: false,
-            effectiveTo: now,
-            updatedAt: now,
-          })
-          .where(eq(ClinicBankHistoryModel.id, currentActive.id));
-      }
-
-      // Insert the new active snapshot
-      await database.insert(ClinicBankHistoryModel).values({
-        clinicId: clinic.id,
-        linkedAccountId: null,
-        providerLinkedAccountId: accountId,
-        beneficiaryName: newName,
-        bankName: newBankName,
-        maskedAccountNumber: newAccNum,
-        ifscCode: newIfsc,
-        effectiveFrom: now,
-        isActive: true,
-      });
-
-      logger.info(`Recorded new bank history version for clinic ${clinic.id}`);
-    }
-  }
-
-  /**
-   * Fetches the currently active verified bank configuration snapshot for a clinic.
-   */
-  static async getActiveBankDetails(clinicId: string) {
-    const [bankDetails] = await database
-      .select({
-        beneficiaryName: ClinicBankHistoryModel.beneficiaryName,
-        bankName: ClinicBankHistoryModel.bankName,
-        maskedAccountNumber: ClinicBankHistoryModel.maskedAccountNumber,
-        ifscCode: ClinicBankHistoryModel.ifscCode,
-        isActive: ClinicBankHistoryModel.isActive,
-      })
-      .from(ClinicBankHistoryModel)
-      .where(
-        and(
-          eq(ClinicBankHistoryModel.clinicId, clinicId),
-          eq(ClinicBankHistoryModel.isActive, true)
-        )
-      )
-      .limit(1);
-
-    return bankDetails || null;
-  }
-
-  /**
-   * Processes onboarding webhooks from Razorpay (account.activated, account.updated, product.activated).
-   */
-  static async handleRazorpayAccountWebhook(event: string, payload: any) {
-    if (event === 'account.activated') {
-      const account = payload.account.entity;
-      const accountId = account.id;
-
-      await database
-        .update(ClinicPaymentAccountModel)
-        .set({
-          routeStatus: 'ACTIVE',
-          routeOnboardedAt: new Date(),
-          routeOnboardingRejectionReason: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(ClinicPaymentAccountModel.gatewayAccountId, accountId),
-            eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-          )
-        );
-
-      try {
-        const productsRes =
-          await fetchRazorpayRouteAccountAllProducts(accountId);
-        const products = productsRes?.items || [];
-        const routeProduct = products.find(
-          (p: any) => p.product_name === 'route'
-        );
-        if (routeProduct) {
-          await this.syncClinicBankHistory(accountId, routeProduct.id);
-        }
-      } catch (err) {
-        logger.error(
-          `[Webhook] Error syncing bank history on account.activated:`,
-          err
-        );
-      }
-    } else if (event === 'account.updated') {
-      const account = payload.account.entity;
-      const accountId = account.id;
-      const status = account.status;
-      const requirements = account.requirements || [];
-
-      if (status === 'needs_clarification') {
-        const rejectionRemarks =
-          requirements
-            .map(
-              (r: any) =>
-                `${r.field || 'Field'}: ${r.description || r.reason || 'Verification failed'}`
-            )
-            .join('; ') || 'KYC verification requires clarification.';
-
-        await database
-          .update(ClinicPaymentAccountModel)
-          .set({
-            routeStatus: 'NEEDS_CLARIFICATION',
-            routeOnboardingRejectionReason: rejectionRemarks,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(ClinicPaymentAccountModel.gatewayAccountId, accountId),
-              eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-            )
-          );
-      } else if (status === 'suspended') {
-        await database
-          .update(ClinicPaymentAccountModel)
-          .set({
-            routeStatus: 'SUSPENDED',
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(ClinicPaymentAccountModel.gatewayAccountId, accountId),
-              eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-            )
-          );
-      } else if (status === 'activated') {
-        await database
-          .update(ClinicPaymentAccountModel)
-          .set({
-            routeStatus: 'ACTIVE',
-            routeOnboardedAt: new Date(),
-            routeOnboardingRejectionReason: null,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(ClinicPaymentAccountModel.gatewayAccountId, accountId),
-              eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-            )
-          );
-
-        try {
-          const productsRes =
-            await fetchRazorpayRouteAccountAllProducts(accountId);
-          const products = productsRes?.items || [];
-          const routeProduct = products.find(
-            (p: any) => p.product_name === 'route'
-          );
-          if (routeProduct) {
-            await this.syncClinicBankHistory(accountId, routeProduct.id);
-          }
-        } catch (err) {
-          logger.error(
-            `[Webhook] Error syncing bank history on account.updated activated:`,
-            err
-          );
-        }
-      }
-    } else if (event === 'product.activated') {
-      const product = payload.product.entity;
-      const accountId = product.account_id;
-      const productName = product.product_name;
-
-      if (productName === 'route') {
-        await database
-          .update(ClinicPaymentAccountModel)
-          .set({
-            routeStatus: 'ACTIVE',
-            routeOnboardedAt: new Date(),
-            routeOnboardingRejectionReason: null,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(ClinicPaymentAccountModel.gatewayAccountId, accountId),
-              eq(ClinicPaymentAccountModel.paymentProvider, 'razorpay')
-            )
-          );
-
-        try {
-          await this.syncClinicBankHistory(accountId, product.id);
-        } catch (err) {
-          logger.error(
-            `[Webhook] Error syncing bank history on product.activated:`,
-            err
-          );
-        }
-      }
-    }
   }
 
   static async requestClinicPhoneUpdate(
@@ -3052,7 +2345,7 @@ export class ClinicService {
       .where(eq(ClinicModel.id, clinicId));
 
     await redisClient.del(redisKey);
-    await redisClient.del(`clinic_details:${clinicId}`);
+    await ClinicService.clearClinicDisplayCaches(clinicId);
 
     return {
       message: 'Clinic phone number updated and verified successfully.',

@@ -1,22 +1,5 @@
-/**
- * Dispatch — turns one event into the right notifications for the right people.
- *
- * Everything here runs in the queue worker, never on a request thread. That is
- * not only a latency decision: the legacy path called notifications from inside
- * a database transaction while writing through a different connection, so a
- * rollback could leave a notification for an appointment that never existed,
- * and a client refetching on the socket signal could read pre-commit state. A
- * job that runs in another process cannot be inside the caller's transaction.
- *
- * Resolution order for recipients is role -> staff scope -> permission:
- *
- *   1. the event's own rule says who is conceptually involved
- *   2. staff scope narrows that to the people responsible for this doctor
- *   3. the required permission removes anyone who could not act on it anyway
- *
- * Step 3 is what makes "do not notify users who cannot take action" literal
- * rather than a matter of judgement.
- */
+/** Turns one event into notifications. Runs in the queue worker, so it can never sit inside the caller's transaction.
+ *  Recipients: the event's rule, then staff scope, then the permission needed to act on it. */
 
 import { UnrecoverableError } from 'bullmq';
 import { sql } from 'drizzle-orm';
@@ -25,6 +8,7 @@ import logger from '../../../utils/logger';
 import { getUserNotificationPreferences } from '../preferences/notificationPreferences.utils';
 import { envConfig } from '../../../utils/envConfig';
 import { isLegacyInAppAllowed } from '../killswitch/killSwitch';
+import { enqueueEmail } from '../queues/emailOutbox.queue';
 import { enqueueWhatsAppTemplate } from '../queues/whatsappOutbox.queue';
 import { normalizeWhatsAppNumber } from '../utils/whatsappTemplate.utils';
 import { NotificationsModel } from '../models/notifications.model';
@@ -62,9 +46,7 @@ export async function dispatch(
 
   const directory = getDirectoryPort();
 
-  // Enrichment first: recipients and copy both read from the finished context.
-  // Caller-supplied values win, so a call site that already knows a name is
-  // never overwritten by a lookup.
+  // Enrichment first, so recipients and copy read the finished context; caller-supplied values win over lookups.
   let ctx = data.ctx as never;
   if (event.enrich) {
     try {
@@ -86,10 +68,8 @@ export async function dispatch(
   // the outbox jobId makes the retry's re-enqueue a no-op.
   await deliverWhatsApp(event, ctx, tenant, jobId);
 
-  // Audiences are delivered independently: each has its own recipients, its own
-  // wording, and its own permission rule. A patient reading about their own
-  // appointment holds no clinic permission, so the staff filter must not reach
-  // them.
+  // Each audience has its own recipients, wording and permission rule: a patient holds no clinic permission,
+  // so the staff filter must not reach them.
   const seen = new Set<string>();
 
   for (const audience of event.audiences) {
@@ -123,6 +103,50 @@ export async function dispatch(
     recipients.forEach((id) => seen.add(id));
 
     await deliverInApp(key, event, audience, ctx, recipients, tenant);
+    await deliverEmail(event, audience, ctx, recipients, tenant, jobId);
+  }
+}
+
+/** Queued per recipient, like WhatsApp: one failing address retries alone, and a replay sends nothing twice. */
+async function deliverEmail(
+  event: NotificationEventDefinition<never>,
+  audience: NotificationAudience<never>,
+  ctx: never,
+  recipients: string[],
+  tenant: { type: 'clinic' | 'lab' | 'pharmacy'; id: string } | null,
+  jobId?: string
+): Promise<void> {
+  const build = audience.message.email;
+  if (!build || !event.channels.includes('email')) return;
+
+  const directory = getDirectoryPort();
+  const [emails, clinic] = await Promise.all([
+    directory.getUserEmails(recipients),
+    tenant?.type === 'clinic' ? directory.getClinic(tenant.id) : null,
+  ]);
+  const message = build(ctx);
+
+  for (const userId of recipients) {
+    const to = emails.get(userId);
+    if (!to) continue;
+    await enqueueEmail(
+      {
+        to: to.email,
+        subject: message.subject,
+        template: message.template,
+        // adminName for owner emails; recipientName/Role for emails to staff about their own access.
+        props: {
+          ...message.props,
+          adminName: to.name || 'there',
+          recipientName: to.name || 'there',
+          recipientRole: to.userType,
+          clinicName: clinic?.name ?? 'your clinic',
+        },
+        attachments: message.attachments,
+      },
+      // BullMQ rejects ':' in custom ids.
+      jobId ? `email-${jobId}-${userId}`.replace(/:/g, '_') : undefined
+    );
   }
 }
 
@@ -153,9 +177,8 @@ async function deliverInApp(
     (userId) => prefMap.get(userId) ?? { inApp: true, push: true }
   );
 
-  // Activity ignores the toggle: muting must not erase history.
-  // Activity never pushes. Push honours the kill switch though the insert below
-  // does not — enabling the registry for a trial must not reach real phones.
+  // Activity ignores the toggle (muting must not erase history) and never pushes.
+  // Push honours the kill switch though the insert does not, so a registry trial can't reach real phones.
   const pushTo =
     event.kind === 'activity' ||
     !event.channels.includes('push') ||
@@ -298,12 +321,12 @@ async function deliverWhatsApp(
   for (const userId of recipients) {
     const mobile = mobiles.get(userId);
     if (!mobile) continue;
-    await enqueueWhatsAppTemplate(
-      normalizeWhatsAppNumber(mobile),
-      message,
-      typeof appointmentId === 'string' ? appointmentId : undefined,
+    await enqueueWhatsAppTemplate(normalizeWhatsAppNumber(mobile), message, {
+      clinicId: tenant?.type === 'clinic' ? tenant.id : null,
+      appointmentId:
+        typeof appointmentId === 'string' ? appointmentId : undefined,
       // BullMQ rejects ':' in custom ids.
-      jobId ? `wa-${jobId}-${userId}` : undefined
-    );
+      jobId: jobId ? `wa-${jobId}-${userId}` : undefined,
+    });
   }
 }

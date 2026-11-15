@@ -18,11 +18,7 @@ import {
 import { ClinicSettingsModel } from '../../models/clinicSettings.model';
 import { FeedbackModel } from '../../../feedback/models/feedback.model';
 import { ClinicService } from '../clinic.service';
-import {
-  CacheKeys,
-  invalidateCacheMany,
-  withCacheInvalidation,
-} from '../../../../utils/cache.util';
+import { CacheKeys, withCacheInvalidation } from '../../../../utils/cache.util';
 import {
   buildWeeklyHours,
   isOpenNow as computeIsOpenNow,
@@ -128,7 +124,7 @@ export class ClinicServiceV2 {
       onlineBookingEnabled: true,
       payOnlineEnabled: false,
       payAtClinicEnabled: false,
-      whatsappEnabled: false,
+      whatsappEnabled: true,
     };
 
     const doctorCount = doctorsWithAssignment.length;
@@ -322,16 +318,7 @@ export class ClinicServiceV2 {
       await deleteFromS3(existingClinic.clinicLogo).catch(() => {});
     }
 
-    const assignedDoctors = await database
-      .select({ userId: ClinicAssignModel.userId })
-      .from(ClinicAssignModel)
-      .where(eq(ClinicAssignModel.clinicId, clinicId));
-
-    await invalidateCacheMany(
-      assignedDoctors.flatMap((doctor) =>
-        CacheKeys.doctorPublicProfileAll(doctor.userId)
-      )
-    );
+    await ClinicService.clearClinicDisplayCaches(clinicId);
 
     return withCacheInvalidation(
       CacheKeys.clinicProfileOverview(clinicId),

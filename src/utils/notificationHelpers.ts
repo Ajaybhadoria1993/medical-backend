@@ -15,10 +15,11 @@ import {
 } from '../main/notifications/utils/whatsappTemplate.utils';
 import logger from './logger';
 import { envConfig } from './envConfig';
+import { AppointmentNotificationService } from '../main/notifications/services/appointmentNotification.service';
 import { appointmentInstantIST } from './istDateTime';
 import { resolvePatientMobile } from '../main/patient/services/patientMobile.service';
 /**
- * Medisetu Notification System Helpers
+ * MediArogya Notification System Helpers
  *
  * Important Rule: The user who performs an action will NOT receive a notification for that action.
  */
@@ -364,7 +365,8 @@ async function sendRescheduleToPatient(
         date: formattedDate,
         timeOrToken,
       },
-    }
+    },
+    clinicId
   );
 }
 
@@ -479,6 +481,15 @@ export async function notifyAppointmentCanceled(
   doctorId?: string,
   patientId?: string
 ) {
+  // The approved WhatsApp body blames the doctor's unavailability, so a
+  // patient's own cancellation gets no WhatsApp.
+  if (performerRole !== 'Patient') {
+    void AppointmentNotificationService.sendPatientWhatsApp(
+      appointmentId,
+      'appointmentCancelled'
+    );
+  }
+
   if (envConfig.NOTIFICATIONS_REGISTRY_ENABLED) {
     await notify('appointment.cancelled', {
       appointmentId,
@@ -792,7 +803,7 @@ export async function notifyNewUserCreated(
     return;
   }
 
-  const title = 'Welcome to Medisetu';
+  const title = 'Welcome to MediArogya';
   const body = `Your ${newUserRole} account is ready. You can update your profile and notification preferences in Settings.`;
 
   await sendNotificationToUser({
@@ -859,7 +870,8 @@ export async function notifyAppointmentNoShow(
           actionTaken,
           reason,
         },
-      }
+      },
+      clinicId
     ).catch((err) => {
       logger.error(
         `Failed to send no-show notification for appointment ${appointmentId}: ${(err as Error).message}`
@@ -924,7 +936,7 @@ export async function notifyAppointmentNoShow(
 
 /**
  * Notify a patient that their prescription PDF generation has started.
- * This is triggered from `ReportService.generatePdfAndSendNotifications`
+ * This is triggered from `ReportCardService.generatePdfAndSendNotifications`
  * before the heavy PDF work begins so that the UI can display a spinner
  * or similar indicator in real time.
  */

@@ -1,20 +1,9 @@
 // src/schemas/subscription.schemas.ts
 import { z } from 'zod';
 
-export const createPlanSchema = z.object({
-  slug: z.string(),
-  name: z.string(),
-  description: z.string().optional(),
-  price: z.string().or(z.number()).optional(),
-  currency: z.string().optional(),
-  features: z
-    .array(
-      z.object({
-        name: z.string(),
-        description: z.string().optional(),
-      })
-    )
-    .optional(), // optional array
+export const addOnLimitInputSchema = z.object({
+  addOnId: z.string().uuid('Invalid add-on ID'),
+  maxCap: z.number().int().nonnegative().nullable().optional(),
 });
 
 export const subscribeClinicSchema = z.object({
@@ -26,6 +15,8 @@ export const subscribeClinicSchema = z.object({
   paymentStatus: z.string().optional(),
   price: z.string().or(z.number()).optional(),
   couponCode: z.string().optional(),
+  /** Pay the first month and approve AutoPay in the same checkout (monthly plans only). */
+  autoPay: z.object({ method: z.enum(['card', 'upi', 'emandate']) }).optional(),
 });
 
 export const verifySubscriptionSchema = z
@@ -50,12 +41,12 @@ export const verifySubscriptionSchema = z
 export const reportPaymentFailedSchema = z.object({
   orderId: z.string().optional(),
   paymentId: z.string().optional(),
+  /** Stable client-generated ID for retries before a Razorpay order exists. */
+  failureReportId: z.string().uuid().optional(),
   reason: z.string().optional(),
   errorCode: z.string().optional(),
-});
-
-export const initialSubscribeSchema = z.object({
-  planId: z.uuid('invalid planId'),
+  /** Set by Checkout's modal-dismiss callback to distinguish abandonment from a declined payment. */
+  droppedCheckout: z.boolean().optional(),
 });
 
 export const checkPlanDowngradeSchema = z.object({
@@ -68,20 +59,8 @@ export const schedulePlanDowngradeSchema = z.object({
   billingCycle: z.enum(['monthly', 'yearly']).optional(),
   preferredActiveStaffIds: z.array(z.string().uuid()).optional(),
   preferredActiveDoctorIds: z.array(z.string().uuid()).optional(),
-});
-
-export const subscribeWithAutoPaySchema = z.object({
-  planId: z.string().uuid('Invalid plan id'),
-  billingCycle: z.enum(['monthly', 'yearly']).optional(),
-  couponCode: z.string().optional().nullable(),
-});
-
-export const cancelSubscribeSchema = z.object({
-  subscriptionId: z.uuid('invalid subscriptionId'),
-});
-
-export const manageFeaturesParamsSchema = z.object({
-  planId: z.string().uuid('Invalid planId'),
+  /** true: everyone not in a sent keep list is switched off, even if the new plan has room. */
+  exactKeep: z.boolean().optional(),
 });
 
 export const planIdParamsSchema = z.object({
@@ -94,32 +73,8 @@ export const updatePlanSchema = z.object({
   description: z.string().optional(),
   price: z.string().or(z.number()).optional(),
   currency: z.string().optional(),
+  addOnLimits: z.array(addOnLimitInputSchema).optional(),
+  /** Display-only "was" price; null clears it. */
+  compareAtMonthly: z.number().nonnegative().nullable().optional(),
+  compareAtYearly: z.number().nonnegative().nullable().optional(),
 });
-
-export const manageFeaturesBodySchema = z.object({
-  add: z
-    .array(
-      z.object({
-        name: z.string().min(1, 'Feature name is required'),
-        description: z.string().optional(),
-      })
-    )
-    .optional(),
-  update: z
-    .array(
-      z.object({
-        id: z.string().uuid('Invalid feature ID'),
-        name: z.string().optional(),
-        description: z.string().optional(),
-      })
-    )
-    .optional(),
-  delete: z.array(z.string().uuid('Invalid feature ID')).optional(),
-});
-
-export type CreatePlanDto = z.infer<typeof createPlanSchema>;
-export type SubscribeClinicDto = z.infer<typeof subscribeClinicSchema>;
-export type ManageFeaturesParamsDto = z.infer<
-  typeof manageFeaturesParamsSchema
->;
-export type ManageFeaturesBodyDto = z.infer<typeof manageFeaturesBodySchema>;

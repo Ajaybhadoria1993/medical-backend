@@ -42,6 +42,7 @@ export const addTestToAppointmentController = asyncHandler(
 
     return res.status(201).json({
       success: true,
+      message: 'Lab test added successfully',
       count: results.length,
       results,
     });
@@ -111,16 +112,16 @@ export const updateAppointmentTestController = asyncHandler(
   async (req: Request, res: Response) => {
     const appointmentTestId = req.params.appointmentTestId as string; // <-- FIXED
     const clinicId = req.clinicId;
-    const { doctorId, labAssistantId, reportStatus, paymentStatus } = req.body;
+    const { doctorId, reportStatus, paymentStatus, sampleStatus } = req.body;
     const reportPdf = (req.file as UploadedLocationFile | undefined)?.location;
-    const userRole = req.user?.userType;
+    // const userRole = req.user?.userType;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload: any = {};
     if (doctorId) payload.doctorId = doctorId;
-    if (labAssistantId) payload.labAssistantId = labAssistantId;
     if (reportStatus) payload.reportStatus = reportStatus;
     if (paymentStatus) payload.paymentStatus = paymentStatus;
+    if (sampleStatus !== undefined) payload.sampleStatus = sampleStatus;
     if (reportPdf) payload.reportPdf = reportPdf;
 
     // ✅ Auto mark as Completed if report PDF is uploaded
@@ -129,10 +130,6 @@ export const updateAppointmentTestController = asyncHandler(
       payload.reportStatus = 'Completed'; // <-- Auto update status
     }
 
-    // 3️⃣ NEW LOGIC → Auto assign lab assistant when status = "InProgress"
-    if (userRole === 'Lab_Assistant' && reportStatus === 'InProgress') {
-      payload.labAssistantId = req.user.id; // <-- Auto assign
-    }
     const result = await AppointmentTestService.updateAppointmentTest(
       appointmentTestId, // <-- FIXED
       payload,
@@ -183,6 +180,26 @@ export const markAppointmentTestOnHoldController = asyncHandler(
     return res.status(200).json({
       success: true,
       message: 'Test accepted and moved to pending successfully',
+      data: result,
+    });
+  }
+);
+
+export const approveAppointmentTestController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { appointmentTestId } = req.validatedParams;
+    const result = await AppointmentTestService.moveOnHoldToInitiated(
+      appointmentTestId,
+      {
+        clinicId: req.clinicId,
+        labId: req.labId,
+        userId: req.user.id,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Test moved back to initiated successfully',
       data: result,
     });
   }

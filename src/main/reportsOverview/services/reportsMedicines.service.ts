@@ -19,17 +19,23 @@ import {
   DateRange,
   buildComparisonRange,
   calcChange,
-  generateSlots,
-  mapValuesToSlots,
-  padComparisonSlots,
   toPercentage,
 } from '../utils/reportsPeriod.utils';
+import {
+  generateDateSlots,
+  mapDataToSlots,
+  padSlots,
+  rangeDays,
+  resolveTruncUnit,
+  slotMeta,
+} from '../utils/reportsTrend.utils';
+import { getISTDateString } from '../../../utils/istDateTime';
 import {
   ReportsMedicinesData,
   MedicineMetricItem,
 } from '../types/reportsMedicines.types';
 
-const CACHE_TTL = 120;
+const CACHE_TTL = 120; // 2 min
 
 const EXPIRY_WINDOW_DAYS = 30;
 
@@ -83,6 +89,9 @@ const RETURNED_PER_ITEM = sql`
 `;
 
 const NET_UNITS = sql`(COALESCE(${PharmacySalesItemsModel.quantity}, 0) - COALESCE(item_returns.qty, 0))`;
+
+/** Line value actually charged, net of returns: discounted, GST excluded (the `total` column). */
+const NET_AMOUNT = sql`(COALESCE(${PharmacySalesItemsModel.total}, 0) * ${NET_UNITS} / NULLIF(${PharmacySalesItemsModel.quantity}, 0))`;
 
 function pharmacyScope(clinicId: string, query: AnyMedicinesQuery): SQL {
   if (query.pharmacyId) {
@@ -171,7 +180,6 @@ export class ReportsMedicinesService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info('[ReportsMedicines] Cache HIT');
         return JSON.parse(cached);
       }
     } catch (err) {
@@ -190,6 +198,7 @@ export class ReportsMedicinesService {
       inventory,
       expiringSoon,
       topSuppliers,
+      filterOptions,
     ] = await Promise.all([
       this.getSalesTotals(clinicId, primary, query),
       this.getSalesTotals(clinicId, comparison, query),
@@ -200,6 +209,7 @@ export class ReportsMedicinesService {
       this.getInventory(clinicId, primary, query),
       this.getExpiringSoon(clinicId, query),
       this.getTopSuppliers(clinicId, primary, query),
+      this.getFilterOptions(clinicId),
     ]);
 
     const result: ReportsMedicinesData = {
@@ -219,11 +229,11 @@ export class ReportsMedicinesService {
       expiringSoon,
       topSuppliers,
       inventorySummary: inventory.summary,
+      filterOptions,
       insights: this.buildInsights(
         topSellingMedicines,
         inventory,
-        currentSales,
-        previousSales
+        currentSales
       ),
     };
 
@@ -244,7 +254,6 @@ export class ReportsMedicinesService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info('[ReportsMedicines] Trend Cache HIT');
         return JSON.parse(cached);
       }
     } catch (err) {
@@ -284,7 +293,7 @@ export class ReportsMedicinesService {
 
     const rows: any[] = await database.execute(sql`
       SELECT
-        COALESCE(SUM(${NET_UNITS} * COALESCE(${PharmacyStockMedicineModel.mrp}, 0)), 0) as revenue,
+        COALESCE(SUM(${NET_AMOUNT}), 0) as revenue,
         COALESCE(SUM(${NET_UNITS}), 0) as units,
         COALESCE(SUM(${NET_UNITS} * COALESCE(${PharmacyStockMedicineModel.cost}, 0)), 0) as cost
       FROM ${PharmacySalesItemsModel}
@@ -317,32 +326,29 @@ export class ReportsMedicinesService {
     period: string,
     type: 'sales' | 'units'
   ) {
-    const durationDays = Math.ceil(
-      (new Date(primary.end).getTime() - new Date(primary.start).getTime()) /
-        (1000 * 60 * 60 * 24)
+    // Shared trend buckets: real-date labels, both periods' dates for the tooltip, zero padding.
+    const days = rangeDays(primary);
+    const truncUnit = resolveTruncUnit(period, days);
+    const primarySlots = generateDateSlots(
+      primary.start,
+      primary.end,
+      truncUnit,
+      days
     );
-    const truncUnit =
-      period === 'monthly' || (period === 'auto' && durationDays > 30)
-        ? 'week'
-        : 'day';
-
-    const primarySlots = generateSlots(primary.start, primary.end, period);
-    const comparisonSlots = padComparisonSlots(
+    const comparisonSlots = padSlots(
       primarySlots,
-      generateSlots(comparison.start, comparison.end, period)
+      generateDateSlots(comparison.start, comparison.end, truncUnit, days)
     );
 
     const scope = pharmacyScope(clinicId, query);
     const valueExpr =
-      type === 'units'
-        ? sql`SUM(${NET_UNITS})`
-        : sql`SUM(${NET_UNITS} * COALESCE(${PharmacyStockMedicineModel.mrp}, 0))`;
+      type === 'units' ? sql`SUM(${NET_UNITS})` : sql`SUM(${NET_AMOUNT})`;
 
     const rangeRows = (range: DateRange) =>
       database.execute(sql`
       SELECT
         date_trunc(${sql.raw(`'${truncUnit}'`)}, ${PharmacySalesModel.createdAt}) as dt,
-        COALESCE(${valueExpr}, 0) as value
+        COALESCE(${valueExpr}, 0) as cnt
       FROM ${PharmacySalesItemsModel}
       INNER JOIN ${PharmacySalesModel} ON ${PharmacySalesModel.id} = ${PharmacySalesItemsModel.pharmacySalesId}
       INNER JOIN ${PharmacyStockMedicineModel} ON ${PharmacyStockMedicineModel.id} = ${PharmacySalesItemsModel.pharmacyStockMedicineId}
@@ -361,10 +367,13 @@ export class ReportsMedicinesService {
       rangeRows(comparison),
     ])) as any[][];
 
+    const round = (values: number[]) => values.map((v) => Math.round(v));
     return {
-      labels: primarySlots.map((s) => s.label),
-      currentPeriod: mapValuesToSlots(curRows, primarySlots, truncUnit),
-      previousPeriod: mapValuesToSlots(prevRows, comparisonSlots, truncUnit),
+      ...slotMeta(primarySlots, comparisonSlots, primary, comparison),
+      currentPeriod: round(mapDataToSlots(curRows, primarySlots, truncUnit)),
+      previousPeriod: round(
+        mapDataToSlots(prevRows, comparisonSlots, truncUnit)
+      ),
     };
   }
 
@@ -376,7 +385,7 @@ export class ReportsMedicinesService {
     const rows: any[] = await database.execute(sql`
       SELECT
         COALESCE(NULLIF(${pharmacyMedicineModel.category}, ''), 'Uncategorised') as label,
-        COALESCE(SUM(${NET_UNITS} * COALESCE(${PharmacyStockMedicineModel.mrp}, 0)), 0) as value
+        COALESCE(SUM(${NET_AMOUNT}), 0) as value
       FROM ${PharmacySalesItemsModel}
       INNER JOIN ${PharmacySalesModel} ON ${PharmacySalesModel.id} = ${PharmacySalesItemsModel.pharmacySalesId}
       INNER JOIN ${PharmacyStockMedicineModel} ON ${PharmacyStockMedicineModel.id} = ${PharmacySalesItemsModel.pharmacyStockMedicineId}
@@ -400,7 +409,7 @@ export class ReportsMedicinesService {
   ) {
     const rows: any[] = await database.execute(sql`
       SELECT
-        COALESCE(NULLIF(${pharmacyMedicineModel.form}, ''), 'Other') as label,
+        COALESCE(NULLIF(TRIM(${pharmacyMedicineModel.form}), ''), 'Not Recorded') as label,
         COALESCE(SUM(${NET_UNITS}), 0) as value
       FROM ${PharmacySalesItemsModel}
       INNER JOIN ${PharmacySalesModel} ON ${PharmacySalesModel.id} = ${PharmacySalesItemsModel.pharmacySalesId}
@@ -418,7 +427,8 @@ export class ReportsMedicinesService {
     return this.toDistribution(rows, 5);
   }
 
-  private static async getTopSellingMedicines(
+  /** Also feeds the Overview tab's Medicine Sales table. */
+  static async getTopSellingMedicines(
     clinicId: string,
     primary: DateRange,
     query: ReportsMedicinesQueryDto
@@ -427,7 +437,7 @@ export class ReportsMedicinesService {
       SELECT
         ${pharmacyMedicineModel.medicineName} as medicine_name,
         COALESCE(SUM(${NET_UNITS}), 0) as units,
-        COALESCE(SUM(${NET_UNITS} * COALESCE(${PharmacyStockMedicineModel.mrp}, 0)), 0) as amount
+        COALESCE(SUM(${NET_AMOUNT}), 0) as amount
       FROM ${PharmacySalesItemsModel}
       INNER JOIN ${PharmacySalesModel} ON ${PharmacySalesModel.id} = ${PharmacySalesItemsModel.pharmacySalesId}
       INNER JOIN ${PharmacyStockMedicineModel} ON ${PharmacyStockMedicineModel.id} = ${PharmacySalesItemsModel.pharmacyStockMedicineId}
@@ -474,12 +484,16 @@ export class ReportsMedicinesService {
             AND ${PharmacyStockMedicineModel.expiry} <= NOW() + INTERVAL '${sql.raw(String(EXPIRY_WINDOW_DAYS))} days'
             AND ${availableQty} > 0
         ) as expiring_batches,
+        -- Net of returns and limited to the clinic's pharmacies, like Units Sold.
         COALESCE((
-          SELECT SUM(psi.quantity)
+          SELECT SUM(psi.quantity - COALESCE((
+            SELECT SUM(rri.returned_quantity) FROM ${PharmacySalesReturnItemsModel} rri WHERE rri.sales_item_id = psi.id
+          ), 0))
           FROM ${PharmacySalesItemsModel} psi
           INNER JOIN ${PharmacySalesModel} ps ON ps.id = psi.pharmacy_sales_id
           INNER JOIN ${PharmacyStockMedicineModel} psm ON psm.id = psi.pharmacy_stock_medicine_id
           WHERE psm.pharmacy_medicine_id = ${pharmacyMedicineModel.id}
+            AND ps.pharmacy_id IN ${scope}
             AND ps.created_at BETWEEN ${primary.start} AND ${primary.end}
         ), 0) as sold_in_range
       FROM ${pharmacyMedicineModel}
@@ -527,8 +541,9 @@ export class ReportsMedicinesService {
     const fastMoving = medicines.filter(
       (m) => m.sold > 0 && m.sold >= fastThreshold
     ).length;
+    // A medicine is fast or slow, never both (with one medicine the two thresholds are equal).
     const slowMoving = medicines.filter(
-      (m) => m.sold > 0 && m.sold <= slowThreshold
+      (m) => m.sold > 0 && m.sold <= slowThreshold && m.sold < fastThreshold
     ).length;
 
     return {
@@ -565,7 +580,7 @@ export class ReportsMedicinesService {
         ${pharmacyMedicineModel.medicineName} as medicine_name,
         COALESCE(${PharmacyStockMedicineModel.batch}, '—') as batch,
         ${PharmacyStockMedicineModel.expiry} as expiry,
-        DATE_PART('day', ${PharmacyStockMedicineModel.expiry} - NOW())::int as days_left,
+        (${PharmacyStockMedicineModel.expiry}::date - ${getISTDateString()}::date) as days_left,
         ${availableQty} as available
       FROM ${PharmacyStockMedicineModel}
       INNER JOIN ${pharmacyMedicineModel} ON ${pharmacyMedicineModel.id} = ${PharmacyStockMedicineModel.pharmacyMedicineId}
@@ -619,54 +634,76 @@ export class ReportsMedicinesService {
     }));
   }
 
+  /** Filter options from the catalogue and suppliers, so they don't vanish in a quiet period. */
+  private static async getFilterOptions(clinicId: string) {
+    const scope = pharmacyScope(clinicId, {} as ReportsMedicinesQueryDto);
+    const [categories, suppliers]: any[][] = await Promise.all([
+      database.execute(sql`
+        SELECT DISTINCT TRIM(${pharmacyMedicineModel.category}) as label
+        FROM ${pharmacyMedicineModel}
+        WHERE ${pharmacyMedicineModel.pharmacyId} IN ${scope}
+          AND NULLIF(TRIM(${pharmacyMedicineModel.category}), '') IS NOT NULL
+        ORDER BY 1
+      `) as Promise<any[]>,
+      database.execute(sql`
+        SELECT ${PharmacySupplierModel.id} as id, ${PharmacySupplierModel.supplierName} as name
+        FROM ${PharmacySupplierModel}
+        WHERE ${PharmacySupplierModel.pharmacyId} IN ${scope}
+        ORDER BY 2
+      `) as Promise<any[]>,
+    ]);
+    return {
+      categories: categories.map((r) => ({
+        label: String(r.label),
+        value: String(r.label),
+      })),
+      suppliers: suppliers.map((r) => ({
+        label: String(r.name),
+        value: String(r.id),
+      })),
+    };
+  }
+
+  /** Each insight carries its numbers; the sales change lives on the cards, not here. */
   private static buildInsights(
-    topSelling: Array<{ medicineName: string }>,
+    topSelling: Array<{
+      medicineName: string;
+      unitsSold: number;
+      salesAmount: number;
+    }>,
     inventory: {
+      totalMedicines: number;
       lowStockMedicines: unknown[];
       expiringCount: number;
       summary: { deadStock: { count: number } };
     },
-    current: { revenue: number },
-    previous: { revenue: number }
+    current: { revenue: number; units: number }
   ): string[] {
+    const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
     const insights: string[] = [];
-
-    if (topSelling[0]) {
+    const [top] = topSelling;
+    if (top && current.units > 0) {
       insights.push(
-        `${topSelling[0].medicineName} is the top selling medicine this period.`
+        `${top.medicineName} sold the most: ${top.unitsSold} of ${current.units} units, ${inr(top.salesAmount)} of ${inr(current.revenue)} net sales.`
       );
     }
     if (inventory.lowStockMedicines.length > 0) {
       insights.push(
-        `${inventory.lowStockMedicines.length} medicines are at or below reorder level.`
+        `${inventory.lowStockMedicines.length} of ${inventory.totalMedicines} medicines are at or below their reorder level today.`
       );
     }
     if (inventory.expiringCount > 0) {
-      insights.push(
-        `${inventory.expiringCount} batches expire within the next ${EXPIRY_WINDOW_DAYS} days.`
-      );
-    }
-    if (current.revenue > 0 || previous.revenue > 0) {
-      const { change, changeType } = calcChange(
-        current.revenue,
-        previous.revenue
-      );
-      const direction =
-        changeType === 'decrease'
-          ? 'decreased'
-          : changeType === 'increase'
-            ? 'increased'
-            : 'held steady';
-      insights.push(
-        `Medicine sales ${direction} by ${change}% versus the comparison period.`
-      );
+      const batches =
+        inventory.expiringCount === 1
+          ? '1 stock batch expires'
+          : `${inventory.expiringCount} stock batches expire`;
+      insights.push(`${batches} in the next ${EXPIRY_WINDOW_DAYS} days.`);
     }
     if (inventory.summary.deadStock.count > 0) {
       insights.push(
-        `${inventory.summary.deadStock.count} medicines had no sales in this period.`
+        `${inventory.summary.deadStock.count} of ${inventory.totalMedicines} medicines in stock had no sales in the selected dates.`
       );
     }
-
     return insights;
   }
 

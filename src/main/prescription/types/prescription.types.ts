@@ -71,6 +71,7 @@ const VitalsSchema = z
     rbs: z.number().int().min(20).max(800).optional(),
     pulse: z.number().int().min(30).max(200).optional(),
     spo2: z.number().min(50).max(100).optional(),
+    respiratoryRate: z.number().int().min(8).max(60).optional(),
     temperatureC: z.number().min(30).max(45).optional(),
     weightKg: z.number().min(1).max(300).optional(),
     heightCm: z.number().min(30).max(300).optional(),

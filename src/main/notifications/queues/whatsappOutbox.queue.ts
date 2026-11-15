@@ -1,8 +1,16 @@
 import axios from 'axios';
 import { Job, Queue, UnrecoverableError, Worker } from 'bullmq';
+import { envConfig } from '../../../utils/envConfig';
 import logger from '../../../utils/logger';
 import { sendWhatsAppTemplate } from '../../../utils/smsClient';
-import { WhatsAppTemplateMessage } from '../types/whatsappTemplate.types';
+import { checkSend, recordSent } from '../../credits';
+import { getDirectoryPort } from '../ports';
+import { WhatsAppMessagePrefsService } from '../services/whatsappMessagePrefs.service';
+import {
+  WhatsAppTemplateKey,
+  WhatsAppTemplateMessage,
+} from '../types/whatsappTemplate.types';
+import { isClinicWhatsAppMessage } from '../utils/whatsappMessagePrefs.utils';
 import { queueConnection } from './queueConnection';
 import { onJobFailed } from './queueTelemetry';
 
@@ -11,7 +19,17 @@ const QUEUE_NAME = 'whatsapp-outbox';
 interface WhatsAppOutboxJob {
   to: string;
   message: WhatsAppTemplateMessage;
+  /** Clinic the message is counted against; absent on jobs queued before counting. */
+  clinicId?: string | null;
   appointmentId?: string;
+}
+
+export interface EnqueueWhatsAppOptions {
+  /** Required so every new caller decides; null only when no clinic owns the message. */
+  clinicId: string | null;
+  appointmentId?: string;
+  /** Makes a re-enqueue a no-op — a retried registry dispatch must not resend. */
+  jobId?: string;
 }
 
 /**
@@ -88,12 +106,31 @@ class WhatsAppOutbox {
   }
 
   private async process(job: Job<WhatsAppOutboxJob>): Promise<void> {
-    const { to, message } = job.data;
+    const { to, message, clinicId } = job.data;
 
+    // Before checkSend, so a switched-off message uses no free message or credit.
+    if (await this.isSwitchedOff(clinicId, message.key)) {
+      logger.info(
+        `WhatsApp "${message.key}" skipped: switched off by clinic ${clinicId}`
+      );
+      return;
+    }
+
+    // Checked here, not at queue time: a batch queued together would all pass before any was counted.
+    if (clinicId) {
+      const { allowed } = await checkSend(clinicId, 'whatsapp', message.key);
+      if (!allowed) return;
+    }
+
+    let messageId: string | undefined;
     try {
       // The key/params pairing is guaranteed by WhatsAppTemplateMessage;
       // TypeScript can't correlate the two across a generic call.
-      await sendWhatsAppTemplate(to, message.key, message.params as never);
+      messageId = await sendWhatsAppTemplate(
+        to,
+        message.key,
+        message.params as never
+      );
     } catch (err) {
       const code = metaErrorCode(err);
       if (code !== undefined && PERMANENT_META_CODES.has(code)) {
@@ -103,6 +140,38 @@ class WhatsAppOutbox {
       }
       throw new Error(`Transient WhatsApp failure: ${describe(err)}`);
     }
+
+    // No id: sending is disabled here, or Meta returned none — nothing to match a report to.
+    if (!messageId) return;
+    if (!clinicId) {
+      logger.warn(
+        `WhatsApp "${message.key}" (message ${messageId}) sent without a clinic — not counted`
+      );
+      return;
+    }
+    await recordSent({
+      clinicId,
+      channel: 'whatsapp',
+      messageId,
+      templateKey: message.key,
+    });
+  }
+
+  /** Main switch for every clinic message, per-message choice for clinic ones; WHATSAPP_FORCE_ENABLED skips both. */
+  private async isSwitchedOff(
+    clinicId: string | null | undefined,
+    key: WhatsAppTemplateKey
+  ): Promise<boolean> {
+    if (!clinicId || envConfig.WHATSAPP_FORCE_ENABLED) return false;
+    // ponytail: uncached read; cache only with invalidation from the clinic settings writer.
+    const channels =
+      await getDirectoryPort().getClinicChannelSettings(clinicId);
+    if (!channels?.whatsappEnabled) return true;
+    if (!isClinicWhatsAppMessage(key)) return false;
+    return WhatsAppMessagePrefsService.isMessageOff(
+      { type: 'clinic', id: clinicId },
+      key
+    );
   }
 
   async enqueue(job: WhatsAppOutboxJob, jobId?: string): Promise<void> {
@@ -120,12 +189,13 @@ export const whatsAppOutbox = new WhatsAppOutbox();
 export async function enqueueWhatsAppTemplate(
   to: string,
   message: WhatsAppTemplateMessage,
-  appointmentId?: string,
-  /** Makes a re-enqueue a no-op — a retried registry dispatch must not resend. */
-  jobId?: string
+  { clinicId, appointmentId, jobId }: EnqueueWhatsAppOptions
 ): Promise<void> {
   try {
-    await whatsAppOutbox.enqueue({ to, message, appointmentId }, jobId);
+    await whatsAppOutbox.enqueue(
+      { to, message, clinicId, appointmentId },
+      jobId
+    );
   } catch (err) {
     // Redis unavailable: log rather than break the calling operation, matching
     // how every other notification failure is handled.

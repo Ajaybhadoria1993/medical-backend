@@ -1,6 +1,6 @@
 import { Queue, Worker } from 'bullmq';
+import { queueConnection } from '../../notifications/queues/queueConnection';
 import { PaymentReservationService } from './paymentReservation.service';
-import logger from '../../../utils/logger';
 
 interface PaymentCleanupJobData {
   appointmentId: string;
@@ -11,28 +11,14 @@ class PaymentCleanupQueue {
   private worker: Worker;
 
   constructor() {
-    const connection = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-    };
-
-    this.queue = new Queue('appointment-payment-cleanup', { connection });
+    this.queue = new Queue('appointment-payment-cleanup', {
+      connection: queueConnection,
+    });
 
     this.worker = new Worker(
       'appointment-payment-cleanup',
       this.processJob.bind(this),
-      { connection }
-    );
-
-    // Without an 'error' listener, BullMQ's internal errors (Redis blips,
-    // connection limits) surface as unhandled EventEmitter errors and crash
-    // the process.
-    this.queue.on('error', (err) =>
-      logger.warn(`[PaymentCleanupQueue] Queue error: ${err.message}`)
-    );
-    this.worker.on('error', (err) =>
-      logger.warn(`[PaymentCleanupQueue] Worker error: ${err.message}`)
+      { connection: queueConnection }
     );
   }
 

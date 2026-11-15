@@ -18,3 +18,9 @@ services:
       - STAGING_DB_URL=postgresql://postgres:root@host.docker.internal:5433/ms43_staging
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # No AWS credentials locally, so keep logs on disk instead of awslogs.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'

@@ -1,6 +1,6 @@
 // src/main/dashboard/routes/v2/dashboard.route.ts
 import express from 'express';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   requireAuth,
   requireClinic,

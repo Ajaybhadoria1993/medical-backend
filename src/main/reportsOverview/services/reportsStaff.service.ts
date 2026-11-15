@@ -14,14 +14,20 @@ import {
   DateRange,
   buildComparisonRange,
   calcChange,
-  generateSlots,
-  mapValuesToSlots,
-  padComparisonSlots,
+  rateChange,
   toPercentage,
 } from '../utils/reportsPeriod.utils';
+import {
+  generateDateSlots,
+  mapDataToSlots,
+  padSlots,
+  rangeDays,
+  resolveTruncUnit,
+  slotMeta,
+} from '../utils/reportsTrend.utils';
 import { ReportsStaffData, StaffMetricItem } from '../types/reportsStaff.types';
 
-const CACHE_TTL = 120;
+const CACHE_TTL = 120; // 2 min
 
 /**
  * Attendance, leave, shift and overtime have no tables in this schema, so the
@@ -55,10 +61,25 @@ function staffScope(clinicId: string, query: AnyStaffQuery): SQL {
   `;
 }
 
+/** Doctor filter, plus the Role filter on whoever the appointment is with. "Doctor" means anyone
+ *  who sees patients (an Admin owner who practises included); other roles match their account type. */
 function doctorFilter(query: AnyStaffQuery): SQL {
-  return query.doctorId
-    ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}`
-    : sql``;
+  const byRole = query.role && query.role !== 'Doctor';
+  return sql`${query.doctorId ? sql`AND ${AppointmentModel.doctorId} = ${query.doctorId}` : sql``}
+    ${
+      byRole
+        ? sql`AND ${AppointmentModel.doctorId} IN (SELECT ${UserModel.id} FROM ${UserModel} WHERE ${UserModel.userType}::text = ${query.role})`
+        : sql``
+    }`;
+}
+
+/** A rate with its change in percentage points (shared rule). */
+function rateMetric(
+  current: number,
+  previous: number,
+  previousHasData: boolean
+): StaffMetricItem {
+  return { value: current, ...rateChange(current, previous, previousHasData) };
 }
 
 function buildCacheKey(clinicId: string, query: ReportsStaffQueryDto): string {
@@ -108,18 +129,18 @@ export class ReportsStaffService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info('[ReportsStaff] Cache HIT');
         return JSON.parse(cached);
       }
     } catch (err) {
       logger.warn('[ReportsStaff] Redis read error', err);
     }
 
-    const { primary, comparison } = buildComparisonRange(query);
+    const { primary, elapsed, comparison } = buildComparisonRange(query);
 
     const [
       roster,
       currentWork,
+      elapsedWork,
       previousWork,
       appointmentsTrend,
       staffByRole,
@@ -128,6 +149,7 @@ export class ReportsStaffService {
     ] = await Promise.all([
       this.getRosterCounts(clinicId, query),
       this.getWorkTotals(clinicId, primary, query),
+      this.getWorkTotals(clinicId, elapsed, query),
       this.getWorkTotals(clinicId, comparison, query),
       this.getAppointmentsTrend(
         clinicId,
@@ -143,27 +165,38 @@ export class ReportsStaffService {
     ]);
 
     const activeDoctors = perStaff.length || 1;
+    const elapsedDoctors = elapsedWork.doctors || 1;
     const prevActiveDoctors = previousWork.doctors || 1;
+    // Values cover the whole range; each % compares only the days up to today.
+    const wholeRange = (value: number, now: number, prev: number) => ({
+      ...metric(now, prev),
+      value: Math.round(value),
+    });
 
     const result: ReportsStaffData = {
       metrics: {
         totalStaff: snapshotMetric(roster.total),
         activeStaff: snapshotMetric(roster.active),
-        appointmentsHandled: metric(
+        appointmentsHandled: wholeRange(
           currentWork.appointments,
+          elapsedWork.appointments,
           previousWork.appointments
         ),
-        completedAppointments: metric(
+        completedAppointments: wholeRange(
           currentWork.completed,
+          elapsedWork.completed,
           previousWork.completed
         ),
-        avgAppointmentsPerDoctor: metric(
+        avgAppointmentsPerDoctor: wholeRange(
           currentWork.appointments / activeDoctors,
+          elapsedWork.appointments / elapsedDoctors,
           previousWork.appointments / prevActiveDoctors
         ),
-        completionRate: metric(
-          toPercentage(currentWork.completed, currentWork.appointments),
-          toPercentage(previousWork.completed, previousWork.appointments)
+        // A rate stops at today (upcoming visits can't be completed yet); its change is in points.
+        completionRate: rateMetric(
+          toPercentage(elapsedWork.completed, elapsedWork.appointments),
+          toPercentage(previousWork.completed, previousWork.appointments),
+          previousWork.appointments > 0
         ),
       },
       appointmentsTrend,
@@ -184,7 +217,7 @@ export class ReportsStaffService {
         appointments: row.appointments,
         shareOfClinic: toPercentage(row.appointments, currentWork.appointments),
       })),
-      insights: this.buildInsights(roster, currentWork, previousWork, perStaff),
+      insights: this.buildInsights(roster, elapsedWork, currentWork, perStaff),
       unavailableSections: UNAVAILABLE_SECTIONS,
     };
 
@@ -205,7 +238,6 @@ export class ReportsStaffService {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
-        logger.info('[ReportsStaff] Trend Cache HIT');
         return JSON.parse(cached);
       }
     } catch (err) {
@@ -279,19 +311,18 @@ export class ReportsStaffService {
     period: string,
     type: 'appointments' | 'completed'
   ) {
-    const durationDays = Math.ceil(
-      (new Date(primary.end).getTime() - new Date(primary.start).getTime()) /
-        (1000 * 60 * 60 * 24)
+    // Shared trend buckets: real-date labels, both periods' dates for the tooltip, zero padding.
+    const days = rangeDays(primary);
+    const truncUnit = resolveTruncUnit(period, days);
+    const primarySlots = generateDateSlots(
+      primary.start,
+      primary.end,
+      truncUnit,
+      days
     );
-    const truncUnit =
-      period === 'monthly' || (period === 'auto' && durationDays > 30)
-        ? 'week'
-        : 'day';
-
-    const primarySlots = generateSlots(primary.start, primary.end, period);
-    const comparisonSlots = padComparisonSlots(
+    const comparisonSlots = padSlots(
       primarySlots,
-      generateSlots(comparison.start, comparison.end, period)
+      generateDateSlots(comparison.start, comparison.end, truncUnit, days)
     );
 
     const statusFilter =
@@ -301,7 +332,7 @@ export class ReportsStaffService {
       database.execute(sql`
       SELECT
         date_trunc(${sql.raw(`'${truncUnit}'`)}, ${AppointmentModel.appointmentDate}) as dt,
-        COUNT(*) as value
+        COUNT(*) as cnt
       FROM ${AppointmentModel}
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate} BETWEEN ${range.start} AND ${range.end}
@@ -316,9 +347,9 @@ export class ReportsStaffService {
     ])) as any[][];
 
     return {
-      labels: primarySlots.map((s) => s.label),
-      currentPeriod: mapValuesToSlots(curRows, primarySlots, truncUnit),
-      previousPeriod: mapValuesToSlots(prevRows, comparisonSlots, truncUnit),
+      ...slotMeta(primarySlots, comparisonSlots, primary, comparison),
+      currentPeriod: mapDataToSlots(curRows, primarySlots, truncUnit),
+      previousPeriod: mapDataToSlots(prevRows, comparisonSlots, truncUnit),
     };
   }
 
@@ -355,10 +386,6 @@ export class ReportsStaffService {
     primary: DateRange,
     query: ReportsStaffQueryDto
   ) {
-    const roleFilter = query.role
-      ? sql`AND ${UserModel.userType}::text = ${query.role}`
-      : sql``;
-
     const rows: any[] = await database.execute(sql`
       SELECT
         ${AppointmentModel.doctorId} as staff_id,
@@ -372,7 +399,7 @@ export class ReportsStaffService {
       WHERE ${AppointmentModel.clinicId} = ${clinicId}
         AND ${AppointmentModel.appointmentDate} BETWEEN ${primary.start} AND ${primary.end}
         AND ${AppointmentModel.doctorId} IS NOT NULL
-        ${roleFilter} ${doctorFilter(query)}
+        ${doctorFilter(query)}
       GROUP BY staff_id, staff_name, role
       ORDER BY appointments DESC
     `);
@@ -386,37 +413,28 @@ export class ReportsStaffService {
     }));
   }
 
+  /** Each insight carries its numbers; volume changes live on the cards, not here. */
   private static buildInsights(
     roster: { total: number; active: number },
-    current: { appointments: number; completed: number },
-    previous: { appointments: number },
+    elapsed: { appointments: number; completed: number },
+    whole: { appointments: number },
     perStaff: Array<{ staffName: string; appointments: number }>
   ): string[] {
     const insights: string[] = [];
+    const [top] = perStaff;
 
-    if (perStaff[0]?.appointments > 0) {
+    if (top?.appointments > 0 && perStaff.length > 1) {
       insights.push(
-        `${perStaff[0].staffName} handled the most appointments (${perStaff[0].appointments}).`
+        `${top.staffName} handled the most appointments: ${top.appointments} of ${whole.appointments} (${toPercentage(top.appointments, whole.appointments)}%).`
+      );
+    } else if (top?.appointments > 0) {
+      insights.push(
+        `${top.staffName} handled all ${top.appointments} appointments in this period.`
       );
     }
-    if (current.appointments > 0) {
+    if (elapsed.appointments > 0) {
       insights.push(
-        `${toPercentage(current.completed, current.appointments)}% of appointments were completed.`
-      );
-    }
-    if (current.appointments > 0 || previous.appointments > 0) {
-      const { change, changeType } = calcChange(
-        current.appointments,
-        previous.appointments
-      );
-      const direction =
-        changeType === 'decrease'
-          ? 'decreased'
-          : changeType === 'increase'
-            ? 'increased'
-            : 'held steady';
-      insights.push(
-        `Appointment volume ${direction} by ${change}% versus the comparison period.`
+        `${elapsed.completed} of ${elapsed.appointments} appointments up to today were completed (${toPercentage(elapsed.completed, elapsed.appointments)}%).`
       );
     }
     if (roster.total > roster.active) {

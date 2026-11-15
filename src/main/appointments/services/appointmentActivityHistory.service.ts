@@ -21,7 +21,9 @@ export interface LogActivityParams {
     | 'PRESCRIPTION_CREATED'
     | 'PRESCRIPTION_UPDATED'
     | 'REMINDER_SENT'
-    | 'PAYMENT_STATUS';
+    | 'PAYMENT_STATUS'
+    | 'FOLLOW_UP_CALL'
+    | 'FOLLOW_UP_DISMISSED';
   performedBy?: string;
   previousState?: any;
   newState?: any;

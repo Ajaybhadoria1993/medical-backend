@@ -1,6 +1,6 @@
 // src/main/users/services/token.service.ts
 import { randomUUID } from 'crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { HttpError } from '../../../middlewear/errorHandler';
 import {
@@ -30,13 +30,7 @@ function expiryFromNow(): Date {
   return new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 }
 
-/**
- * One active session per (user, platform). Every issuance (fresh login OR
- * refresh rotation) replaces that platform's `refresh_tokens` row rather
- * than inserting a new one — a user can hold one web session AND one app
- * session at the same time, but logging in again on the SAME platform ends
- * whatever session was previously active there.
- */
+/** One `refresh_tokens` row per device: logging in on a new device never ends another's session. */
 export class TokenService {
   static async issueTokenPair(
     userId: string,
@@ -46,15 +40,6 @@ export class TokenService {
     const jti = randomUUID();
     const accessToken = signJwt({ sub: userId });
     const refreshToken = signRefreshToken(userId, jti, platform);
-
-    await database
-      .delete(RefreshTokenModel)
-      .where(
-        and(
-          eq(RefreshTokenModel.userId, userId),
-          eq(RefreshTokenModel.platform, platform)
-        )
-      );
 
     await database.insert(RefreshTokenModel).values({
       id: jti,
@@ -87,18 +72,16 @@ export class TokenService {
       .limit(1);
 
     if (!row || row.tokenHash !== hashToken(rawRefreshToken)) {
-      // Reuse of an already-rotated/unknown token: drop only this
-      // (user, platform) session — other platforms stay logged in.
+      // Unknown/rotated token: end only this device's session, never the user's other devices.
       await database
         .delete(RefreshTokenModel)
-        .where(
-          and(
-            eq(RefreshTokenModel.userId, payload.sub),
-            eq(RefreshTokenModel.platform, payload.platform)
-          )
-        );
+        .where(eq(RefreshTokenModel.id, payload.jti));
       throw new HttpError(401, 'Session expired, please login again.');
     }
+
+    await database
+      .delete(RefreshTokenModel)
+      .where(eq(RefreshTokenModel.id, payload.jti));
 
     return TokenService.issueTokenPair(payload.sub, {
       ...meta,
@@ -107,22 +90,17 @@ export class TokenService {
   }
 
   static async revokeToken(rawRefreshToken: string): Promise<void> {
-    let payload: { sub: string; platform: Platform };
+    let payload: { sub: string; jti: string };
     try {
       payload = verifyRefreshToken(rawRefreshToken);
     } catch {
       return; // already invalid/expired — nothing to revoke
     }
 
-    // Logout only ends this platform's session, not other devices.
+    // Logout only ends this device's session.
     await database
       .delete(RefreshTokenModel)
-      .where(
-        and(
-          eq(RefreshTokenModel.userId, payload.sub),
-          eq(RefreshTokenModel.platform, payload.platform)
-        )
-      );
+      .where(eq(RefreshTokenModel.id, payload.jti));
   }
 
   /** Kills every session across all platforms — password change, account compromise, etc. */

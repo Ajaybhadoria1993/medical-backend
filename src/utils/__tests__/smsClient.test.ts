@@ -5,6 +5,7 @@ import { envConfig } from '../envConfig';
 import { WhatsAppService } from '../../main/notifications/services/whatsapp.service';
 import {
   buildTemplateBodyParams,
+  buildTemplateUrlButtonParams,
   normalizeWhatsAppNumber,
   resolveTemplateName,
   sanitizeTemplateParam,
@@ -91,26 +92,40 @@ describe('smsClient AWS SNS routing and WhatsApp placeholder tests', () => {
     );
   });
 
+  it('strips only a real "Dr." prefix and the token label from booked params', async () => {
+    await sendWhatsAppTemplate('9876543210', 'appointmentBooked', {
+      patientName: 'Asha',
+      doctorName: 'Dr. Drishti Rao',
+      clinicName: 'Apollo',
+      date: 'Fri, 10 Jul 2026',
+      timeOrToken: 'Token No: 7',
+      appointmentId: 'appt-1',
+    });
+    const body = (WhatsAppService.sendTemplateMessage as jest.Mock).mock
+      .lastCall[3];
+    expect(body[1]).toBe('Drishti Rao');
+    expect(body[4]).toBe('7');
+  });
+
   it('should send WhatsApp as an approved template with per-field params', async () => {
+    delete process.env.WHATSAPP_TEMPLATE_APPOINTMENT_BOOKED; // a local .env may pin v1
+    delete process.env.WHATSAPP_APPOINTMENT_BOOKED_HEADER_IMAGE_URL;
     await sendWhatsAppTemplate('9876543210', 'appointmentBooked', {
       patientName: 'Asha',
       doctorName: 'Dr. Rajesh Kumar',
       clinicName: 'Apollo',
       date: 'Fri, 10 Jul 2026',
       timeOrToken: 'Time: 10:00 AM',
+      appointmentId: 'appt-1',
     });
 
     expect(WhatsAppService.sendTemplateMessage).toHaveBeenCalledWith(
       '+919876543210',
-      'appointment_booked',
+      'appointment_booked_utility_v1',
       'en',
-      [
-        'Asha',
-        'Dr. Rajesh Kumar',
-        'Apollo',
-        'Fri, 10 Jul 2026',
-        'Time: 10:00 AM',
-      ]
+      ['Asha', 'Rajesh Kumar', 'Apollo', 'Fri, 10 Jul 2026', 'Time: 10:00 AM'],
+      ['appt-1?type=livequeue'],
+      undefined
     );
   });
 
@@ -169,7 +184,46 @@ describe('WhatsApp template parameters', () => {
 
     delete process.env.WHATSAPP_TEMPLATE_APPOINTMENT_REMINDER;
     expect(resolveTemplateName('appointmentReminder')).toBe(
-      'appointment_reminder'
+      'appointment_reminder_utility_v1'
     );
+  });
+
+  // Placeholder order and button suffixes as approved on the WABA (2026-10-28).
+  it('should map the utility_v1 templates to their approved bodies and buttons', () => {
+    const base = {
+      patientName: 'Asha',
+      doctorName: 'Dr. Rajesh Kumar',
+      clinicName: 'Apollo',
+      date: 'Thu, 23 Jul 2026',
+      timeOrToken: 'Token No: 12',
+      appointmentId: 'appt-1',
+    };
+    const cases = [
+      [
+        'appointmentReminder',
+        ['Asha', 'Rajesh Kumar', 'Apollo', 'Thu, 23 Jul 2026', '12'],
+        ['appt-1?type=livequeue'],
+      ],
+      [
+        'appointmentCancelled',
+        ['Asha', 'Rajesh Kumar', 'Apollo', 'Thu, 23 Jul 2026', '12'],
+        ['appt-1'],
+      ],
+      [
+        'appointmentCompleted',
+        ['Asha', 'Rajesh Kumar', 'Apollo'],
+        ['appt-1/pdf'],
+      ],
+      ['consultationStarted', ['Asha', 'Rajesh Kumar', 'Apollo'], []],
+      [
+        'doctorRunningLate',
+        ['Asha', 'Rajesh Kumar', 'Apollo', '12'],
+        ['appt-1?type=livequeue'],
+      ],
+    ] as const;
+    for (const [key, body, buttons] of cases) {
+      expect(buildTemplateBodyParams(key, base)).toEqual(body);
+      expect(buildTemplateUrlButtonParams(key, base)).toEqual(buttons);
+    }
   });
 });

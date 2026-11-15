@@ -170,7 +170,7 @@ export const staffEvents = defineEvents({
           // Patients get their own line; staff keep theirs, minus the raw role
           // value ("Your Lab_Assistant account…").
           inApp: (ctx: AccountCtx) => ({
-            title: 'Welcome to Medisetu',
+            title: 'Welcome to MediArogya',
             body:
               ctx.userRole === 'Patient'
                 ? 'Your account is ready. Book appointments and see your reports and prescriptions here.'

@@ -20,7 +20,7 @@ import {
   requireRole,
   requireClinic,
 } from '../../../../middlewear/auth.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 
 import { uploadPatientTest } from '../../../../middlewear/upload.middleware';
 

@@ -25,12 +25,14 @@ import {
   requireClinic,
   requireReceptionist,
   requirePatient,
+  requireRole,
 } from '../../../../middlewear/auth.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   completeProfileController,
   getMyProfileController,
   getAccountController,
+  deactivateOwnAccountController,
   addFamilyMemberController,
   listFamilyMembersController,
   getFamilyMemberController,
@@ -43,12 +45,14 @@ import {
   toggleDoctorFavoriteController,
   listFavoriteDoctorsController,
   getDoctorPublicSlotsController,
+  getClinicSymptomsController,
   bookPatientAppointmentController,
   getPatientAppointmentPricingPreviewController,
   listPatientAppointmentsController,
   listAllPatientAppointmentsController,
   getPatientAppointmentDetailController,
   getPatientAppointmentInvoiceDataController,
+  getPatientSharedImagesController,
   getPatientLiveQueueController,
   upsertLiveQueueNotifyPrefsController,
   getAssociatedDoctorsController,
@@ -73,6 +77,7 @@ import {
   patientDirectorySearchSchema,
   patientDoctorProfileSchema,
   patientDoctorSlotsQuerySchema,
+  patientClinicSymptomsParamsSchema,
   listFavoriteDoctorsQuerySchema,
   patientBookingSchema,
   patientAppointmentsParamsSchema,
@@ -88,8 +93,11 @@ import {
   patientPricingPreviewQuerySchema,
   patientRescheduleSchema,
   patientRecentActivityQuerySchema,
+  patientConsentFormsParamsSchema,
+  patientConsentFormsResponseSchema,
 } from '../../schemas/patient.schemas';
 import { getPatientRecentActivityController } from '../../controllers/recentActivity.controller';
+import { getPatientConsentFormsController } from '../../controllers/consentForms.controller';
 import { uploadProfilePicture } from '../../../../configurations/s3';
 import { uploadPatientTest } from '../../../../middlewear/upload.middleware';
 import {
@@ -97,6 +105,7 @@ import {
   updateDoctorReviewController,
   deleteDoctorReviewController,
   getDoctorReviewsController,
+  getPatientReviewsController,
 } from '../../../doctor/controllers/doctorReview.controller';
 import {
   createDoctorReviewSchema,
@@ -104,6 +113,7 @@ import {
   doctorReviewParamsSchema,
   doctorReviewDoctorParamsSchema,
   doctorReviewQuerySchema,
+  patientReviewsQuerySchema,
 } from '../../../doctor/schemas/doctorReview.schemas';
 
 const patientRouter = Router();
@@ -198,6 +208,15 @@ patientRouter.get(
   requireAuth,
   requirePatient,
   getAccountController
+);
+
+/** @route DELETE /api/v1/patient/account — switch own login off, no data deleted
+ *  @access Patient (own account only, id from token) */
+patientRouter.delete(
+  '/account',
+  requireAuth,
+  requirePatient,
+  deactivateOwnAccountController
 );
 
 /**
@@ -352,11 +371,8 @@ patientRouter.get(
   listFavoriteDoctorsController
 );
 
-/**
- * @route  GET /api/v1/patient/directory/doctors/:doctorId
- * @desc   Fetch doctor's public profile, credentials, and practicing clinics
- * @access Private — Patient only
- */
+/** @route GET /api/v1/patient/directory/doctors/:doctorId — doctor profile, clinics, shifts
+ *  @access Patient (only clinics with online booking on) */
 patientRouter.get(
   '/directory/doctors/:doctorId',
   requireAuth,
@@ -390,6 +406,18 @@ patientRouter.get(
   validate(patientDoctorProfileSchema, 'params'),
   validate(patientDoctorSlotsQuerySchema, 'query'),
   getDoctorPublicSlotsController
+);
+
+/**
+ * @route  GET /api/v1/patient/directory/clinics/:clinicId/symptoms
+ * @desc   Symptoms a patient can pick while booking (patient only)
+ */
+patientRouter.get(
+  '/directory/clinics/:clinicId/symptoms',
+  requireAuth,
+  requirePatient,
+  validate(patientClinicSymptomsParamsSchema, 'params'),
+  getClinicSymptomsController
 );
 
 /**
@@ -564,6 +592,19 @@ patientRouter.get(
 );
 
 /**
+ * @route  GET /api/v1/patient/appointments/:appointmentId/shared-images
+ * @desc   Images the doctor shared from their gallery on this appointment
+ * @access Private — Patient only
+ */
+patientRouter.get(
+  '/appointments/:appointmentId/shared-images',
+  requireAuth,
+  requirePatient,
+  validate(patientAppointmentDetailParamsSchema, 'params'),
+  getPatientSharedImagesController
+);
+
+/**
  * @route  POST /api/v1/patient/appointments/:appointmentId/cancel
  * @desc   Cancel patient\'s own appointment following platform & clinic policy checks
  * @access Private — Patient only
@@ -632,7 +673,28 @@ patientRouter.get(
   listPatientAppointmentsController
 );
 
+/** @route GET /api/v1/patient/reviews — reviews the signed-in patient wrote
+ *  @access Patient (own reviews; keep above the /:peteintId wildcard) */
+patientRouter.get(
+  '/reviews',
+  requireAuth,
+  requirePatient,
+  validate(patientReviewsQuerySchema, 'query'),
+  getPatientReviewsController
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
+/** @route GET /api/v1/patient/:patientId/consent-forms — signed consent forms (appointments + treatment plans)
+ *  @access Admin, Doctor (Doctor: own appointments and plans only) */
+patientRouter.get(
+  '/:patientId/consent-forms',
+  requireAuth,
+  requireRole(['Admin', 'Doctor']),
+  requireClinic,
+  validate(patientConsentFormsParamsSchema, 'params'),
+  getPatientConsentFormsController
+);
+
 // Receptionist: get patient by ID  (keep at the bottom — wildcard route)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -644,6 +706,7 @@ patientRouter.get(
 patientRouter.get(
   '/:peteintId',
   requireAuth,
+  requireClinic,
   requireReceptionist,
   validate(getPetientSchema, 'params'),
   validate(getPetientQuerySchema, 'query'),
@@ -753,6 +816,13 @@ docsRegistry.addEndpoint({
   method: 'get',
   path: '/api/v1/patient/account',
   description: 'Get primary profile + all linked family members (post-login)',
+  tags: ['patient'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'delete',
+  path: '/api/v1/patient/account',
+  description: 'Deactivate own patient account (status Inactive, data kept)',
   tags: ['patient'],
 });
 
@@ -875,6 +945,14 @@ docsRegistry.addEndpoint({
 
 docsRegistry.addEndpoint({
   method: 'get',
+  path: '/api/v1/patient/directory/clinics/:clinicId/symptoms',
+  description: 'Get the symptoms a patient can pick while booking at a clinic',
+  params: patientClinicSymptomsParamsSchema,
+  tags: ['patient-search'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
   path: '/api/v1/patient/directory/doctors/:doctorId/slots',
   description: 'Get slot availability for a doctor on a given date at a clinic',
   params: patientDoctorProfileSchema,
@@ -895,7 +973,7 @@ docsRegistry.addEndpoint({
   method: 'get',
   path: '/api/v1/patient/appointments/pricing-preview',
   description:
-    'Get calculated platform fee, GST, and total payable breakdown before booking',
+    'Get calculated platform fee, GST, total payable, and a fees[] list of patient-facing lines (type, label, amount, gst) before booking',
   query: patientPricingPreviewQuerySchema,
   tags: ['patient-booking'],
 });
@@ -949,6 +1027,16 @@ docsRegistry.addEndpoint({
   path: '/api/v1/patient/appointments/detail/:appointmentId',
   description:
     'Get details of a specific appointment belonging to patient or family members',
+  params: patientAppointmentDetailParamsSchema,
+  tags: ['patient-booking'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/patient/appointments/:appointmentId/shared-images',
+  description:
+    'Images the doctor shared on this appointment, for the patient or a ' +
+    'family member they manage. Empty when nothing is shared or the visit is not theirs.',
   params: patientAppointmentDetailParamsSchema,
   tags: ['patient-booking'],
 });
@@ -1026,6 +1114,14 @@ docsRegistry.addEndpoint({
 });
 
 docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/patient/reviews',
+  description: 'Paginated reviews the signed-in patient has written',
+  query: patientReviewsQuerySchema,
+  tags: ['patient'],
+});
+
+docsRegistry.addEndpoint({
   method: 'put',
   path: '/api/v1/patient/reviews/:reviewId',
   description: 'Update an existing rating and review',
@@ -1048,5 +1144,15 @@ docsRegistry.addEndpoint({
   description: 'Fetch paginated public reviews for a specific doctor',
   params: doctorReviewDoctorParamsSchema,
   query: doctorReviewQuerySchema,
+  tags: ['patient'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/patient/:patientId/consent-forms',
+  description:
+    'Signed consent forms for a patient: appointment uploads and accepted treatment plans (Admin, Doctor: own)',
+  params: patientConsentFormsParamsSchema,
+  responseSchema: patientConsentFormsResponseSchema,
   tags: ['patient'],
 });

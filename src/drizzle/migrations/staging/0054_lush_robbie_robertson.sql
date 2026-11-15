@@ -1,0 +1,1 @@
+ALTER TABLE "labs" ADD COLUMN "auto_generate_sample_code" boolean DEFAULT true NOT NULL;

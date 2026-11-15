@@ -4,6 +4,8 @@ import {
   varchar,
   timestamp,
   integer,
+  boolean,
+  index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { UserModel } from '../../users/models/user.model';
@@ -22,6 +24,8 @@ export const DoctorQualificationModel = pgTable(
     specialization: varchar('specialization', { length: 100 }),
     boardOrUniversity: varchar('board_or_university', { length: 150 }),
     yearOfCompletion: integer('year_of_completion'),
+    // Shown to patients on the public profile, e.g. "Gold medalist".
+    notes: varchar('notes', { length: 300 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -33,6 +37,29 @@ export const DoctorQualificationModel = pgTable(
       table.specialization
     ),
   ]
+);
+
+// Hospitals and clinics a doctor has worked at, shown as a timeline on the public profile.
+export const DoctorExperienceModel = pgTable(
+  'doctor_experiences',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => UserModel.id, { onDelete: 'cascade' }),
+    organisation: varchar('organisation', { length: 150 }).notNull(),
+    role: varchar('role', { length: 100 }).notNull(),
+    city: varchar('city', { length: 100 }),
+    startMonth: integer('start_month').notNull(),
+    startYear: integer('start_year').notNull(),
+    // Both null while is_current is true.
+    endMonth: integer('end_month'),
+    endYear: integer('end_year'),
+    isCurrent: boolean('is_current').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [index('doctor_experiences_user_id_idx').on(table.userId)]
 );
 
 export const doctorPrescriptionTypeModel = pgTable('doctor_prescription_type', {

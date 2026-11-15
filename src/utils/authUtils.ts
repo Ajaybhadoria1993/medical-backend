@@ -113,3 +113,32 @@ export async function generateStrongPassword(length = 12): Promise<string> {
 
   return finalPassword;
 }
+
+/** The fields the auth guards read; the password hash must never be cached in Redis. */
+export const toCachedUser = (row: Record<string, unknown>) => ({
+  id: row.id,
+  email: row.email,
+  userType: row.userType,
+  userStatus: row.userStatus,
+  emailVerifiedAt: row.emailVerifiedAt,
+  isAdminDoctorAccess: row.isAdminDoctorAccess,
+  passwordChangedAt: row.passwordChangedAt,
+  isArchive: row.isArchive,
+  isUserBlocked: row.isUserBlocked,
+});
+
+export const tokensValidAfterKey = (userId: string) =>
+  `user:tokens_valid_after:${userId}`;
+
+/** Kills every access token issued before now; the next refresh reissues fresh claims.
+ *  Call after block/archive/status/role/clinic-assignment changes. */
+export async function revokeUserTokens(userId: string): Promise<void> {
+  const { default: redisClient } =
+    await import('../configurations/redisConfig');
+  // A day outlives any 15-minute access token, so the key can safely expire.
+  await redisClient.setex(
+    tokensValidAfterKey(userId),
+    86400,
+    String(Math.floor(Date.now() / 1000))
+  );
+}

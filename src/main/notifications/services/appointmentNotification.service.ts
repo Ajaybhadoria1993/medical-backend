@@ -9,6 +9,7 @@ import {
 import { getNotificationContext } from '../models/appointmentParticipants.model';
 import { normalizeWhatsAppNumber } from '../utils/whatsappTemplate.utils';
 import { appointmentInstantIST } from '../../../utils/istDateTime';
+import type { WhatsAppTemplateMessage } from '../types/whatsappTemplate.types';
 
 export class AppointmentNotificationService {
   static async sendImmediateNotification(
@@ -71,9 +72,10 @@ export class AppointmentNotificationService {
                 clinicName,
                 date: formattedDate,
                 timeOrToken: timeOrTokenInfo,
+                appointmentId,
               },
             },
-            appointmentId
+            { clinicId: context.clinicId, appointmentId }
           )
         );
       }
@@ -85,6 +87,57 @@ export class AppointmentNotificationService {
       // Never break appointment creation on a notification failure.
       logger.error(
         `Failed to send immediate notification for appointment ${appointmentId}: ${(err as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * One patient WhatsApp about an appointment's current state, honouring the
+   * clinic's WhatsApp switch. Everything is looked up here so each trigger is a
+   * one-line call. Never throws.
+   */
+  static async sendPatientWhatsApp(
+    appointmentId: string,
+    key: 'appointmentCancelled' | 'consultationStarted' | 'doctorRunningLate'
+  ): Promise<void> {
+    // ponytail: "consultationStarted" WhatsApp paused 2026-10-30; delete this line to resume.
+    if (key === 'consultationStarted') return;
+    try {
+      const context = await getNotificationContext(appointmentId);
+      if (!context?.patientMobile || !context.clinicName) return;
+      if (!envConfig.WHATSAPP_FORCE_ENABLED && !context.whatsappEnabled) return;
+
+      const when = appointmentInstantIST(
+        context.appointmentDate,
+        context.appointmentTime
+      );
+      // A superset of every key's params; each template reads only its own.
+      const params = {
+        patientName: context.patientName,
+        doctorName: context.doctorName,
+        clinicName: context.clinicName,
+        date: formatAppointmentDate(when),
+        timeOrToken: formatTimeOrToken(when, context.tokenNo),
+        appointmentId,
+      };
+
+      await enqueueWhatsAppTemplate(
+        normalizeWhatsAppNumber(context.patientMobile),
+        { key, params } as WhatsAppTemplateMessage,
+        {
+          clinicId: context.clinicId,
+          appointmentId,
+          // An appointment is cancelled once; leave-cancel reaches here from
+          // both the policy service and notifyAppointmentCanceled.
+          jobId:
+            key === 'appointmentCancelled'
+              ? `wa-cancelled-${appointmentId}`
+              : undefined,
+        }
+      );
+    } catch (err) {
+      logger.error(
+        `Failed to send WhatsApp "${key}" for appointment ${appointmentId}: ${(err as Error).message}`
       );
     }
   }

@@ -33,7 +33,7 @@ export class AppointmentServiceV2 {
    * Does NOT support token/queue-based clinics, per-date
    * ClinicDateAvailability overrides, doctor breaks, or Redis
    * expired-payment-lock filtering — clinics relying on those features
-   * should keep using `AppointmentService.getAvailableSlotsForDate`
+   * should keep using `AppointmentSlotsService.getAvailableSlotsForDate`
    * (v1, `/api/v1/appointments/doctor/available/slot-date-clinic/:doctorId`).
    */
   static async getAvailableSlots(

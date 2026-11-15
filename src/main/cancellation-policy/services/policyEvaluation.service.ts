@@ -2,6 +2,7 @@ import { and, eq, gte, sql, desc } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { AppointmentPaymentModel } from '../../appointments/models/appointment-payment.model';
+import { appointmentInstantIST } from '../../../utils/istDateTime';
 import { HttpError } from '../../../middlewear/errorHandler';
 import {
   ApplicationCancellationPolicyModel,
@@ -157,7 +158,11 @@ export class PolicyEvaluationService {
     }
 
     // 5. Check Cancellation Rights (Roles Allowed)
-    const normalizedRole = userRole.toLowerCase();
+    // The token says "Admin"; the policy names that role clinic_admin. Without this an admin got the patient-only time window.
+    const normalizedRole =
+      userRole.toLowerCase() === 'admin'
+        ? 'clinic_admin'
+        : userRole.toLowerCase();
     if (normalizedRole === 'patient' && !policy.allowPatientCancel) {
       throw new HttpError(
         403,
@@ -231,6 +236,14 @@ export class PolicyEvaluationService {
       normalizedRole === 'doctor' ||
       normalizedRole === 'receptionist';
     if (isStaff) {
+      return { allowed: true };
+    }
+
+    if (
+      process.env.ENABLE_REFUND_REVIEWS === 'true' &&
+      normalizedRole === 'patient' &&
+      payload.reasonCode === 'medical_emergency'
+    ) {
       return { allowed: true };
     }
 
@@ -398,28 +411,32 @@ export class PolicyEvaluationService {
       return { eligible: false, refundType: 'None', refundAmount: 0 };
     }
 
-    // Compute hours until appointment
+    // Refund eligibility uses the scheduled appointment instant in IST.
     const now = new Date();
-    const apptDate = new Date(appointment.appointmentDate);
-    const diffHours = (apptDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const appointmentAt = appointmentInstantIST(
+      appointment.appointmentDate,
+      appointment.appointmentTime
+    );
+    const diffHours = (appointmentAt.getTime() - now.getTime()) / 3600000;
 
-    const price = parseFloat(payment.price || '0');
-    if (price <= 0) {
+    // Online payment.price includes patient-borne platform charges; the
+    // cancellation policy refunds only the consultation/service fee.
+    const consultationFee = parseFloat(
+      payment.primaryServicePrice || payment.price || '0'
+    );
+    if (consultationFee <= 0) {
       return { eligible: false, refundType: 'None', refundAmount: 0 };
     }
 
-    if (diffHours >= appPolicy.defaultRefundCooldownHours) {
-      // Full Refund
-      const amount = (price * appPolicy.defaultRefundPercentage) / 100;
-      return { eligible: true, refundType: 'Full', refundAmount: amount };
-    } else if (diffHours >= appPolicy.partialRefundCooldownHours) {
-      // Partial Refund
-      const amount = (price * appPolicy.partialRefundPercentage) / 100;
-      return { eligible: true, refundType: 'Partial', refundAmount: amount };
-    } else {
-      // No Refund
+    if (diffHours < 6) {
       return { eligible: false, refundType: 'None', refundAmount: 0 };
     }
+
+    return {
+      eligible: true,
+      refundType: 'Full',
+      refundAmount: consultationFee,
+    };
   }
 
   /**

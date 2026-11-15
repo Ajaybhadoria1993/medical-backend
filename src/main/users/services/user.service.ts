@@ -4,13 +4,12 @@ import {
   SQL,
   and,
   asc,
-  between,
   desc,
   eq,
   gt,
   gte,
   inArray,
-  isNotNull,
+  notInArray,
   lte,
   ne,
   or,
@@ -57,6 +56,9 @@ import { pagination } from '../../../utils/utils';
 import { realtimeBus, target } from '../../realtime';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { AppointmentPaymentModel } from '../../appointments/models/appointment-payment.model';
+import { MoneyReadService } from '../../money';
+import { coveringVisit } from '../../appointments/utils/serviceCoverage.utils';
+import { getISTDateString } from '../../../utils/istDateTime';
 import {
   ClinicAssignModel,
   ClinicModel,
@@ -65,25 +67,24 @@ import {
 import { ClinicSettingsModel } from '../../clinic/models/clinicSettings.model';
 import { DoctorQualificationModel } from '../../doctor/models/doctor.model';
 import { PatientFamilyLinksModel } from '../../patient/models/patientFamilyLinks.model';
+import { alias } from 'drizzle-orm/pg-core';
 import { SettingModel } from '../../settings/models/setting.model';
 import { TokenModel } from '../models/token.model';
 import { UserModel } from '../models/user.model';
 import { UserProfileModel } from '../models/userProfile.model';
 import { UserProfessionalModel } from '../models/userProfessional.model';
 import { AppointmentNoShowActionModel } from '../../appointments/models/appointmentNoShow.model';
-import { ClinicSubscriptionModel } from '../../subscription/models/subscription.model';
 import {
+  FirstPlanService,
   LimitationService,
   STAFF_USER_TYPES,
   StaffUserType,
-} from '../../subscription/services/limitation.service';
-import { SubscriptionService } from '../../subscription/services/subscription.service';
+} from '../../subscription';
 import { PermissionService } from '../../permissions/services/permission.service';
 import {
   addUserDto,
   CreatePetientDto,
   getAllPetientsDto,
-  GetAllReferralsDto,
   RegisterDto,
   SearchPatientDto,
   SocialLoginDto,
@@ -99,9 +100,9 @@ import {
 } from '../../pharmacy/models/pharmacy.model';
 import { UserLabAssignmentsModel } from '../../lab/models/lab.model';
 import { doctorStatusChangeTemplate } from '../../../htmltamplates/DoctorStatusChange';
-import { ReferralModel } from '../models/referral.model';
 import { ReportsModel } from '../../reports/models/reports.model';
 import { MfaService } from '../../mfa/services/mfa.service';
+import { markReferralJoined } from '../../referral';
 
 const TOKEN_TTL_MS = 8 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TOKEN_TTL_MS = 10 * 60 * 1000;
@@ -174,7 +175,7 @@ export class UserService {
 
     sendEmail(
       email,
-      'Infinity Medisetu Onboarding',
+      'MediArogya Onboarding',
       registrationOtpTemplate({ signUpLink })
     ).catch((err) => {
       logger.error(`Failed to send registration OTP email to ${email}:`, err);
@@ -817,41 +818,6 @@ export class UserService {
     return tokens;
   }
 
-  static async updateReferralStatus(
-    referralId: string,
-    data: {
-      status: 'pending' | 'approved' | 'rejected';
-      comments?: string | null;
-    }
-  ) {
-    return await database.transaction(async (tx) => {
-      const existingReferral = await tx
-        .select()
-        .from(ReferralModel)
-        .where(eq(ReferralModel.id, referralId))
-        .limit(1);
-
-      if (existingReferral.length === 0) {
-        throw new HttpError(404, 'Referral not found');
-      }
-
-      const updatedReferral = await tx
-        .update(ReferralModel)
-        .set({
-          status: data.status,
-          comments: data.comments || null,
-          updatedAt: new Date(),
-        })
-        .where(eq(ReferralModel.id, referralId))
-        .returning();
-
-      return {
-        referral: updatedReferral[0],
-        message: `Referral ${data.status === 'approved' ? 'approved' : data.status === 'rejected' ? 'rejected' : 'updated to pending'} successfully`,
-      };
-    });
-  }
-
   static async sendEmailVerification(userId: string) {
     const [user] = await database
       .select()
@@ -895,7 +861,7 @@ export class UserService {
     // Send email asynchronously
     sendEmail(
       user.email ?? '',
-      'Infinity Medisetu - Verify Your Email',
+      'MediArogya - Verify Your Email',
       emailVerifyHtml(user.name ?? '', verifyUrl)
     ).catch((err) => {
       logger.error(`Failed to send verification email to ${userId}:`, err);
@@ -978,7 +944,7 @@ export class UserService {
 
       await sendEmail(
         user.email ?? '',
-        'Infinity Medisetu - Set Your Password',
+        'MediArogya - Set Your Password',
         passwordSetupEmailTemplate(
           user.name ?? '',
           clinic?.clinicName || 'Our Clinic',
@@ -1231,7 +1197,7 @@ export class UserService {
 
     await sendEmail(
       user.email,
-      `Infinity Medisetu - Welcome to ${clinicName}`,
+      `MediArogya - Welcome to ${clinicName}`,
       welcomeSetPasswordTemplate({
         name: user.name ?? '',
         clinicName,
@@ -1291,7 +1257,7 @@ export class UserService {
     // Send email asynchronously
     sendEmail(
       user.email ?? '',
-      'Infinity Medisetu - Reset Your Password',
+      'MediArogya - Reset Your Password',
       generateResetPasswordEmail(
         { ...user, name: user.name ?? '', email: user.email ?? '' },
         rawToken,
@@ -1505,39 +1471,21 @@ export class UserService {
         .from(DoctorQualificationModel)
         .where(eq(DoctorQualificationModel.userId, userId));
 
-      let noSubscriptionTakenTillNow: boolean | undefined;
-
       const [assignment] = await database
         .select({ clinicId: ClinicAssignModel.clinicId })
         .from(ClinicAssignModel)
         .where(eq(ClinicAssignModel.userId, userId))
         .limit(1);
 
-      if (!assignment) {
-        noSubscriptionTakenTillNow = true;
-      } else {
-        const subscriptions = await database
-          .select({
-            providerSubscriptionId:
-              ClinicSubscriptionModel.providerSubscriptionId,
-          })
-          .from(ClinicSubscriptionModel)
-          .where(eq(ClinicSubscriptionModel.clinicId, assignment.clinicId));
-
-        const hasNonDefaultFree = subscriptions.some(
-          (sub) => sub.providerSubscriptionId !== 'default-free'
-        );
-
-        noSubscriptionTakenTillNow = !hasNonDefaultFree;
-      }
+      const noSubscriptionTakenTillNow = assignment
+        ? await FirstPlanService.canStartTrial('clinic', assignment.clinicId)
+        : true;
 
       return {
         ...userDetails,
         pharmacyDetails,
         qualifications,
-        ...(noSubscriptionTakenTillNow !== undefined && {
-          noSubscriptionTakenTillNow,
-        }),
+        noSubscriptionTakenTillNow,
       };
     }
 
@@ -1749,11 +1697,20 @@ export class UserService {
 
     // Invalidate patient list cache for this clinic
     await UserService.invalidatePatientListCache(clinicId);
+    // A new family member now appears on the primary's details page.
+    if (result.primaryPatientId) {
+      await invalidateCacheMany(
+        CacheKeys.patientDetailAll(result.primaryPatientId)
+      );
+    }
     return result;
   }
 
   // Update Patient details
-  static async updatePatient(payload: UpdatePetientDto) {
+  static async updatePatient(payload: UpdatePetientDto, clinicId: string) {
+    if (!(await UserService.isPatientInClinic(payload.peteintId, clinicId))) {
+      throw new HttpError(404, 'Patient not found');
+    }
     let user = null;
     if (payload && Object.keys(payload).length > 0) {
       // Fields that stay on UserModel
@@ -1832,11 +1789,8 @@ export class UserService {
         user = u;
       }
 
-      // Invalidate patient cache
-      await redisClient.del(`patient:${payload.peteintId}`);
-      await redisClient.del(`patient:${payload.peteintId}:withFamily`);
-      await redisClient.del(`patient:${payload.peteintId}:v2`);
-      await redisClient.del(`patient:${payload.peteintId}:withFamily:v2`);
+      // Invalidate patient cache (and linked family: their pages show this patient)
+      await UserService.invalidatePatientDetailsWithFamily(payload.peteintId);
       await redisClient.del(`patient_profile:${payload.peteintId}`);
       await redisClient.del(`patient_account:${payload.peteintId}`);
 
@@ -1859,20 +1813,173 @@ export class UserService {
       return user;
     }
   }
-  // SECURITY: not currently routed (getPetientController in user.controller.ts
-  // is unwired) — if you add a route for this, it MUST take a clinicId and
-  // verify petientId is scoped to that clinic first (see assertDoctorInClinic
-  // in doctor.service.ts for the pattern), or it leaks full patient PII
-  // (name/email/mobile/address/DOB/allergies/blood group) cross-clinic.
-  static async getPeteintById(petientId: string, includeFamilyDetails = false) {
-    // Version the cache key so response-shape changes are visible immediately.
-    const cacheKey = includeFamilyDetails
-      ? `patient:${petientId}:withFamily`
-      : `patient:${petientId}`;
-    const versionedCacheKey = `${cacheKey}:v2`;
-    const cached = await redisClient.get(versionedCacheKey);
-    if (cached) {
-      return JSON.parse(cached);
+  /** With a clinicId, null unless the patient belongs to that clinic, and
+   * every stat counts that clinic only; no clinicId (Super Admin) = all. */
+  static async getPeteintById(
+    petientId: string,
+    includeFamilyDetails = false,
+    clinicId?: string
+  ) {
+    const [base, stats, inClinic] = await Promise.all([
+      UserService.patientProfile(petientId),
+      UserService.patientStats(petientId, clinicId),
+      clinicId ? UserService.isPatientInClinic(petientId, clinicId) : true,
+    ]);
+    if (!base || !inClinic) return null;
+
+    const { registeredAt, ...counts } = stats;
+    const result: Record<string, unknown> = {
+      ...base,
+      ...counts,
+      registeredAt: registeredAt ?? base.createdAt,
+    };
+    // Always in the reply (null when the patient has their own mobile), so apps can rely on the key.
+    result.linkedNumber = base.mobile
+      ? null
+      : await UserService.linkedNumber(petientId, clinicId);
+    return UserService.withClinicFamily(
+      result,
+      petientId,
+      includeFamilyDetails,
+      clinicId
+    );
+  }
+
+  /** A patient belongs to a clinic once linked to it or booked there. */
+  static async isPatientInClinic(patientId: string, clinicId: string) {
+    const [[assign], [appointment]] = await Promise.all([
+      database
+        .select({ id: ClinicAssignModel.id })
+        .from(ClinicAssignModel)
+        .where(
+          and(
+            eq(ClinicAssignModel.userId, patientId),
+            eq(ClinicAssignModel.clinicId, clinicId)
+          )
+        )
+        .limit(1),
+      database
+        .select({ id: AppointmentModel.id })
+        .from(AppointmentModel)
+        .where(
+          and(
+            eq(AppointmentModel.patientId, patientId),
+            eq(AppointmentModel.clinicId, clinicId)
+          )
+        )
+        .limit(1),
+    ]);
+    return Boolean(assign || appointment);
+  }
+
+  /** Primary contact's mobile for a patient without one; with a clinicId,
+   * only when that contact is also linked to the clinic. */
+  private static async linkedNumber(patientId: string, clinicId?: string) {
+    const query = database
+      .select({ primaryMobile: UserModel.mobile })
+      .from(PatientFamilyLinksModel)
+      .innerJoin(
+        UserModel,
+        eq(UserModel.id, PatientFamilyLinksModel.primaryPatientId)
+      );
+    const scoped = clinicId
+      ? query.innerJoin(
+          ClinicAssignModel,
+          and(
+            eq(ClinicAssignModel.userId, UserModel.id),
+            eq(ClinicAssignModel.clinicId, clinicId)
+          )
+        )
+      : query;
+    const [row] = await scoped
+      .where(eq(PatientFamilyLinksModel.linkedPatientId, patientId))
+      .limit(1);
+    return row?.primaryMobile || null;
+  }
+
+  /** Header stats, computed per request so one clinic never sees another's
+   * numbers through the shared profile cache. */
+  private static async patientStats(patientId: string, clinicId?: string) {
+    const inClinic = clinicId
+      ? and(
+          eq(AppointmentModel.patientId, patientId),
+          eq(AppointmentModel.clinicId, clinicId)
+        )
+      : eq(AppointmentModel.patientId, patientId);
+
+    const [[appointments], [reports], [assign], paid] = await Promise.all([
+      database
+        .select({
+          totalAppointments: sql<number>`COUNT(*)::int`,
+          lastVisit: sql<
+            string | null
+          >`MAX(${AppointmentModel.appointmentDate})`,
+          firstVisit: sql<
+            string | null
+          >`MIN(${AppointmentModel.appointmentDate})`,
+        })
+        .from(AppointmentModel)
+        .where(inClinic),
+      // ponytail: reports has no clinicId, so this count spans all clinics
+      database
+        .select({ totalReports: sql<number>`COUNT(*)::int` })
+        .from(ReportsModel)
+        .where(eq(ReportsModel.petientId, patientId)),
+      clinicId
+        ? database
+            .select({ createdAt: ClinicAssignModel.createdAt })
+            .from(ClinicAssignModel)
+            .where(
+              and(
+                eq(ClinicAssignModel.userId, patientId),
+                eq(ClinicAssignModel.clinicId, clinicId)
+              )
+            )
+            .limit(1)
+        : Promise.resolve([]),
+      // The money ledger, as on the plan and appointment pages, so plan payments count too.
+      MoneyReadService.receivedByPatient(patientId, clinicId),
+    ]);
+
+    return {
+      lastVisit: appointments?.lastVisit || null,
+      totalAppointments: appointments?.totalAppointments || 0,
+      totalPaidPayments: (paid.visitPaise + paid.planPaise) / 100,
+      visitPaidPayments: paid.visitPaise / 100,
+      planPaidPayments: paid.planPaise / 100,
+      totalReports: reports?.totalReports || 0,
+      registeredAt: clinicId
+        ? (assign?.createdAt ?? appointments?.firstVisit ?? null)
+        : null,
+    };
+  }
+
+  /** Body stats and medical history for the appointment page. Served from the
+   * patient-details cache, so repeat opens cost no DB read. */
+  static async getPatientHealthProfile(patientId: string) {
+    const profile = await UserService.patientProfile(patientId);
+    return {
+      bloodGroup: (profile?.bloodGroup as string | null) ?? null,
+      height: (profile?.height as string | null) ?? null,
+      weight: (profile?.weight as string | null) ?? null,
+      allergies: (profile?.allergies as string[] | null) ?? [],
+      chronicConditions: (profile?.chronicConditions as string[] | null) ?? [],
+    };
+  }
+
+  /** Clinic-independent profile; safe to share one cache entry. */
+  private static async patientProfile(
+    petientId: string
+  ): Promise<Record<string, unknown> | null> {
+    const versionedCacheKey = CacheKeys.patientDetail(petientId);
+    try {
+      const cached = await redisClient.get(versionedCacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      logger.error(
+        `[Cache] Error reading patient detail cache for ${petientId}:`,
+        err
+      );
     }
 
     const [user] = await database
@@ -1907,58 +2014,35 @@ export class UserService {
 
     if (!user) return null;
 
-    // Fetch stats in parallel
-    const [appointmentStats, reportStats] = await Promise.all([
-      database
-        .select({
-          totalAppointments: sql<number>`COUNT(*)::int`,
-          lastVisit: sql<
-            string | null
-          >`MAX(${AppointmentModel.appointmentDate})`,
-          totalPaidPayments: sql<number>`COALESCE(SUM(CASE WHEN ${AppointmentPaymentModel.paymentStatus} = 'Paid' THEN ${AppointmentPaymentModel.price}::numeric ELSE 0 END), 0)::numeric`,
-        })
-        .from(AppointmentModel)
-        .leftJoin(
-          AppointmentPaymentModel,
-          eq(AppointmentPaymentModel.appointmentId, AppointmentModel.id)
+    // Cache for 10 minutes
+    await redisClient
+      .setex(versionedCacheKey, 600, JSON.stringify(user))
+      .catch((err) =>
+        logger.error(
+          `[Cache] Error writing patient detail cache for ${petientId}:`,
+          err
         )
-        .where(eq(AppointmentModel.patientId, petientId)),
+      );
+    return user;
+  }
+
+  /** Adds familyMembers both ways (isPrimaryContact = the number's owner),
+   * limited to the viewer's clinic; no clinic, no family. */
+  private static async withClinicFamily(
+    result: Record<string, unknown>,
+    patientId: string,
+    includeFamilyDetails: boolean,
+    clinicId?: string
+  ) {
+    if (!includeFamilyDetails) return result;
+    if (!clinicId) return { ...result, familyMembers: [] };
+
+    const inViewerClinic = and(
+      eq(ClinicAssignModel.userId, UserModel.id),
+      eq(ClinicAssignModel.clinicId, clinicId)
+    );
+    const [members, primaryContacts] = await Promise.all([
       database
-        .select({
-          totalReports: sql<number>`COUNT(*)::int`,
-        })
-        .from(ReportsModel)
-        .where(eq(ReportsModel.petientId, petientId)),
-    ]);
-
-    const result: Record<string, unknown> = {
-      ...user,
-      lastVisit: appointmentStats[0]?.lastVisit || null,
-      totalAppointments: appointmentStats[0]?.totalAppointments || 0,
-      totalPaidPayments: Number(appointmentStats[0]?.totalPaidPayments) || 0,
-      totalReports: reportStats[0]?.totalReports || 0,
-    };
-
-    // If patient has no mobile, find linked number from family links
-    if (!user.mobile) {
-      const [asLinked] = await database
-        .select({
-          primaryMobile: UserModel.mobile,
-        })
-        .from(PatientFamilyLinksModel)
-        .innerJoin(
-          UserModel,
-          eq(UserModel.id, PatientFamilyLinksModel.primaryPatientId)
-        )
-        .where(eq(PatientFamilyLinksModel.linkedPatientId, petientId))
-        .limit(1);
-
-      result.linkedNumber = asLinked?.primaryMobile || null;
-    }
-
-    // Optionally include family members
-    if (includeFamilyDetails) {
-      const familyMembers = await database
         .select({
           id: PatientFamilyLinksModel.linkedPatientId,
           name: UserModel.name,
@@ -1970,15 +2054,31 @@ export class UserService {
           UserModel,
           eq(UserModel.id, PatientFamilyLinksModel.linkedPatientId)
         )
-        .where(eq(PatientFamilyLinksModel.primaryPatientId, petientId));
+        .innerJoin(ClinicAssignModel, inViewerClinic)
+        .where(eq(PatientFamilyLinksModel.primaryPatientId, patientId)),
+      database
+        .select({
+          id: PatientFamilyLinksModel.primaryPatientId,
+          name: UserModel.name,
+          mobile: UserModel.mobile,
+          relationship: PatientFamilyLinksModel.relationship,
+        })
+        .from(PatientFamilyLinksModel)
+        .innerJoin(
+          UserModel,
+          eq(UserModel.id, PatientFamilyLinksModel.primaryPatientId)
+        )
+        .innerJoin(ClinicAssignModel, inViewerClinic)
+        .where(eq(PatientFamilyLinksModel.linkedPatientId, patientId)),
+    ]);
 
-      result.familyMembers = familyMembers;
-    }
-
-    // Cache for 10 minutes
-    await redisClient.setex(versionedCacheKey, 600, JSON.stringify(result));
-
-    return result;
+    return {
+      ...result,
+      familyMembers: [
+        ...primaryContacts.map((m) => ({ ...m, isPrimaryContact: true })),
+        ...members.map((m) => ({ ...m, isPrimaryContact: false })),
+      ],
+    };
   }
   static escapeLike(s: string) {
     return s.replace(/[%_\\]/g, (m) => `\\${m}`);
@@ -2096,7 +2196,23 @@ export class UserService {
                 lower(${UserProfileModel.alternateMobile}) LIKE ${pattern}
               `;
 
-              return or(byName, byEmail, byMobile, byAltMobile);
+              // A family member registered under someone else's number has no
+              // mobile of their own; match them through their primary's mobile.
+              const primaryPatient = alias(UserModel, 'primary_patient');
+              const linkedByPrimaryMobile = tx
+                .select({ id: PatientFamilyLinksModel.linkedPatientId })
+                .from(PatientFamilyLinksModel)
+                .innerJoin(
+                  primaryPatient,
+                  eq(
+                    primaryPatient.id,
+                    PatientFamilyLinksModel.primaryPatientId
+                  )
+                )
+                .where(sql`lower(${primaryPatient.mobile}) LIKE ${pattern}`);
+              const byLinkedMobile = sql`${UserModel.id} IN (${linkedByPrimaryMobile})`;
+
+              return or(byName, byEmail, byMobile, byAltMobile, byLinkedMobile);
             })
             .filter((c): c is SQL => c !== undefined);
 
@@ -2113,7 +2229,7 @@ export class UserService {
       }
 
       if (query?.userStatus) {
-        conditions.push(eq(UserModel.userStatus, query.userStatus));
+        conditions.push(inArray(UserModel.userStatus, query.userStatus));
       }
 
       if (query?.userType) {
@@ -2347,93 +2463,84 @@ export class UserService {
 
       const totalPages = Math.ceil(totalCount / pageSize);
 
-      const patientIds = petients.map((p) => p.id);
-
-      const familyMap: Record<
+      // Rows without a mobile show the owner's number; the owner's name is
+      // shown only if they are registered at this clinic.
+      const noMobileIds = petients.filter((p) => !p.mobile).map((p) => p.id);
+      const linkMap: Record<
         string,
         {
-          id: string;
           name: string | null;
           mobile: string | null;
-          relationship: string;
+          isPrimaryContact: boolean;
+          inClinic: boolean;
         }[]
       > = {};
 
-      if (patientIds.length > 0) {
-        const familyLinks = await tx
+      if (noMobileIds.length > 0) {
+        const inClinicSql = sql<boolean>`EXISTS (
+          SELECT 1 FROM ${ClinicAssignModel}
+          WHERE ${ClinicAssignModel.userId} = ${UserModel.id}
+            AND ${ClinicAssignModel.clinicId} = ${clinicId}
+        )`;
+
+        const asLinked = await tx
           .select({
-            primaryPatientId: PatientFamilyLinksModel.primaryPatientId,
-
-            linkedId: UserModel.id,
-
-            linkedName: UserModel.name,
-
-            linkedMobile: UserModel.mobile,
-
-            relationship: PatientFamilyLinksModel.relationship,
-          })
-          .from(PatientFamilyLinksModel)
-          .innerJoin(
-            UserModel,
-            eq(UserModel.id, PatientFamilyLinksModel.linkedPatientId)
-          )
-          .where(inArray(PatientFamilyLinksModel.primaryPatientId, patientIds));
-
-        for (const link of familyLinks) {
-          if (!familyMap[link.primaryPatientId]) {
-            familyMap[link.primaryPatientId] = [];
-          }
-
-          familyMap[link.primaryPatientId].push({
-            id: link.linkedId,
-            name: link.linkedName,
-            mobile: link.linkedMobile,
-            relationship: link.relationship,
-          });
-        }
-
-        const reverseLinks = await tx
-          .select({
-            linkedPatientId: PatientFamilyLinksModel.linkedPatientId,
-
-            primaryId: UserModel.id,
-
-            primaryName: UserModel.name,
-
-            primaryMobile: UserModel.mobile,
-
-            relationship: PatientFamilyLinksModel.relationship,
+            patientId: PatientFamilyLinksModel.linkedPatientId,
+            name: UserModel.name,
+            mobile: UserModel.mobile,
+            inClinic: inClinicSql,
           })
           .from(PatientFamilyLinksModel)
           .innerJoin(
             UserModel,
             eq(UserModel.id, PatientFamilyLinksModel.primaryPatientId)
           )
-          .where(inArray(PatientFamilyLinksModel.linkedPatientId, patientIds));
+          .where(inArray(PatientFamilyLinksModel.linkedPatientId, noMobileIds));
 
-        for (const link of reverseLinks) {
-          if (!familyMap[link.linkedPatientId]) {
-            familyMap[link.linkedPatientId] = [];
+        const asPrimary = await tx
+          .select({
+            patientId: PatientFamilyLinksModel.primaryPatientId,
+            name: UserModel.name,
+            mobile: UserModel.mobile,
+            inClinic: inClinicSql,
+          })
+          .from(PatientFamilyLinksModel)
+          .innerJoin(
+            UserModel,
+            eq(UserModel.id, PatientFamilyLinksModel.linkedPatientId)
+          )
+          .where(
+            inArray(PatientFamilyLinksModel.primaryPatientId, noMobileIds)
+          );
+
+        for (const [rows, isPrimaryContact] of [
+          [asLinked, true],
+          [asPrimary, false],
+        ] as const) {
+          for (const row of rows) {
+            if (!linkMap[row.patientId]) linkMap[row.patientId] = [];
+            linkMap[row.patientId].push({
+              name: row.name,
+              mobile: row.mobile,
+              isPrimaryContact,
+              inClinic: row.inClinic,
+            });
           }
-
-          familyMap[link.linkedPatientId].push({
-            id: link.primaryId,
-            name: link.primaryName,
-            mobile: link.primaryMobile,
-            relationship: link.relationship,
-          });
         }
       }
 
-      const patientsWithFamily = petients.map((p) => ({
-        ...p,
-
-        familyMembers: familyMap[p.id] || [],
-
-        linkedNumber: familyMap[p.id]?.find((f) => f.mobile)?.mobile || null,
-
-        visitCount: Number(p.visitCount || 0),
-      }));
+      const patientsWithFamily = petients.map((p) => {
+        const links = linkMap[p.id] ?? [];
+        const owner =
+          links.find((l) => l.isPrimaryContact && l.mobile) ??
+          links.find((l) => l.mobile);
+        return {
+          ...p,
+          linkedNumber: owner?.mobile ?? null,
+          linkedTo: owner?.inClinic ? owner.name : null,
+          visitCount: Number(p.visitCount || 0),
+        };
+      });
 
       return {
         petients: patientsWithFamily,
@@ -2453,6 +2560,38 @@ export class UserService {
     }
 
     return result;
+  }
+
+  /** Clears the details cache of a patient and everyone family-linked to them,
+   * since each linked patient's page shows this patient's name and number. */
+  static async invalidatePatientDetailsWithFamily(patientId: string) {
+    try {
+      const links = await database
+        .select({
+          primaryId: PatientFamilyLinksModel.primaryPatientId,
+          linkedId: PatientFamilyLinksModel.linkedPatientId,
+        })
+        .from(PatientFamilyLinksModel)
+        .where(
+          or(
+            eq(PatientFamilyLinksModel.primaryPatientId, patientId),
+            eq(PatientFamilyLinksModel.linkedPatientId, patientId)
+          )
+        );
+      const ids = new Set([patientId]);
+      for (const l of links) {
+        ids.add(l.primaryId);
+        ids.add(l.linkedId);
+      }
+      await invalidateCacheMany(
+        [...ids].flatMap((id) => CacheKeys.patientDetailAll(id))
+      );
+    } catch (err) {
+      logger.error(
+        '[Cache] Failed to invalidate patient details with family',
+        err
+      );
+    }
   }
 
   static async invalidatePatientListCache(clinicId: string) {
@@ -2611,7 +2750,7 @@ export class UserService {
     setImmediate(() => {
       sendEmail(
         result.user.email ?? '',
-        `Infinity Medisetu - Welcome to ${result.clinic?.clinicName || 'Our Clinic'}`,
+        `MediArogya - Welcome to ${result.clinic?.clinicName || 'Our Clinic'}`,
         welcomeSetPasswordTemplate({
           name: result.user.name ?? '',
           clinicName: result.clinic?.clinicName || 'Our Clinic',
@@ -2989,7 +3128,7 @@ export class UserService {
           .returning({ id: ClinicModel.id });
 
         if (syncedClinic) {
-          await redisClient.del(`clinic_details:${syncedClinic.id}`);
+          await redisClient.del(CacheKeys.clinicDetails(syncedClinic.id));
           // requireClinic caches status per member — drop every attached user's entry
           const members = await database
             .select({ userId: ClinicAssignModel.userId })
@@ -2999,6 +3138,10 @@ export class UserService {
           await Promise.all([
             redisClient.del(`user_clinic:${userId}`),
             ...members.map((m) => redisClient.del(`user_clinic:${m.userId}`)),
+            // Cached doctor profiles list only Active clinics.
+            invalidateCacheMany(
+              members.flatMap((m) => CacheKeys.doctorPublicProfileAll(m.userId))
+            ),
           ]);
         }
       }
@@ -3023,6 +3166,23 @@ export class UserService {
           .limit(1);
         if (clinicAssign) {
           clinicId = clinicAssign.clinicId;
+        }
+      }
+
+      await markReferralJoined(userId, clinicId ?? null);
+
+      // Approval starts the free trial only if the clinic asked for it before approval.
+      if (isReactivating && clinic) {
+        try {
+          await FirstPlanService.startRequestedTrial(
+            clinic.id,
+            options.performedByUserId ?? null
+          );
+        } catch (err) {
+          logger.error(
+            `[UserService] Approval of clinic ${clinic.id} could not start its requested free trial`,
+            err
+          );
         }
       }
 
@@ -3088,52 +3248,6 @@ export class UserService {
       }
     }
 
-    if (
-      existingUser.userType === 'Admin' &&
-      oldStatus === 'Pending' &&
-      userStatus === 'Active'
-    ) {
-      const [clinic] = await database
-        .select({ id: ClinicModel.id })
-        .from(ClinicModel)
-        .where(eq(ClinicModel.userId, userId))
-        .limit(1);
-
-      if (clinic) {
-        const startsAt = new Date();
-        const expiresAt = new Date(startsAt);
-        expiresAt.setDate(expiresAt.getDate() + 30);
-
-        const [subscription] = await database
-          .select({ id: ClinicSubscriptionModel.id })
-          .from(ClinicSubscriptionModel)
-          .where(eq(ClinicSubscriptionModel.clinicId, clinic.id))
-          .orderBy(desc(ClinicSubscriptionModel.createdAt))
-          .limit(1);
-
-        if (subscription) {
-          await database
-            .update(ClinicSubscriptionModel)
-            .set({
-              startsAt,
-              expiresAt,
-              active: true,
-              updatedAt: startsAt,
-            })
-            .where(eq(ClinicSubscriptionModel.id, subscription.id));
-
-          await redisClient.del(`clinic_active_subscription:${clinic.id}`);
-          await redisClient.del(`clinic_plan:${clinic.id}`);
-          await redisClient.del(`clinic_details:${clinic.id}`);
-
-          await SubscriptionService.updateUserSubscriptionExpiryCache(
-            clinic.id,
-            expiresAt
-          );
-        }
-      }
-    }
-
     // Send email notification only for Admin and Doctor user types
     if (
       existingUser.userType === 'Admin' ||
@@ -3173,7 +3287,7 @@ export class UserService {
 
         await sendEmail(
           updatedUser.email ?? '',
-          `Infinity Medisetu - Account Status Updated as ${userStatus}`,
+          `MediArogya - Account Status Updated as ${userStatus}`,
           emailHtml
         );
 
@@ -3201,7 +3315,7 @@ export class UserService {
         }
         // Realtime: the staff directory and any presence indicator watching
         // this clinic previously only learned of an approval/active/suspend
-        // change on a manual refresh (docs/REALTIME_ROLLOUT_PLAN.md Phase 5).
+        // change on a manual refresh (docs/realtime/REALTIME_ROLLOUT_PLAN.md Phase 5).
         // Cascaded team-member activation above recurses into this same
         // method, so each of those members signals too — not just the admin.
         realtimeBus.notify(
@@ -3234,7 +3348,8 @@ export class UserService {
     if (user.userType !== 'Doctor')
       throw new HttpError(400, 'User is not a doctor');
 
-    if (user.userStatus !== 'Pending') {
+    // 'New' too: a doctor who used forgot-password never passes through 'Pending'.
+    if (user.userStatus !== 'Pending' && user.userStatus !== 'New') {
       return {
         updated: false,
         userStatus: user.userStatus,
@@ -3287,9 +3402,11 @@ export class UserService {
       .returning();
 
     // Invalidate clinic cache
-    await redisClient.del(`clinic_details:${clinic.id}`);
+    await redisClient.del(CacheKeys.clinicDetails(clinic.id));
     await redisClient.del(`user:${userId}`);
     await DashboardService.invalidateDoctorDashboardProfile(clinic.id);
+    // `data` can carry clinic fields the cached doctor profile shows.
+    await invalidateCacheMany(CacheKeys.doctorPublicProfileAll(userId));
 
     return {
       onboardingStatus: updatedClinic.onboardingStatus,
@@ -3346,9 +3463,11 @@ export class UserService {
       .where(eq(UserModel.id, userId));
 
     // Invalidate caches
-    await redisClient.del(`clinic_details:${clinic.id}`);
+    await redisClient.del(CacheKeys.clinicDetails(clinic.id));
     await redisClient.del(`user:${userId}`);
     await redisClient.del(`user_clinic:${userId}`);
+    // Status is now Pending, which hides the doctor and clinic from the profile.
+    await invalidateCacheMany(CacheKeys.doctorPublicProfileAll(userId));
 
     // TODO: Notify admins about new approval request
     logger.info(`Clinic ${clinic.id} submitted for approval by user ${userId}`);
@@ -3493,53 +3612,48 @@ export class UserService {
     return updatedUser;
   }
 
-  static async clinicService(payload: {
+  /** A doctor's services for one patient on an IST day: "Expiring on" while a paid visit covers it,
+   *  plus the patient's visits with this doctor in the next 30 days (one visit per day). */
+  static async serviceOptionsForPatient(payload: {
     patientId: string;
     doctorId: string;
-    date?: string; // Format: YYYY-MM-DD (default: today)
+    /** YYYY-MM-DD (IST). */
+    date?: string;
   }) {
-    return await database.transaction(async (tx) => {
-      const today = payload.date ? new Date(payload.date) : new Date();
-      today.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(today);
-      endOfDay.setHours(23, 59, 59, 999);
+    // appointment_date is stored as the IST day at UTC midnight, so plain UTC dates compare exactly.
+    const day = new Date(payload.date ?? getISTDateString());
+    const windowEnd = new Date(day);
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + 30);
 
-      // 1. Fetch all active services for the doctor
-      const services = await tx
-        .select({
-          id: ClinicServiceModel.id,
-          serviceName: ClinicServiceModel.serviceName,
-          price: ClinicServiceModel.price,
-          durationDays: ClinicServiceModel.durationDays,
-          canBeBookedByPatient: ClinicServiceModel.canBeBookedByPatient,
-          isDeleted: ClinicServiceModel.isDeleted,
-          createdAt: ClinicServiceModel.createdAt,
-          updatedAt: ClinicServiceModel.updatedAt,
-        })
-        .from(ClinicServiceModel)
-        .where(
-          and(
-            eq(ClinicServiceModel.doctorId, payload.doctorId),
-            eq(ClinicServiceModel.isDeleted, false)
-          )
+    const services = await database
+      .select({
+        id: ClinicServiceModel.id,
+        serviceName: ClinicServiceModel.serviceName,
+        price: ClinicServiceModel.price,
+        durationDays: ClinicServiceModel.durationDays,
+        canBeBookedByPatient: ClinicServiceModel.canBeBookedByPatient,
+      })
+      .from(ClinicServiceModel)
+      .where(
+        and(
+          eq(ClinicServiceModel.doctorId, payload.doctorId),
+          eq(ClinicServiceModel.isDeleted, false)
         )
-        .orderBy(asc(ClinicServiceModel.serviceName));
+      )
+      .orderBy(asc(ClinicServiceModel.serviceName));
+    if (!services.length) return [];
 
-      if (!services.length) {
-        return [];
-      }
-
-      // 2. Fetch the last PAID appointment for each service
-      const serviceIds = services.map((s) => s.id);
-
-      const lastPaidAppointments = await tx
+    const samePatientAndDoctor = and(
+      eq(AppointmentModel.patientId, payload.patientId),
+      eq(AppointmentModel.doctorId, payload.doctorId)
+    );
+    // Independent reads, so they run together.
+    const [lastPaid, sameDayVisits] = await Promise.all([
+      // One row per service: its latest paid visit on or before the day (a later visit can't cover it).
+      database
         .select({
-          clinicServiceId: AppointmentModel.clinicServiceId,
-          lastAppointmentDate:
-            sql<Date>`MAX(${AppointmentModel.appointmentDate})`.as(
-              'last_appointment_date'
-            ),
-          paymentMode: AppointmentPaymentModel.paymentMode,
+          serviceId: AppointmentModel.clinicServiceId,
+          last: sql<string>`MAX(${AppointmentModel.appointmentDate})`,
         })
         .from(AppointmentModel)
         .innerJoin(
@@ -3548,107 +3662,64 @@ export class UserService {
         )
         .where(
           and(
-            eq(AppointmentModel.patientId, payload.patientId),
-            eq(AppointmentModel.doctorId, payload.doctorId),
-            inArray(AppointmentModel.clinicServiceId, serviceIds),
-            inArray(AppointmentModel.appointmentStatus, [
-              'Completed',
-              'Confirmed',
-              'Pending',
-            ]),
-            isNotNull(AppointmentPaymentModel.paymentMode),
-            sql`${AppointmentPaymentModel.paymentStatus} IS DISTINCT FROM 'Refunded'`
+            samePatientAndDoctor,
+            inArray(
+              AppointmentModel.clinicServiceId,
+              services.map((s) => s.id)
+            ),
+            lte(AppointmentModel.appointmentDate, day),
+            coveringVisit()
           )
         )
-        .groupBy(
-          AppointmentModel.clinicServiceId,
-          AppointmentPaymentModel.paymentMode
-        );
-
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() + 30);
-      endDate.setHours(23, 59, 59, 999);
-
-      // ✅ Check if patient has today's appointment
-      const todayAppointments = await tx
+        .groupBy(AppointmentModel.clinicServiceId),
+      // Any visit that still stands blocks a second one that day (Upcoming / Patient Arrived included).
+      database
         .select({
           id: AppointmentModel.id,
           appointmentDate: AppointmentModel.appointmentDate,
+          tokenNo: AppointmentModel.tokenNo,
+          appointmentType: AppointmentModel.appointmentType,
         })
         .from(AppointmentModel)
         .where(
           and(
-            eq(AppointmentModel.patientId, payload.patientId),
-            eq(AppointmentModel.doctorId, payload.doctorId),
-            gte(AppointmentModel.appointmentDate, today),
-            lte(AppointmentModel.appointmentDate, endDate),
-            inArray(AppointmentModel.appointmentStatus, [
-              'Completed',
-              'Confirmed',
-              'Pending',
+            samePatientAndDoctor,
+            gte(AppointmentModel.appointmentDate, day),
+            lte(AppointmentModel.appointmentDate, windowEnd),
+            notInArray(AppointmentModel.appointmentStatus, [
+              'Cancelled',
+              'Missed',
+              'NoShow',
+              'Rescheduled',
             ])
           )
-        );
-      const hasAppointmentToday = todayAppointments.map(
-        (appt) => appt.appointmentDate
-      );
+        ),
+    ]);
 
-      // Create a map for quick lookup
-      const lastAppointmentMap: Record<string, Date> = {};
-      lastPaidAppointments.forEach((apt) => {
-        if (apt.clinicServiceId && apt.paymentMode) {
-          lastAppointmentMap[apt.clinicServiceId] = apt.lastAppointmentDate;
-        }
-      });
-      // 3. Calculate "Expiring on" date for each service
-      const servicesWithExpiry = services.map((service) => {
-        const lastPaidAppointmentDate = service.id
-          ? lastAppointmentMap[service.id]
-          : undefined;
-
-        // Prepare base response
-        const baseResponse: any = {
-          id: service.id,
-          serviceName: service.serviceName,
-          price: service.price,
-          canBeBookedByPatient: service.canBeBookedByPatient,
-          // duration: service.durationDays || 0,
+    const lastPaidOn = new Map(
+      lastPaid.map((r) => [r.serviceId, new Date(r.last)])
+    );
+    return {
+      hasAppointmentToday: sameDayVisits.map((v) => v.appointmentDate),
+      // The same visits with id and token, so the booking screen can link to the existing one.
+      sameDayVisits,
+      services: services.map((s) => {
+        const base = {
+          id: s.id,
+          serviceName: s.serviceName,
+          price: s.price,
+          canBeBookedByPatient: s.canBeBookedByPatient,
         };
-
-        // If no PAID appointment exists
-        if (!lastPaidAppointmentDate) {
-          // Don't add "Expiring on" field
-          return baseResponse;
-        }
-
-        // Calculate expiry date from last PAID appointment
-        const lastDate = new Date(lastPaidAppointmentDate);
-        const serviceDuration = service.durationDays || 0;
-
-        // Add service duration days to last paid appointment date
-        const expiryDate = new Date(lastDate);
-        expiryDate.setDate(lastDate.getDate() + serviceDuration);
-
-        // Check if service has expired (expiry date is in the past)
-        if (expiryDate < today) {
-          // Service has expired - don't show expiry date
-          return baseResponse;
-        }
-
-        // Format expiry date
-        const formattedExpiry = expiryDate.toISOString().split('T')[0];
-
-        return {
-          ...baseResponse,
-          'Expiring on': formattedExpiry,
-        };
-      });
-
-      return {
-        hasAppointmentToday,
-        services: servicesWithExpiry,
-      };
-    });
+        const paidOn = lastPaidOn.get(s.id);
+        if (!paidOn) return base;
+        // Validity: the paid visit's day plus the service's days; shown only while it lasts.
+        const expiry = new Date(paidOn);
+        expiry.setUTCDate(expiry.getUTCDate() + (s.durationDays || 0));
+        return expiry < day
+          ? base
+          : { ...base, 'Expiring on': expiry.toISOString().slice(0, 10) };
+      }),
+    };
   }
 
   static async getAllUser(clinicId: string, query: getAllPetientsDto) {
@@ -3710,7 +3781,7 @@ export class UserService {
         }
       }
       if (query?.userStatus) {
-        conditions.push(eq(UserModel.userStatus, query.userStatus));
+        conditions.push(inArray(UserModel.userStatus, query.userStatus));
       }
 
       // if (query?.userType) {
@@ -4002,151 +4073,6 @@ export class UserService {
     }
   }
 
-  static async referrals(query: GetAllReferralsDto) {
-    return await database.transaction(async (tx) => {
-      const pageSize = Math.max(Number(query.pageSize) || 10, 1);
-      const pageNumber = Math.max(Number(query.pageNumber) || 1, 1);
-      const { limit, offset } = pagination(pageNumber, pageSize);
-      const conditions: SQL[] = [];
-
-      // Search conditions
-      if (query.searchBy) {
-        const searchTerm = `%${query.searchBy.toLowerCase()}%`;
-        conditions.push(sql`
-          (LOWER(${ReferralModel.referralCode}) LIKE ${searchTerm} OR
-          LOWER(${ReferralModel.comments}) LIKE ${searchTerm} OR
-          LOWER(referred_by_user.name) LIKE ${searchTerm} OR
-          LOWER(referred_to_user.name) LIKE ${searchTerm} OR
-          LOWER(referred_by_user.email) LIKE ${searchTerm} OR
-          LOWER(referred_to_user.email) LIKE ${searchTerm} OR
-          LOWER(referred_by_user.mobile) LIKE ${searchTerm} OR
-          LOWER(referred_to_user.mobile) LIKE ${searchTerm})
-        `);
-      }
-
-      // Filters
-      if (query.status) conditions.push(eq(ReferralModel.status, query.status));
-      if (query.referredByName)
-        conditions.push(
-          sql`LOWER(referred_by_user.name) LIKE ${`%${query.referredByName.toLowerCase()}%`}`
-        );
-      if (query.referredToName)
-        conditions.push(
-          sql`LOWER(referred_to_user.name) LIKE ${`%${query.referredToName.toLowerCase()}%`}`
-        );
-
-      // Date range
-      if (query.fromDate && query.toDate) {
-        conditions.push(
-          between(
-            ReferralModel.createdAt,
-            new Date(query.fromDate),
-            new Date(query.toDate)
-          )
-        );
-      } else if (query.fromDate) {
-        // gte/lte, not a raw sql`` template: the column helpers run the Date
-        // through the timestamp column's driver mapper. Interpolating a Date
-        // into sql`` skips it and postgres-js rejects the param with
-        // ERR_INVALID_ARG_TYPE.
-        conditions.push(gte(ReferralModel.createdAt, new Date(query.fromDate)));
-      } else if (query.toDate) {
-        conditions.push(lte(ReferralModel.createdAt, new Date(query.toDate)));
-      }
-
-      const whereClause =
-        conditions.length > 0 ? and(...conditions) : undefined;
-
-      // Get total count
-      const [totalResult] = await tx.execute(sql`
-        SELECT COUNT(*) as count
-        FROM referrals
-        LEFT JOIN users AS referred_by_user ON referrals.referred_by = referred_by_user.id
-        LEFT JOIN users AS referred_to_user ON referrals.referred_to = referred_to_user.id
-        ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-      `);
-
-      const totalCount = Number((totalResult as any)?.count) || 0;
-      const totalPages = Math.ceil(totalCount / pageSize);
-
-      // Get paginated results with flat structure
-      const referralsResult = await tx.execute(sql`
-        SELECT 
-          referrals.id,
-          referrals.referral_code,
-          referrals.status,
-          referrals.comments,
-          referrals.created_at,
-          referrals.updated_at,
-          referred_by_user.id as referred_by_id,
-          referred_by_user.name as referred_by_name,
-          referred_by_user.email as referred_by_email,
-          referred_by_user.mobile as referred_by_mobile,
-          referred_by_user.user_type as referred_by_user_type,
-          referred_to_user.id as referred_to_id,
-          referred_to_user.name as referred_to_name,
-          referred_to_user.email as referred_to_email,
-          referred_to_user.mobile as referred_to_mobile,
-          referred_to_user.user_type as referred_to_user_type
-        FROM referrals
-        LEFT JOIN users AS referred_by_user ON referrals.referred_by = referred_by_user.id
-        LEFT JOIN users AS referred_to_user ON referrals.referred_to = referred_to_user.id
-        ${whereClause ? sql`WHERE ${whereClause}` : sql``}
-        ORDER BY referrals.created_at DESC
-        LIMIT ${limit} OFFSET ${offset}
-      `);
-
-      // Transform to nested structure
-      const referrals = (referralsResult as any[]).map((row: any) => ({
-        id: row.id,
-        referralCode: row.referral_code,
-        status: row.status,
-        comments: row.comments,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        referredBy: row.referred_by_id
-          ? {
-              id: row.referred_by_id,
-              name: row.referred_by_name,
-              email: row.referred_by_email,
-              mobile: row.referred_by_mobile,
-              userType: row.referred_by_user_type,
-            }
-          : null,
-        referredTo: row.referred_to_id
-          ? {
-              id: row.referred_to_id,
-              name: row.referred_to_name,
-              email: row.referred_to_email,
-              mobile: row.referred_to_mobile,
-              userType: row.referred_to_user_type,
-            }
-          : null,
-      }));
-
-      // Get stats
-      const [stats] = await tx
-        .select({
-          totalReferrals: sql<number>`COUNT(*)::int`,
-          pendingReferrals: sql<number>`SUM(CASE WHEN ${ReferralModel.status} = 'pending' THEN 1 ELSE 0 END)::int`,
-          approvedReferrals: sql<number>`SUM(CASE WHEN ${ReferralModel.status} = 'approved' THEN 1 ELSE 0 END)::int`,
-          rejectedReferrals: sql<number>`SUM(CASE WHEN ${ReferralModel.status} = 'rejected' THEN 1 ELSE 0 END)::int`,
-        })
-        .from(ReferralModel);
-
-      return {
-        referrals,
-        stats,
-        pagination: {
-          totalRecords: totalCount,
-          totalPages,
-          currentPage: pageNumber,
-          pageSize,
-        },
-      };
-    });
-  }
-
   static async searchPatient(clinicId: string, query: SearchPatientDto) {
     const { search, pageSize: ps, pageNumber: pn } = query;
     const pageSize = Math.max(Number(ps) || 30, 1);
@@ -4190,7 +4116,8 @@ export class UserService {
       .orderBy(desc(UserModel.createdAt));
 
     const familyMembersMap = await this.getFamilyMembersMap(
-      results.map((r) => r.id)
+      results.map((r) => r.id),
+      clinicId
     );
 
     const data = results.map((patient) => ({
@@ -4224,7 +4151,7 @@ export class UserService {
    * Returns { exists: true, patient } if found, { exists: false } otherwise.
    * Used by the receptionist before creating a family link.
    */
-  static async checkPatientByMobile(mobile: string) {
+  static async checkPatientByMobile(mobile: string, clinicId?: string) {
     const [patient] = await database
       .select({
         id: UserModel.id,
@@ -4234,6 +4161,7 @@ export class UserService {
         age: UserProfileModel.age,
         city: UserProfileModel.city,
         state: UserProfileModel.state,
+        ...this.clinicStatusFields(clinicId),
       })
       .from(UserModel)
       .leftJoin(UserProfileModel, eq(UserProfileModel.userId, UserModel.id))
@@ -4246,15 +4174,38 @@ export class UserService {
       return { exists: false };
     }
 
-    const familyMap = await this.getFamilyMembersMap([patient.id]);
+    // The whole family, each marked for the caller's clinic.
+    const familyMap = await this.getFamilyMembersMap(
+      [patient.id],
+      undefined,
+      clinicId
+    );
     return {
       exists: true,
       patient: { ...patient, familyMembers: familyMap[patient.id] || [] },
     };
   }
 
-  /** Family of each patient both ways: linked members, plus their primary as 'primary'. */
-  private static async getFamilyMembersMap(patientIds: string[]) {
+  /** Per-row `registeredHere` for a clinic: an index-backed EXISTS inside the
+   *  existing query, so no extra round trip. Null without a clinic. */
+  private static clinicStatusFields(clinicId?: string) {
+    if (!clinicId) return { registeredHere: sql<boolean | null>`NULL` };
+    return {
+      registeredHere: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${ClinicAssignModel}
+        WHERE ${ClinicAssignModel.userId} = ${UserModel.id}
+          AND ${ClinicAssignModel.clinicId} = ${clinicId}
+      )`,
+    };
+  }
+
+  /** Family of each patient both ways: linked members, plus their primary as 'primary'.
+   * With clinicId, only family registered at that clinic is listed; markClinicId adds registeredHere. */
+  private static async getFamilyMembersMap(
+    patientIds: string[],
+    clinicId?: string,
+    markClinicId?: string
+  ) {
     const familyMembersMap: Record<
       string,
       Array<{
@@ -4263,10 +4214,25 @@ export class UserService {
         relationship: string;
         gender: string | null;
         age: number | null;
+        registeredHere?: boolean | null;
       }>
     > = {};
+    const status = this.clinicStatusFields(markClinicId);
+    // Only callers that asked for clinic status get the extra key.
+    const statusOf = (row: { registeredHere: boolean | null }) =>
+      markClinicId ? { registeredHere: row.registeredHere } : {};
 
     if (patientIds.length > 0) {
+      // The header shows members as their own openable rows, so another
+      // clinic's patients must not appear.
+      const inThisClinic = clinicId
+        ? sql`EXISTS (
+            SELECT 1 FROM ${ClinicAssignModel}
+            WHERE ${ClinicAssignModel.userId} = ${UserModel.id}
+              AND ${ClinicAssignModel.clinicId} = ${clinicId}
+          )`
+        : undefined;
+
       // Family members where matched patient is the PRIMARY
       const asPrimary = await database
         .select({
@@ -4276,6 +4242,7 @@ export class UserService {
           relationship: PatientFamilyLinksModel.relationship,
           gender: UserProfileModel.gender,
           age: UserProfileModel.age,
+          ...status,
         })
         .from(PatientFamilyLinksModel)
         .innerJoin(
@@ -4283,7 +4250,12 @@ export class UserService {
           eq(UserModel.id, PatientFamilyLinksModel.linkedPatientId)
         )
         .leftJoin(UserProfileModel, eq(UserProfileModel.userId, UserModel.id))
-        .where(inArray(PatientFamilyLinksModel.primaryPatientId, patientIds));
+        .where(
+          and(
+            inArray(PatientFamilyLinksModel.primaryPatientId, patientIds),
+            inThisClinic
+          )
+        );
 
       // Family info where matched patient is the LINKED member (show their primary)
       const asLinked = await database
@@ -4294,6 +4266,7 @@ export class UserService {
           relationship: PatientFamilyLinksModel.relationship,
           gender: UserProfileModel.gender,
           age: UserProfileModel.age,
+          ...status,
         })
         .from(PatientFamilyLinksModel)
         .innerJoin(
@@ -4301,7 +4274,12 @@ export class UserService {
           eq(UserModel.id, PatientFamilyLinksModel.primaryPatientId)
         )
         .leftJoin(UserProfileModel, eq(UserProfileModel.userId, UserModel.id))
-        .where(inArray(PatientFamilyLinksModel.linkedPatientId, patientIds));
+        .where(
+          and(
+            inArray(PatientFamilyLinksModel.linkedPatientId, patientIds),
+            inThisClinic
+          )
+        );
 
       for (const row of asPrimary) {
         const key = row.primaryPatientId;
@@ -4312,6 +4290,7 @@ export class UserService {
           relationship: row.relationship,
           gender: row.gender,
           age: row.age,
+          ...statusOf(row),
         });
       }
 
@@ -4324,6 +4303,7 @@ export class UserService {
           relationship: 'primary',
           gender: row.gender,
           age: row.age,
+          ...statusOf(row),
         });
       }
     }

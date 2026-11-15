@@ -24,7 +24,9 @@ export const AppointmentPaymentModel = pgTable(
       .notNull()
       .unique(),
     paymentMode: varchar('payment_mode'),
-    paymentStatus: varchar('payment_status').default('Paid'),
+    // 'Pending', not 'Paid': a row written without a status must never count as money received
+    // (money sync step 7). Booking always sets the status itself.
+    paymentStatus: varchar('payment_status').default('Pending'),
     price: decimal('price', { precision: 12, scale: 2 }),
     primaryServicePrice: decimal('primary_service_price', {
       precision: 12,
@@ -54,9 +56,6 @@ export const AppointmentPaymentModel = pgTable(
     // Immutable Financial Snapshots column
     financialSnapshot: jsonb('financial_snapshot'), // Locks versioned configuration state used during booking
 
-    refundMode: varchar('refund_mode'),
-    refundedAmount: varchar('refunded_amount'),
-    refundNotes: varchar('refund_notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow(),
   },

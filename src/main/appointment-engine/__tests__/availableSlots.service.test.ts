@@ -18,8 +18,8 @@ jest.mock('../../../configurations/dbConnection', () => ({
   },
 }));
 
-jest.mock('../../appointments/services/appointment.service', () => ({
-  AppointmentService: {
+jest.mock('../../appointments/services/appointmentSlots.service', () => ({
+  AppointmentSlotsService: {
     getAvailableSlotsForDate: jest.fn(),
     minutesToIso: (date: string, minutes: number) =>
       `${date}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(
@@ -46,7 +46,7 @@ jest.mock('../services/missedSlotDismissal.service', () => ({
 }));
 
 import { AvailableSlotsService } from '../services/availableSlots.service';
-import { AppointmentService } from '../../appointments/services/appointment.service';
+import { AppointmentSlotsService } from '../../appointments/services/appointmentSlots.service';
 import { ScheduleShiftService } from '../services/scheduleShift.service';
 import { SlotConfigService } from '../services/slotConfig.service';
 import { MissedSlotDismissalService } from '../services/missedSlotDismissal.service';
@@ -111,7 +111,7 @@ beforeEach(() => {
 describe('with no overrides in play', () => {
   it("passes the generator's slots straight through", async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [availableSlot('09:00', '09:30'), availableSlot('09:30', '10:00')],
       shifts: ['09:00-14:00'],
@@ -131,7 +131,7 @@ describe('with no overrides in play', () => {
 
   it('returns slots in chronological order', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [availableSlot('11:00', '11:30'), availableSlot('09:00', '09:30')],
     });
@@ -160,7 +160,7 @@ describe('extra slots after a session ends', () => {
 
   it('appends them after the session end, not inside it', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [availableSlot('09:00', '09:30')],
     });
@@ -179,7 +179,7 @@ describe('extra slots after a session ends', () => {
 
   it('honours stepMinutes as a gap between extra cells', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [],
     });
@@ -197,7 +197,7 @@ describe('extra slots after a session ends', () => {
 
   it('shows an extra cell as booked when an appointment already sits in it', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [],
     });
@@ -228,7 +228,7 @@ describe('extra slots after a session ends', () => {
 
   it('adds nothing when the override has no slots', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [availableSlot('09:00', '09:30')],
     });
@@ -247,7 +247,7 @@ describe('extra slots after a session ends', () => {
 describe('off-grid appointments', () => {
   beforeEach(() => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [availableSlot('09:00', '09:30')],
     });
@@ -279,7 +279,7 @@ describe('off-grid appointments', () => {
 
   it('does not duplicate a booking the grid already shows', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [bookedSlot('09:00', '09:30', 'appt-1')],
     });
@@ -327,7 +327,7 @@ describe('off-grid appointments', () => {
 describe('dismissed missed slots', () => {
   it('drops an available slot that was dismissed', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [availableSlot('09:00', '09:30'), availableSlot('09:30', '10:00')],
     });
@@ -346,7 +346,7 @@ describe('dismissed missed slots', () => {
 
   it('never drops a booked slot, only an offerable one', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [bookedSlot('09:00', '09:30', 'appt-1')],
     });
@@ -389,7 +389,7 @@ describe('a slot_config override on a session', () => {
 
   it('rebuilds the session grid at the overridden slot length', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [availableSlot('09:00', '09:30'), availableSlot('09:30', '10:00')],
     });
@@ -413,7 +413,7 @@ describe('a slot_config override on a session', () => {
 
   it('keeps a real booking inside the rebuilt window', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [
         bookedSlot('09:00', '09:30', 'appt-1'),
@@ -450,7 +450,7 @@ describe('a slot_config override on a session', () => {
 
   it('resizes token capacity while keeping booked tokens', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [
         {
@@ -488,7 +488,7 @@ describe('a slot_config override on a session', () => {
 
   it('keeps a token booked above capacity without spending a number on it', async () => {
     (
-      AppointmentService.getAvailableSlotsForDate as jest.Mock
+      AppointmentSlotsService.getAvailableSlotsForDate as jest.Mock
     ).mockResolvedValue({
       slots: [
         {

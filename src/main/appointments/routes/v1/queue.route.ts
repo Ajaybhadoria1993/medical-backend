@@ -1,10 +1,11 @@
 import { Router } from 'express';
 
 import {
+  CLINIC_STAFF_ROLES,
+  enforceClinicAutoLogout,
   requireAuth,
   requireClinic,
   requireRole,
-  enforceClinicAutoLogout,
 } from '../../../../middlewear/auth.middleware';
 import {
   validateBody,
@@ -39,7 +40,7 @@ import { requireAppointmentScope } from '../../../permissions/middlewares/staffS
  *
  * The module adds no appointment status: "with the doctor" is the existing
  * `Confirmed` status, and "on hold" is a Redis flag on a patient who stays
- * `Patient Arrived`. See docs/QUEUE_SYNCHRONIZATION.md.
+ * `Patient Arrived`. See docs/appointments/QUEUE_SYNCHRONIZATION.md.
  */
 const queueRouter = Router();
 
@@ -52,6 +53,7 @@ const queueRouter = Router();
 queueRouter.get(
   '/board',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validateQuery(queueBoardQuerySchema),
   getQueueBoardController

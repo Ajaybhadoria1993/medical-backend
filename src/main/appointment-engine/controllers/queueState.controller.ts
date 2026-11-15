@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { asyncHandler } from '../../../middlewear/errorHandler';
+import { asyncHandler, HttpError } from '../../../middlewear/errorHandler';
 import { sendOk } from '../../../utils/response.utils';
 import { DelayTrackerService } from '../services/delayTracker.service';
 import { TimeToNextService } from '../services/timeToNext.service';
@@ -7,7 +7,7 @@ import { getISTDateString } from '../../../utils/istDateTime';
 import { IN_CONSULTATION } from '../types/engine.types';
 
 /**
- * GET /api/v1/appointments/queue-state?clinicId=X&doctorId=Y&date=YYYY-MM-DD
+ * GET /api/v1/appointments/queue-state?doctorId=Y&date=YYYY-MM-DD (clinic comes from the caller)
  *
  * Returns the current queue state from Redis cache for instant page load.
  * If no cache exists, computes fresh data on the fly.
@@ -17,17 +17,18 @@ import { IN_CONSULTATION } from '../types/engine.types';
  */
 export const getQueueStateController = asyncHandler(
   async (req: Request, res: Response) => {
-    const { clinicId, doctorId, date } = req.query as {
-      clinicId: string;
+    // The caller's own clinic, never the query's: a query clinicId let any user read another clinic's queue.
+    const clinicId = req.clinicId;
+    const { doctorId, date } = req.query as {
       doctorId: string;
       date?: string;
     };
 
-    if (!clinicId || !doctorId) {
-      return res.status(400).json({
-        success: false,
-        message: 'clinicId and doctorId are required query parameters',
-      });
+    if (!clinicId) {
+      throw new HttpError(400, 'Clinic context is required');
+    }
+    if (!doctorId) {
+      throw new HttpError(400, 'doctorId is a required query parameter');
     }
 
     // Default to today if date not provided

@@ -1,5 +1,6 @@
 // src/main/doctor/routes/v1/doctor.route.ts
 import express from 'express';
+import { HttpError } from '../../../../middlewear/errorHandler';
 import {
   checkPlainController,
   createPlainController,
@@ -40,9 +41,20 @@ import {
   listUpdateRequestsController,
   approveDoctorUpdateController,
   myUpdateRequestsController,
+  getSpecialtyCatalogController,
+  getSpecialtyToolsController,
+  getQualificationCatalogController,
+  searchCollegesController,
+  searchSuggestionsController,
 } from '../../controllers/doctor.controller';
-import { replyDoctorReviewController } from '../../controllers/doctorReview.controller';
 import {
+  getMyDoctorReviewsController,
+  getMyReviewForAppointmentController,
+  replyDoctorReviewController,
+} from '../../controllers/doctorReview.controller';
+import {
+  doctorMyReviewsQuerySchema,
+  doctorReviewAppointmentParamsSchema,
   doctorReviewParamsSchema,
   doctorReplySchema,
 } from '../../schemas/doctorReview.schemas';
@@ -73,10 +85,12 @@ import {
   listUpdateRequestsSchema,
   approveDoctorUpdateSchema,
   doctorProfileImageSchema,
+  searchCollegesQuerySchema,
+  searchSuggestionsQuerySchema,
 } from '../../schemas/doctor.schemas';
 import {
+  CLINIC_STAFF_ROLES,
   enforceClinicAutoLogout,
-  requireAdmin,
   requireAuth,
   requireClinic,
   requireDoctor,
@@ -88,35 +102,76 @@ import {
   uploadProfilePicture,
   uploadDoctorManualTemplate,
 } from '../../../../middlewear/upload.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 
 const doctorRouter = express.Router();
+
+// Multipart sends every field as text; each JSON field of the doctor update must be listed here.
+const MULTIPART_JSON_FIELDS = [
+  'qualifications',
+  'experiences',
+  'doctorProfile',
+  'clinicService',
+  'aivblity',
+  'dateAvailability',
+];
 
 export const parseMultipartDoctorData = (
   req: express.Request,
   _res: express.Response,
   next: express.NextFunction
 ) => {
-  if (req.body.qualifications && typeof req.body.qualifications === 'string') {
-    req.body.qualifications = JSON.parse(req.body.qualifications);
-  }
-  if (req.body.doctorProfile && typeof req.body.doctorProfile === 'string') {
-    req.body.doctorProfile = JSON.parse(req.body.doctorProfile);
-  }
-  if (req.body.clinicService && typeof req.body.clinicService === 'string') {
-    req.body.clinicService = JSON.parse(req.body.clinicService);
-  }
-  if (req.body.aivblity && typeof req.body.aivblity === 'string') {
-    req.body.aivblity = JSON.parse(req.body.aivblity);
-  }
-  if (
-    req.body.dateAvailability &&
-    typeof req.body.dateAvailability === 'string'
-  ) {
-    req.body.dateAvailability = JSON.parse(req.body.dateAvailability);
+  for (const field of MULTIPART_JSON_FIELDS) {
+    const value = req.body?.[field];
+    if (!value || typeof value !== 'string') continue;
+    try {
+      req.body[field] = JSON.parse(value);
+    } catch {
+      throw new HttpError(400, `${field} must be valid JSON.`);
+    }
   }
   next();
 };
+
+/** @route GET /api/v1/doctor/specialties — speciality catalog for every picker
+ *  @access any authenticated user (static reference data) */
+doctorRouter.get('/specialties', requireAuth, getSpecialtyCatalogController);
+
+/** @route GET /api/v1/doctor/specialty-tools — every specialty's charts and exam tables
+ *  @access Doctor, Admin (static reference data for Prescription Layout) */
+doctorRouter.get(
+  '/specialty-tools',
+  requireAuth,
+  requireRole(['Doctor', 'Admin']),
+  getSpecialtyToolsController
+);
+
+/** @route GET /api/v1/doctor/qualifications — qualification catalog for every picker
+ *  @access any authenticated user (static reference data) */
+doctorRouter.get(
+  '/qualifications',
+  requireAuth,
+  getQualificationCatalogController
+);
+
+/** @route GET /api/v1/doctor/colleges?q=&stream= — type-ahead over official college names
+ *  @access any authenticated user (static reference data) */
+doctorRouter.get(
+  '/colleges',
+  requireAuth,
+  validate(searchCollegesQuerySchema, 'query'),
+  searchCollegesController
+);
+
+/** @route GET /api/v1/doctor/suggestion-catalog?section=&q=&specialty= — prescription chips, optionally one specialty's
+ *  @access Doctor, Admin (static reference data for the prescription) */
+doctorRouter.get(
+  '/suggestion-catalog',
+  requireAuth,
+  requireRole(['Doctor', 'Admin']),
+  validate(searchSuggestionsQuerySchema, 'query'),
+  searchSuggestionsController
+);
 
 /**
  * @route PUT /api/v1/doctor/
@@ -126,7 +181,7 @@ export const parseMultipartDoctorData = (
 doctorRouter.put(
   '/',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   uploadProfilePicture.single('profileImage'),
   parseMultipartDoctorData,
@@ -137,6 +192,7 @@ doctorRouter.put(
 doctorRouter.get(
   '/my-profile-update-requests',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   validate(listUpdateRequestsSchema, 'query'),
   myUpdateRequestsController
 );
@@ -144,6 +200,7 @@ doctorRouter.get(
 doctorRouter.put(
   '/update-profile-image',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   uploadProfilePicture.single('profileImage'),
   updateProfileImageController
@@ -152,7 +209,15 @@ doctorRouter.put(
 doctorRouter.post(
   '/profile-update-request',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
+  // Super Admin approval retired: profiles save directly via PUT /doctor.
+  () => {
+    throw new HttpError(
+      410,
+      'Profile update requests are no longer accepted. Edit your profile directly.'
+    );
+  },
   validate(updateDoctorProfileScheamas, 'body'),
   requestDoctorUpdateController
 );
@@ -181,7 +246,7 @@ doctorRouter.put(
 doctorRouter.delete(
   '/delete-service/:serviceId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(deleteServiceSchemas, 'params'),
   deleteServiceController
@@ -195,7 +260,7 @@ doctorRouter.delete(
 doctorRouter.put(
   '/update-service/:serviceId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(serviceIdParamSchema, 'params'),
   validate(updateServiceByIdSchema, 'body'),
@@ -210,7 +275,7 @@ doctorRouter.put(
 doctorRouter.patch(
   '/toggle-service/:serviceId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(serviceIdParamSchema, 'params'),
   validate(toggleServiceStatusSchema, 'body'),
@@ -225,7 +290,7 @@ doctorRouter.patch(
 doctorRouter.get(
   '/user',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   getCurrentDoctorController
@@ -239,7 +304,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/single/:doctorId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   getDoctorByIdController
@@ -253,7 +318,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/single/:doctorId/services',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   getDoctorServicesController
@@ -267,7 +332,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/single/:doctorId/activity',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   getDoctorActivityController
@@ -281,7 +346,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/single/:doctorId/availability',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   getDoctorAvailabilityController
@@ -295,7 +360,7 @@ doctorRouter.get(
 doctorRouter.post(
   '/create/plains',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(createClinicAppointmentPlainSchema, 'body'),
   createPlainController
@@ -309,7 +374,7 @@ doctorRouter.post(
 doctorRouter.put(
   '/update/plains/:plainId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(updateClinicAppointmentPlainSchema, 'body'),
   validate(plainIdSchemas, 'params'),
@@ -324,7 +389,7 @@ doctorRouter.put(
 doctorRouter.get(
   '/get-plains/:plainId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(plainIdSchemas, 'params'),
   getByIdPlainController
@@ -333,7 +398,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/get-all-plains',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getQueryParamsSchema, 'query'),
   getAllPlainController
@@ -342,6 +407,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/subscriptions',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getSubscriptionsSchema, 'query'),
   getSubscriptionsController
@@ -350,6 +416,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/subscriptions-list',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getSubscriptionsListController
 );
@@ -357,7 +424,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/get-all-doctors-plains/:doctorId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   getAllDoctosPlainController
@@ -374,7 +441,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/frequent-medicines',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getFrequentMedicinesSchema, 'query'),
   getFrequentMedicinesController
@@ -383,6 +450,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/top-used-medicines',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   // requireDoctor,
   validate(topMedicinesQuerySchema, 'query'),
@@ -392,6 +460,7 @@ doctorRouter.get(
 doctorRouter.patch(
   '/favorite-medicine/:medicineId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(toggleFavoriteSchema, 'params'),
   medicineFavoriteController
@@ -405,6 +474,7 @@ doctorRouter.patch(
 doctorRouter.get(
   '/availability-on-date',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorAvailabilityOnDateSchema, 'query'),
   getDoctorAvailabilityOnDateController
@@ -418,6 +488,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/availability-range',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorAvailabilityRangeSchema, 'query'),
   getDoctorAvailabilityInRangeController
@@ -426,6 +497,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/doctor-preferences/:doctorId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   // requireDoctor,
   validate(getDoctorDoctorIdScheamas, 'params'),
@@ -447,6 +519,7 @@ doctorRouter.post(
 doctorRouter.get(
   '/get-doctor-prescription-template/:doctorId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   getDoctorPrescriptionTemplateController
@@ -455,6 +528,7 @@ doctorRouter.get(
 doctorRouter.post(
   '/update-doctor-prescription-template/:doctorId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   validate(upsertDoctorPrescriptionTemplate, 'body'),
@@ -464,6 +538,7 @@ doctorRouter.post(
 doctorRouter.delete(
   '/delete-doctor-prescription-template/:doctorId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorDoctorIdScheamas, 'params'),
   deleteDoctorPrescriptionTemplateController
@@ -472,6 +547,7 @@ doctorRouter.delete(
 doctorRouter.get(
   '/get-doctor-manual-template',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getDoctorManualTemplateController
 );
@@ -481,6 +557,7 @@ doctorRouter.post(
   // Auth first: multer writes to S3 as it runs, so anything before it uploads
   // on behalf of a caller who has not been authenticated yet.
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   uploadDoctorManualTemplate.single('templateImage'),
   validate(upsertDoctorManualTemplateSchema, 'body'),
@@ -490,6 +567,7 @@ doctorRouter.post(
 doctorRouter.delete(
   '/delete-doctor-manual-template',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   deleteDoctorManualTemplateController
 );
@@ -497,6 +575,7 @@ doctorRouter.delete(
 doctorRouter.delete(
   '/delete-leave/:leaveId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getDoctorLeaveScheamas, 'params'),
   deleteDoctorLeaveController
@@ -505,6 +584,7 @@ doctorRouter.delete(
 doctorRouter.post(
   '/doctor-prescription-type',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   updateDoctorPrescriptionTypeController
 );
@@ -512,6 +592,7 @@ doctorRouter.post(
 doctorRouter.get(
   '/doctor-prescription-type',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getDoctorPrescriptionTypeController
 );
@@ -519,8 +600,29 @@ doctorRouter.get(
 doctorRouter.post(
   '/doctor-prescription-print-type',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   updateDoctorPrescriptionPrintTypeController
+);
+
+/** @route GET /api/v1/doctor/reviews — the signed-in doctor's reviews + rating summary
+ *  @access Doctor */
+doctorRouter.get(
+  '/reviews',
+  requireAuth,
+  requireDoctor,
+  validate(doctorMyReviewsQuerySchema, 'query'),
+  getMyDoctorReviewsController
+);
+
+/** @route GET /api/v1/doctor/reviews/appointment/:appointmentId — review left for one appointment
+ *  @access Doctor (own reviews only; `review` is null when none) */
+doctorRouter.get(
+  '/reviews/appointment/:appointmentId',
+  requireAuth,
+  requireDoctor,
+  validate(doctorReviewAppointmentParamsSchema, 'params'),
+  getMyReviewForAppointmentController
 );
 
 /**
@@ -538,6 +640,48 @@ doctorRouter.post(
 );
 
 export default doctorRouter;
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/doctor/specialties',
+  description:
+    'Speciality catalog: each main speciality with its sub-specialties, "also practises" fields and booking symptoms',
+  tags: ['doctor'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/doctor/specialty-tools',
+  description:
+    "Each specialty with its Clinical details tabs (charts and exam tables) as { id, title }, for adding another specialty's tab",
+  tags: ['doctor'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/doctor/qualifications',
+  description:
+    'Qualification catalog: each category (code, label, rank) with its degrees',
+  tags: ['doctor'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/doctor/colleges',
+  description:
+    'Up to 25 official colleges whose name contains q, best match first; stream ranks its colleges higher',
+  query: searchCollegesQuerySchema,
+  tags: ['doctor'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/doctor/suggestion-catalog',
+  description:
+    "Prescription suggestions for one section containing q (2+ letters, up to 25), from every specialty or only `specialty`; with `specialty` and no q, that specialty's whole list A–Z",
+  query: searchSuggestionsQuerySchema,
+  tags: ['doctor'],
+});
 
 docsRegistry.addEndpoint({
   method: 'get',
@@ -691,6 +835,22 @@ docsRegistry.addEndpoint({
   method: 'delete',
   path: '/api/v1/doctor/delete-doctor-manual-template',
   description: 'Delete doctor manual template',
+  tags: ['doctor'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/doctor/reviews',
+  description: "The signed-in doctor's reviews with rating summary",
+  query: doctorMyReviewsQuerySchema,
+  tags: ['doctor'],
+});
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/doctor/reviews/appointment/:appointmentId',
+  description: "Review left for one of the signed-in doctor's appointments",
+  params: doctorReviewAppointmentParamsSchema,
   tags: ['doctor'],
 });
 

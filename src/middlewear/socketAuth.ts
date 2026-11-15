@@ -66,6 +66,16 @@ export async function requireSocketAuth(
       return next(err);
     }
 
+    // Socket events skip HTTP response masking, so a "View as" token gets no live channel.
+    if (payload.sup) {
+      const err = new HttpError(
+        403,
+        'No live updates in a support view'
+      ) as ExtendedError;
+      err.data = { status: 403, message: 'No live updates in a support view' };
+      return next(err);
+    }
+
     // Fetch user from DB (Drizzle example; adapt to your DB client)
     const [userRow] = await database
       .select()

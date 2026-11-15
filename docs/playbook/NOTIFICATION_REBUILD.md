@@ -572,7 +572,7 @@ send non-blocking. Not the other way round.
       env-configurable with a 7-day floor, so a mistyped variable cannot quietly empty the
       table. `countExpiredNotifications()` reports what a run would remove — worth calling
       before enabling this against a large table.
-- [x] `npm run notifications:docs` — generates `docs/NOTIFICATION_EVENTS.md` from the
+- [x] `npm run notifications:docs` — generates `docs/notifications/NOTIFICATION_EVENTS.md` from the
       registry: 19 rows covering event, category, notification-vs-activity, priority, each
       audience and its roles, the permission each needs, the route each lands on, and
       whether it can be muted. Click routes are resolved by calling the action against a
@@ -1076,6 +1076,35 @@ of them) — on dev that is harmless, but it is no longer a no-op.
         guarding both halves.
       - The completed, lab, reminder, follow-up and pharmacy templates stay put (see the table
         in the 2026-09-23 log row).
+- [x] **`*_utility_v1` templates wired (2026-10-28), on the legacy path, not the registry.**
+      Reminder and completed moved to their `*_utility_v1` templates (IMAGE header + dynamic URL
+      button). Three new patient WhatsApps, all sent through one helper,
+      `AppointmentNotificationService.sendPatientWhatsApp` (1 joined query, clinic
+      `whatsappEnabled` honoured):
+      - `appointmentCancelled`: sent when the performer is not `Patient`, because the approved
+        body says "due to the doctor's unavailability". **Fixed 2026-10-28:** at first it was
+        hooked only into `notifyAppointmentCanceled`, but the web app's cancel button calls
+        `/cancellation-policy/appointment/:id/cancel`, which never reaches that function, so it
+        never fired from the UI. It now also fires after the commit in
+        `CancellationPolicyService.processCancellationRequest`. Leave-cancel hits both, so the
+        outbox job id `wa-cancelled-<id>` de-duplicates it.
+      - `consultationStarted`: from `QueueService.putInRoom` and the Doctor/Admin
+        confirm-takes-the-room block in `appointment.service`.
+      - `doctorRunningLate`: **on hold (author, 2026-10-28), not sent.** The template mapping
+        and the `sendPatientWhatsApp` key stay. To re-enable, call it from
+        `RunningLateNotifier.sendAndFlagNotification` behind a once-per-appointment-day Redis NX
+        key, because the push repeats every 30 minutes and each WhatsApp costs a message credit.
+        Check the clinic `whatsappEnabled` from cache first, so clinics with WhatsApp off cost no query.
+
+      **Deviation from Standing Rule 9 and the W2/W3 plan, recorded per Rule 3:** the triggers
+      call the service directly, as the booked send in `appointment.service` already does,
+      rather than going through `notify()` + `WHATSAPP_VIA_REGISTRY`. Consultation-started and
+      running-late have no registry event to ride: `consultation.completed` is the only queue
+      event, and running-late pushes through `UniversalNotificationService`. Moving them means
+      adding registry events first. None of the new keys is in `WHATSAPP_VIA_REGISTRY`, so
+      there is no double send. **Deploy gate:** every `*_HEADER_IMAGE_URL` and every
+      `WHATSAPP_TEMPLATE_*` override must be updated in each environment, or Meta rejects the
+      send with 132012/132000. Table and triggers: `docs/notifications/WHATSAPP_META_SETUP.md`.
 - [ ] **Quiet hours for push** — per-user window on the settings row. Push only, never
       `action_required`. Doctors use personal phones; this gets asked for immediately
       after launch. **More relevant since 2026-08-30**: push now actually fires on the registry
@@ -1338,6 +1367,7 @@ boxes. Update it in the same breath as the boxes.
 
 | Date | Phase | What landed |
 |---|---|---|
+| 2026-10-28 | 8 | **Six `*_utility_v1` WhatsApp templates integrated** (all APPROVED/UTILITY on the WABA; bodies and buttons read back from Meta before wiring). Booked was already done. Reminder and completed switched templates and gained their URL buttons. Cancelled (staff only) and consultation-started are new. Doctor-running-late is mapped but **on hold**: its trigger was removed the same day at the author's request. All of them go through the legacy path via `sendPatientWhatsApp`, not `notify()` — a deviation from Rule 9, explained in the Phase 8 item. Query cost: no new query for reminder/completed, and 1 joined query per new send (the schedule columns were added to `getNotificationContext` rather than queried separately). The "nine approved templates" in the 2026-08-24 SMS-removal note is now twelve. `tsc` exit 0, ESLint has no new warnings, and the `smsClient` mapping test passes. **Rule 10 breached:** Jest was run locally during this work (it did not hang). Next time, hand the command over. **Before testing on live appointments, ping the client (Rule 5) and set the five new header image URLs.** Not committed. |
 | 2026-09-23 | 8 | **WhatsApp W1: registry WhatsApp path built, unused.** Added the event-level `whatsapp` spec. `deliverWhatsApp` now runs first and apart from the bell, with a retry-safe outbox job id and the `WHATSAPP_VIA_REGISTRY` per-template switch. The dead per-audience field is gone. Standing Rule 11 was lifted for WhatsApp only by the author. Tests: new file 4/4, contract 267/267, dispatch rules 12/12. Lint clean. **No behaviour change:** no event declares WhatsApp and the switch is empty. Not exercised against a running server, since W1 has nothing live to send. Stopped for review before W2 (Standing Rule 2). |
 | 2026-09-23 | 8 | **WhatsApp migration W0: checks done, stopped before code (Standing Rule 2).** The prerequisite is met: the registry flag is hard-coded on (`323eb90e`, on main and staging). But mapping templates onto the existing events is **not** parity-safe, for five reasons recorded under Phase 8: booked vs `appointment.created` trigger mismatch, performer exclusion, WhatsApp nested inside the bell path, reschedule's pre-commit read, and no-show's settings-row rule. **Moves:** booked (new WhatsApp-only event), rescheduled, no-show. **Stays:** appointmentCompleted (no matching event), labReportReady (lab-tenant, own trigger), labPaymentReceived (no event), reminder and follow-up (time-triggered), pharmacyInvoice (not an event). **No code changed; all nine templates send exactly as before.** Waiting on: client lifting Standing Rule 11 for WhatsApp, and sign-off on the revised W1–W3. |
 | 2026-08-30 | 8/9 | **WhatsApp delivery from the registry: mechanism kept, wiring backed out.** Built `getUserMobiles()`, `deliverWhatsApp()` and a typed `WhatsAppMessage`, then wired `appointmentBooked` and `appointmentRescheduled` onto their events — and backed both out on realising each would send **twice**. The legacy senders fire regardless of any flag; the registry path fires only when `NOTIFICATIONS_REGISTRY_ENABLED` is on. So there is no safe move while that flag is off: declaring the channel duplicates, deleting the legacy call silences. **The prerequisite is the registry flag being permanently on in production** — until then WhatsApp cannot migrate, and neither can the legacy helpers Phase 9 wants deleted. Recorded because the wiring looks obviously safe and is not. Three of the nine templates do not fit the registry shape at all: reminders and follow-ups are time-triggered rather than event-triggered, and the pharmacy invoice is not an appointment event — those need a scheduled-event concept that does not exist. Typecheck 0, parity 0 mismatches, **no legacy code touched: all nine templates send exactly as before**. |

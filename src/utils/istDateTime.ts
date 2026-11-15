@@ -12,11 +12,36 @@
 export const IST_TIMEZONE = 'Asia/Kolkata';
 const IST_OFFSET = '+05:30';
 /** The same offset in milliseconds, for arithmetic on instants. */
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+export const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/** IST calendar date as '15 Dec 2026', whatever the server time zone. */
+export const formatISTDate = (date: Date): string =>
+  date.toLocaleDateString('en-GB', {
+    timeZone: IST_TIMEZONE,
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 
 /** Current IST calendar date as 'YYYY-MM-DD'. */
 export function getISTDateString(date: Date = new Date()): string {
   return date.toLocaleDateString('en-CA', { timeZone: IST_TIMEZONE });
+}
+
+/** Whole IST calendar days from `from` to `to`: tomorrow is 1, whatever the time of day. */
+export function istDaysBetween(from: Date, to: Date): number {
+  const day = (d: Date) => Date.parse(`${getISTDateString(d)}T00:00:00Z`);
+  return Math.round((day(to) - day(from)) / 86_400_000);
+}
+
+/** The one stored shape of `appointments.appointment_date`: the IST calendar day at UTC midnight. */
+export function toStoredAppointmentDate(date: Date): Date {
+  return new Date(getISTDateString(date));
+}
+
+/** True when `date` falls on an IST calendar day before today. */
+export function isBeforeTodayIST(date: Date): boolean {
+  return getISTDateString(date) < getISTDateString();
 }
 
 /** Current IST time-of-day as 'HH:mm' (24h). */
@@ -144,5 +169,66 @@ export function istDayBoundsUtc(dateStr: string = getISTDateString()): {
   return {
     start: new Date(`${dateStr}T00:00:00.000Z`),
     end: new Date(`${dateStr}T23:59:59.999Z`),
+  };
+}
+
+const ymdUtc = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
+const toYmd = (d: Date) => d.toISOString().slice(0, 10);
+const addDays = (ymd: string, n: number) => {
+  const d = ymdUtc(ymd);
+  d.setUTCDate(d.getUTCDate() + n);
+  return toYmd(d);
+};
+const lastOfMonth = (y: number, m: number) =>
+  toYmd(new Date(Date.UTC(y, m + 1, 0)));
+
+/** IST bounds for a stats range and the previous period to compare it with, like for like:
+ *  whole months compare with the months before, and a range running past today is cut at today in both. */
+export function comparisonRanges(
+  startYmd: string,
+  endYmd: string,
+  todayYmd: string = getISTDateString()
+) {
+  const s = ymdUtc(startYmd);
+  const e = ymdUtc(endYmd);
+  const months =
+    (e.getUTCFullYear() - s.getUTCFullYear()) * 12 +
+    e.getUTCMonth() -
+    s.getUTCMonth() +
+    1;
+  const wholeMonths =
+    s.getUTCDate() === 1 &&
+    endYmd === lastOfMonth(e.getUTCFullYear(), e.getUTCMonth());
+  const days = Math.round((e.getTime() - s.getTime()) / 86_400_000) + 1;
+
+  const prevStartYmd = wholeMonths
+    ? toYmd(new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() - months, 1)))
+    : addDays(startYmd, -days);
+  let prevEndYmd = addDays(startYmd, -1);
+
+  const cut = todayYmd >= startYmd && todayYmd < endYmd;
+  const compareEndYmd = cut ? todayYmd : endYmd;
+  if (cut) {
+    const elapsed = addDays(
+      prevStartYmd,
+      Math.round((ymdUtc(todayYmd).getTime() - s.getTime()) / 86_400_000)
+    );
+    if (elapsed < prevEndYmd) prevEndYmd = elapsed;
+  }
+
+  const label = wholeMonths
+    ? months === 1
+      ? 'vs last month'
+      : `vs previous ${months} months`
+    : `vs previous ${days} days`;
+
+  return {
+    start: istDayBoundsUtc(startYmd).start,
+    end: istDayBoundsUtc(endYmd).end,
+    /** End of the part compared: today when the range runs past it, else `end`. */
+    compareEnd: istDayBoundsUtc(compareEndYmd).end,
+    prevStart: istDayBoundsUtc(prevStartYmd).start,
+    prevEnd: istDayBoundsUtc(prevEndYmd).end,
+    label,
   };
 }

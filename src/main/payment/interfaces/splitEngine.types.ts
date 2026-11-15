@@ -1,5 +1,5 @@
-export type CalculationMethod =
-  'PERCENTAGE' | 'FIXED' | 'CLAMPED_PERCENTAGE' | 'TIERED';
+/** A fee is a percentage of its base or a fixed ₹ amount. */
+export type CalculationMethod = 'PERCENTAGE' | 'FIXED';
 
 export type CalculationBase =
   | 'CLINIC_SERVICE_PRICE' // Base service price P
@@ -7,20 +7,6 @@ export type CalculationBase =
   | 'CLINIC_TRANSFER_AMOUNT' // Final P payable to clinic
   | 'TOTAL_TRANSACTION_AMOUNT' // Final total patient payable
   | 'CUSTOM_BASE';
-
-export type FeePayer = 'PATIENT' | 'CLINIC' | 'PLATFORM';
-
-export type FeeRecipient =
-  'CLINIC' | 'PLATFORM' | 'PAYMENT_GATEWAY' | 'GOVERNMENT';
-
-export type DeductionStrategy =
-  | 'ADD_TO_PATIENT_TOTAL'
-  | 'DEDUCT_FROM_CLINIC'
-  | 'DEDUCT_FROM_PLATFORM'
-  | 'ABSORBED_BY_PLATFORM'
-  | 'ABSORBED_BY_CLINIC';
-
-export type ApplicationLevel = 'APPOINTMENT_LEVEL' | 'TRANSACTION_LEVEL';
 
 export type TaxTreatment = 'TAX_EXEMPT' | 'TAX_INCLUSIVE' | 'TAX_EXCLUSIVE';
 
@@ -37,16 +23,9 @@ export interface IFeeConfig {
   calculationMethod: CalculationMethod;
   calculationBase: CalculationBase;
   rateOrAmount: number; // e.g. 2 for 2%, or 50.00 for flat 50 INR
-  minAmount?: number; // Clamp min (in Paise)
-  maxAmount?: number; // Clamp max (in Paise)
 
   taxRate: number; // e.g. 18 for 18% GST
   taxTreatment: TaxTreatment; // Inclusive / Exclusive / Exempt
-
-  feePayer: FeePayer;
-  feeRecipient: FeeRecipient;
-  deductionStrategy: DeductionStrategy;
-  applicationLevel: ApplicationLevel;
 
   priority: number; // Calculation precedence ordering
   effectiveFrom: Date;
@@ -74,6 +53,15 @@ export interface IPatientPricingSummary {
   gstRate: number; // Standard tax rate percentage (e.g. 18.0)
   totalPayable: number; // Final Rupees to be paid by patient
   currency: string; // 'INR'
+  /** Patient-facing fee lines (commission shown as "Platform Fee"); they add up to platformFee + platformFeeGst. */
+  fees: IPatientFeeLine[];
+}
+
+export interface IPatientFeeLine {
+  type: 'CONVENIENCE_FEE' | 'PLATFORM_FEE' | 'GATEWAY_FEE';
+  label: string;
+  amount: number;
+  gst: number;
 }
 
 export interface ISplitEngineResult {

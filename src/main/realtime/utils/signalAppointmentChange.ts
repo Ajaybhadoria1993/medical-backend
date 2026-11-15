@@ -3,7 +3,7 @@
  *
  * Shared across every service that writes to an appointment or its related
  * tables (status, reschedule, clinical/vitals, payment) so each gets the same
- * signal fan-out instead of re-deriving it — see docs/REALTIME_ROLLOUT_PLAN.md.
+ * signal fan-out instead of re-deriving it — see docs/realtime/REALTIME_ROLLOUT_PLAN.md.
  *
  * Four sections, because four different audiences render the same change:
  * the doctor's own queue, the clinic-wide reception board, the patient's view
@@ -21,6 +21,10 @@
 import logger from '../../../utils/logger';
 import { getISTDateString } from '../../../utils/istDateTime';
 import { invalidateClinicDashboardCaches } from '../../dashboard/utils/dashboardCache.utils';
+import {
+  onAppointmentChanged,
+  type AppointmentChangeKind,
+} from '../../treatmentPlan';
 import { realtimeBus } from '../services/realtimeBus.service';
 import { target } from './sections';
 
@@ -47,7 +51,46 @@ export function signalAppointmentChange(
   void invalidateClinicDashboardCaches(appt.clinicId).finally(() =>
     notifyAppointmentChange(appt, reason, previousDate)
   );
+  notifyTreatmentPlans(appt, reason, previousDate);
 }
+
+const PLAN_CHANGE_KINDS: Record<string, AppointmentChangeKind> = {
+  'appointment.completed': 'completed',
+  'appointment.cancelled': 'cancelled',
+  'appointment.no_show': 'no_show',
+  'appointment.noshow': 'no_show',
+  'appointment.missed': 'no_show',
+  'appointment.rescheduled': 'rescheduled',
+};
+
+// Every appointment writer already signals here after commit, so plan sync can't be missed by one.
+function notifyTreatmentPlans(
+  appt: ChangedAppointment,
+  reason: string,
+  previousDate?: Date | string | null
+): void {
+  const kind =
+    PLAN_CHANGE_KINDS[reason] ?? (previousDate ? 'rescheduled' : undefined);
+  if (!kind) return;
+  const fail = (err: unknown) =>
+    logger.error(
+      `[Realtime] Treatment plan sync failed for appointment=${appt.id}`,
+      err
+    );
+  try {
+    onAppointmentChanged({
+      appointmentId: appt.id,
+      clinicId: appt.clinicId,
+      kind,
+      date: toDateString(appt.appointmentDate),
+    }).catch(fail);
+  } catch (err) {
+    fail(err);
+  }
+}
+
+const toDateString = (value: Date | string): string =>
+  value instanceof Date ? getISTDateString(value) : String(value).split('T')[0];
 
 function notifyAppointmentChange(
   appt: ChangedAppointment,
@@ -56,11 +99,6 @@ function notifyAppointmentChange(
 ): void {
   try {
     if (!appt.doctorId) return;
-
-    const toDateString = (value: Date | string): string =>
-      value instanceof Date
-        ? getISTDateString(value)
-        : String(value).split('T')[0];
 
     const date = toDateString(appt.appointmentDate);
 

@@ -161,6 +161,12 @@ export const AppointmentModel = pgTable(
       table.appointmentDate
     ),
 
+    // Patient-side lookups: appointment list and per-doctor visit counts.
+    index('appointments_patient_doctor_idx').on(
+      table.patientId,
+      table.doctorId
+    ),
+
     /**
      * One live token per (doctor, date, session). Token uniqueness was
      * previously enforced only by an in-memory `bookedSet` check in the

@@ -106,7 +106,12 @@ export const skipController = asyncHandler(
   async (req: Request, res: Response) => {
     const { appointmentId } = req.body as QueueActionDto;
 
-    const board = await QueueService.skip(req.clinicId, appointmentId);
+    const board = await QueueService.skip(
+      req.clinicId,
+      appointmentId,
+      req.user?.userType,
+      req.user?.id
+    );
     return sendOk(res, 'Patient skipped and the next one sent in', board);
   }
 );

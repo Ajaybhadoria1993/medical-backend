@@ -25,6 +25,43 @@ import { profileRequestStatusChangeTemplate } from '../../../htmltamplates/profi
 import logger from '../../../utils/logger';
 import { notifyClinicAdminsOfStaffAction } from '../../../utils/notificationHelpers';
 import { CacheKeys, invalidateCacheMany } from '../../../utils/cache.util';
+import { SPECIALTY_TOOLS_RESPONSE } from '../../../utils/doctorSpecialtyConfig';
+import { getOrderedSpecialtyCatalog } from '../../superadminAnalytics';
+import { QUALIFICATION_CATALOG_RESPONSE } from '../../../utils/qualificationCatalog';
+import { searchColleges } from '../../../utils/collegeCatalog';
+import {
+  searchSuggestions,
+  type SuggestionSection,
+} from '../../../utils/suggestionCatalog';
+
+/** Specialty catalog in the Super Admin's saved order. */
+export const getSpecialtyCatalogController = asyncHandler(
+  async (_req: Request, res: Response) =>
+    sendOk(res, 'Specialty catalog', await getOrderedSpecialtyCatalog())
+);
+
+export const getSpecialtyToolsController = (_req: Request, res: Response) =>
+  sendOk(res, 'Specialty tools', SPECIALTY_TOOLS_RESPONSE);
+
+export const searchCollegesController = (req: Request, res: Response) => {
+  const { q, stream } = req.validatedQuery as { q: string; stream?: string };
+  return sendOk(res, 'Colleges', searchColleges(q, stream));
+};
+
+export const searchSuggestionsController = (req: Request, res: Response) => {
+  const { section, q, specialty } = req.validatedQuery as {
+    section: SuggestionSection;
+    q: string;
+    specialty?: string;
+  };
+  return sendOk(res, 'Suggestions', searchSuggestions(section, q, specialty));
+};
+
+export const getQualificationCatalogController = (
+  _req: Request,
+  res: Response
+) => sendOk(res, 'Qualification catalog', QUALIFICATION_CATALOG_RESPONSE);
+
 export const updateDoctorController = asyncHandler(
   async (req: Request, res: Response) => {
     const currentUserId = req.user.id;
@@ -467,7 +504,7 @@ export const approveDoctorUpdateController = asyncHandler(
 
           await sendEmail(
             doctorData.email ?? '',
-            'Infinity Medisetu - Profile Update Request Rejected',
+            'MediArogya - Profile Update Request Rejected',
             emailHtml
           );
         } catch {
@@ -561,7 +598,7 @@ export const approveDoctorUpdateController = asyncHandler(
           userId: request.doctorId,
           qualificationType: q.qualificationType,
           qualificationTitle: q.qualificationTitle,
-          // specialization: q.specialization,
+          specialization: q.specialization ?? null,
           boardOrUniversity: q.boardOrUniversity,
           yearOfCompletion: q.yearOfCompletion,
         }));
@@ -634,7 +671,7 @@ export const approveDoctorUpdateController = asyncHandler(
 
         await sendEmail(
           doctorData.email ?? '',
-          'Infinity Medisetu - Profile Update Request Approved',
+          'MediArogya - Profile Update Request Approved',
           emailHtml
         );
       } catch {
@@ -929,7 +966,7 @@ export const getDoctorPreferencesController = asyncHandler(
 export const upsertDoctorPreferencesController = asyncHandler(
   async (req: Request, res: Response) => {
     const doctorId = req.params.doctorId as string;
-    const data = req.body;
+    const data = req.validatedBody;
 
     const result = await DoctorServices.upsertDoctorPreferences(
       doctorId,

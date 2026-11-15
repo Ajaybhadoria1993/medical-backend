@@ -1,25 +1,8 @@
 import redisClient from '../configurations/redisConfig';
 import logger from '../utils/logger';
 
-/**
- * Runs a scheduled job on one instance only.
- *
- * Every cron in this app fires in every app process. With one container that is
- * invisible; with two it means every job runs twice, and the jobs that mutate
- * state do their work twice. `scheduledPlanChanges` is the case in hand: both
- * instances fire on the same second, both read a subscription whose
- * `scheduledPlanId` is still set, and both apply it — recomputing `startsAt`
- * and `expiresAt` from `now`, so the clinic silently gains a second billing
- * period, plus a duplicate activity record.
- *
- * A Redis SET NX with a TTL is the smallest thing that fixes it: the first
- * instance to claim the window runs, the rest skip.
- *
- * **Fails closed.** If Redis is unreachable the job is skipped rather than run,
- * because for a billing mutation a delayed run is recoverable on the next tick
- * and a doubled one is not. Jobs that are naturally idempotent (deleting rows
- * already past a retention window) do not need this and should not pay for it.
- */
+/** Runs a cron job on one app instance only (Redis SET NX with a TTL); skips when Redis is down,
+ *  because a delayed billing job is recoverable and a doubled one is not. */
 export async function runOnce(
   jobName: string,
   ttlSeconds: number,
@@ -47,5 +30,17 @@ export async function runOnce(
     return;
   }
 
-  await work();
+  try {
+    await work();
+  } catch (err) {
+    // A run that threw did nothing for sure, so free the lock and let the next schedule retry.
+    await redisClient
+      .del(key)
+      .catch((e: Error) =>
+        logger.error(
+          `[Cron:${jobName}] Could not release the lock: ${e.message}`
+        )
+      );
+    throw err;
+  }
 }

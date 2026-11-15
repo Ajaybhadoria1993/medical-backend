@@ -75,5 +75,10 @@ export interface ReportsMedicinesData {
   expiringSoon: ExpiringSoonItem[];
   topSuppliers: TopSupplierItem[];
   inventorySummary: InventorySummary;
+  /** Category and supplier choices from the catalogue, independent of the selected dates. */
+  filterOptions: {
+    categories: { label: string; value: string }[];
+    suppliers: { label: string; value: string }[];
+  };
   insights: string[];
 }

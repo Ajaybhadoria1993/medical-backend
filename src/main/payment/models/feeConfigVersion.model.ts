@@ -56,6 +56,8 @@ export const FeeConfigVersionModel = pgTable(
     effectiveFrom: timestamp('effective_from').defaultNow().notNull(),
     effectiveTo: timestamp('effective_to'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+    /** The Super Admin who saved this version; null for seeded rows. */
+    createdBy: uuid('created_by'),
   },
   (table) => [
     index('fee_config_resolution_idx').on(

@@ -4,8 +4,6 @@ import { asyncHandler, HttpError } from '../../../middlewear/errorHandler';
 import { sendOk, sendCreated } from '../../../utils/response.utils';
 import { couponService } from '../services/coupon.service';
 
-// ==================== Admin Controllers ====================
-
 /**
  * Create a new coupon
  * POST /api/v1/subscription/coupons
@@ -61,24 +59,6 @@ export const getAllCoupons = asyncHandler(
     }
 
     return sendOk(res, 'Coupons fetched successfully', result.data);
-  }
-);
-
-/**
- * Get single coupon by ID
- * GET /api/v1/subscription/coupons/:id
- */
-export const getCouponById = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { id } = req.validatedParams;
-
-    const result = await couponService.getCouponById(parseInt(id));
-
-    if (!result.success) {
-      throw new HttpError(404, result.error || 'Coupon not found');
-    }
-
-    return sendOk(res, 'Coupon fetched successfully', result.data);
   }
 );
 
@@ -151,8 +131,6 @@ export const getCouponStats = asyncHandler(
   }
 );
 
-// ==================== Clinic Controllers ====================
-
 /**
  * Validate/apply a coupon code
  * POST /api/v1/subscription/coupons/validate
@@ -198,34 +176,5 @@ export const validateCoupon = asyncHandler(
         description: result.coupon?.description,
       },
     });
-  }
-);
-
-/**
- * Get clinic's coupon usage history
- * GET /api/v1/subscription/coupons/my-history
- */
-export const getMyCouponHistory = asyncHandler(
-  async (req: Request, res: Response) => {
-    const clinicId = req.clinicId;
-
-    if (!clinicId) {
-      throw new HttpError(400, 'Clinic context required');
-    }
-
-    const page = parseInt((req.query.page as string) || '1');
-    const limit = Math.min(parseInt((req.query.limit as string) || '20'), 50);
-
-    const result = await couponService.getClinicCouponHistory(
-      clinicId,
-      page,
-      limit
-    );
-
-    if (!result.success) {
-      throw new HttpError(500, result.error || 'Failed to get history');
-    }
-
-    return sendOk(res, 'Coupon history fetched successfully', result.data);
   }
 );

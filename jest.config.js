@@ -12,11 +12,12 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
-  setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/main/global/__tests__/setup.ts'],
   // opt in with `npm run test:coverage` / `--coverage`
   collectCoverage: false,
   coverageDirectory: 'coverage',
-  coveragePathIgnorePatterns: ['/node_modules/', '/dist/', '/src/test/'],
-  maxWorkers: '50%',
-  workerIdleMemoryLimit: '1GB',
+  coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
+  // Each worker loads most of the app; more than 2 exhausts a 16GB machine.
+  maxWorkers: 2,
+  workerIdleMemoryLimit: '512MB',
 };

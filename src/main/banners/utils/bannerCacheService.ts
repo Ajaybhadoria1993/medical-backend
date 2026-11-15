@@ -201,34 +201,6 @@ export const cacheAsideBanner = async <T = unknown>(
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-export const logCacheHit = (
-  cacheKey: string,
-  userId: string,
-  placement?: string,
-  executionTime?: number
-): void => {
-  logger.info('Banner Cache HIT', {
-    cacheKey,
-    userId,
-    placement: placement || 'all',
-    executionTime: `${executionTime || 0}ms`,
-  });
-};
-
-export const logCacheMiss = (
-  cacheKey: string,
-  userId: string,
-  placement?: string,
-  executionTime?: number
-): void => {
-  logger.info('Banner Cache MISS', {
-    cacheKey,
-    userId,
-    placement: placement || 'all',
-    executionTime: `${executionTime || 0}ms`,
-  });
-};
-
 export const logCacheInvalidation = (reason: string): void => {
   logger.info('Banner Cache INVALIDATED', {
     reason,

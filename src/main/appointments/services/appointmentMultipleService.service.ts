@@ -8,11 +8,16 @@ import { AppointmentPaymentModel } from '../models/appointment-payment.model';
 import { AddMultipleServicesDto } from '../schemas/appointment.schemas';
 import { isAppointmentInClinic } from '../../../utils/clinicOwnership';
 import { signalAppointmentChange } from '../../realtime';
+import { SYSTEM_ACTOR_ID } from '../../money';
+import { AppointmentMoneySync } from './appointmentMoneySync.service';
+import { isPayLaterMode } from '../utils/paymentMode.constants';
 
 export class AppointmentMultipleServiceService {
   static async addMultipleServices(
     appointmentId: string,
-    payload: AddMultipleServicesDto
+    payload: AddMultipleServicesDto,
+    /** Who added them; recorded on the ledger entries (Phase 2). */
+    actorId: string = SYSTEM_ACTOR_ID
   ) {
     // Get appointment
     const appointment = await database
@@ -149,34 +154,69 @@ export class AppointmentMultipleServiceService {
       };
     });
 
-    // Insert multiple entries
-    const result = await database
-      .insert(appointmentMultipleService)
-      .values(entries)
-      .returning();
-
-    // Update appointment total price
-    const [paymentRecord] = await database
-      .select()
-      .from(AppointmentPaymentModel)
-      .where(eq(AppointmentPaymentModel.appointmentId, appointmentId))
-      .limit(1);
-
-    const currentAppointmentPrice =
-      parseFloat(paymentRecord?.price ?? '0') || 0;
-    const updatedPrice = currentAppointmentPrice + newServicesTotal;
-
-    if (paymentRecord) {
-      await database
-        .update(AppointmentPaymentModel)
-        .set({ price: updatedPrice.toString(), updatedAt: new Date() })
-        .where(eq(AppointmentPaymentModel.appointmentId, appointmentId));
-    } else {
-      await database.insert(AppointmentPaymentModel).values({
-        appointmentId,
-        price: updatedPrice.toString(),
+    // Services and the visit's price move together, and the price is raised in
+    // SQL: two staff adding services at once can no longer overwrite each other's total.
+    const addedTotal = (Math.round(newServicesTotal * 100) / 100).toFixed(2);
+    const { rows: result, price } = await database
+      .transaction(async (tx) => {
+        const rows = await tx
+          .insert(appointmentMultipleService)
+          .values(entries)
+          .returning();
+        const [payment] = await tx
+          .insert(AppointmentPaymentModel)
+          // A visit with no payment row yet starts Pending; the ledger below sets the real status.
+          .values({
+            appointmentId,
+            price: addedTotal,
+            paymentStatus: 'Pending',
+            paymentMode: paymentMode || null,
+          })
+          .onConflictDoUpdate({
+            target: AppointmentPaymentModel.appointmentId,
+            set: {
+              price: sql`COALESCE(${AppointmentPaymentModel.price}, 0) + ${addedTotal}::numeric`,
+              updatedAt: new Date(),
+            },
+          })
+          .returning({ price: AppointmentPaymentModel.price });
+        // Ledger: the add-on charge only; an earlier "Paid" must not pay this add-on by itself.
+        await AppointmentMoneySync.afterChange(tx, appointmentId, actorId, {
+          chargesOnly: true,
+        });
+        // Paid now (any real mode): record exactly the add-on amount. Pay Later leaves it due.
+        if (paymentMode && !isPayLaterMode(paymentMode)) {
+          const { due } = await AppointmentMoneySync.balance(tx, appointmentId);
+          const amountPaise = Math.min(
+            Math.round(Number(addedTotal) * 100),
+            due
+          );
+          if (amountPaise > 0)
+            await AppointmentMoneySync.pay(tx, {
+              appointmentId,
+              amountPaise,
+              paymentMode,
+              channel: 'desk',
+              // One add is one payment, so a retry of this request never pays twice.
+              requestId: `appt:${appointmentId}:addon:${rows[0].id}`,
+              actorId,
+            });
+        }
+        return { rows, price: payment.price };
+      })
+      // The unique (appointment, service) rule caught a second add at the same moment.
+      .catch((err: { code?: string; cause?: { code?: string } }) => {
+        if (err?.code === '23505' || err?.cause?.code === '23505')
+          throw new HttpError(
+            409,
+            'Selected service is already added to this appointment'
+          );
+        throw err;
       });
-    }
+    // Read back from the same statement, so the response matches what was saved.
+    const updatedPrice = Number(price ?? 0);
+    const currentAppointmentPrice =
+      Math.round((updatedPrice - Number(addedTotal)) * 100) / 100;
 
     // The price moved, so revenue and dues on every open dashboard are stale.
     signalAppointmentChange(appointment[0], 'billing.payment_updated');
@@ -258,11 +298,8 @@ export class AppointmentMultipleServiceService {
       throw new HttpError(400, 'No doctor associated with this appointment');
     }
 
+    // A treatment plan visit has no main service; there is then simply nothing extra to exclude.
     const mainServiceId = appointment[0].clinicServiceId;
-
-    if (!mainServiceId) {
-      throw new HttpError(400, 'No service associated with this appointment');
-    }
 
     const multipleServices = await database
       .select()
@@ -273,7 +310,7 @@ export class AppointmentMultipleServiceService {
       (service) => service.serviceId
     );
 
-    excludedServiceIds.push(mainServiceId);
+    if (mainServiceId) excludedServiceIds.push(mainServiceId);
 
     const conditions = [
       eq(ClinicServiceModel.doctorId, doctorId),
@@ -300,7 +337,8 @@ export class AppointmentMultipleServiceService {
 
   static async convertAppointmentToFree(
     appointmentId: string,
-    clinicId: string
+    clinicId: string,
+    actorId: string = SYSTEM_ACTOR_ID
   ) {
     const [appointment] = await database
       .select()
@@ -342,7 +380,16 @@ export class AppointmentMultipleServiceService {
     const FREE_CONSULTATION_SERVICE_NAME = 'Free Consultation';
     const doctorId = appointment.doctorId;
 
-    return database.transaction(async (trx) => {
+    const result = await database.transaction(async (trx) => {
+      // A free visit owes nothing: the status drops the ledger's charges, so no balance is left to collect.
+      await trx
+        .update(AppointmentPaymentModel)
+        .set({ paymentStatus: 'Free Consultation', updatedAt: new Date() })
+        .where(eq(AppointmentPaymentModel.appointmentId, appointmentId));
+      await AppointmentMoneySync.afterChange(trx, appointmentId, actorId, {
+        chargesOnly: true,
+      });
+
       const [existingService] = await trx
         .select()
         .from(ClinicServiceModel)
@@ -409,5 +456,8 @@ export class AppointmentMultipleServiceService {
 
       return createdMultipleService;
     });
+
+    signalAppointmentChange(appointment, 'billing.payment_updated');
+    return result;
   }
 }

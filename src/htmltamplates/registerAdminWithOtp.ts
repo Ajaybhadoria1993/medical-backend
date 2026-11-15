@@ -15,11 +15,11 @@ export const registrationOtpTemplate = ({
 }: RegistrationOtpParams): string =>
   renderEmailLayout({
     title: 'Complete Registration',
-    preview: 'Complete your secure Infinity Medisetu registration.',
+    preview: 'Complete your secure MediArogya registration.',
     greeting: 'Hello 👋',
-    headline: 'Welcome to Infinity Medisetu!',
+    headline: 'Welcome to MediArogya!',
     message:
-      'Thank you for choosing Infinity Medisetu. Click the button below to complete your registration and secure your account.',
+      'Thank you for choosing MediArogya. Click the button below to complete your registration and secure your account.',
     bodyHtml: `
       ${renderValidityNotice('This link is valid for <strong>10 minutes</strong>.')}
       ${renderActionButton('Complete Registration', signUpLink)}

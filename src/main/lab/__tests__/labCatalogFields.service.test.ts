@@ -3,9 +3,11 @@
 // result fields, loading them for Edit, and adding a lab-owned department.
 
 const transactionMock = jest.fn();
+const databaseSelectMock = jest.fn();
 
 jest.mock('../../../configurations/dbConnection', () => ({
   database: {
+    select: (...args: unknown[]) => databaseSelectMock(...args),
     transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }));
@@ -28,6 +30,7 @@ import {
   LabDepartmentsMasterModel,
   LabDepartmentsModel,
 } from '../models/lab.model';
+import { LabTestCatalogModel } from '../../test/models/labTestCatalog.model';
 import { LabService } from '../services/lab.service';
 
 // The sync helpers are private; tests reach them the way a caller inside the class would.
@@ -77,7 +80,12 @@ const bindsValue = (node: any, needle: unknown, depth = 0): boolean => {
 const fakeTx = ({
   selects = [],
   inserts = [],
-}: { selects?: unknown[][]; inserts?: unknown[][] } = {}) => {
+  updates = [],
+}: {
+  selects?: unknown[][];
+  inserts?: unknown[][];
+  updates?: unknown[][];
+} = {}) => {
   const tx = {
     selects: [] as any[],
     updates: [] as Array<{ model: unknown; q: any }>,
@@ -88,7 +96,7 @@ const fakeTx = ({
       return q;
     }),
     update: jest.fn((model: unknown) => {
-      const q = queryReturning([]);
+      const q = queryReturning(updates.shift() ?? []);
       tx.updates.push({ model, q });
       return q;
     }),
@@ -121,7 +129,269 @@ const field = (overrides: Record<string, unknown> = {}) => ({
 
 afterEach(() => {
   jest.restoreAllMocks();
+  databaseSelectMock.mockReset();
   transactionMock.mockReset();
+});
+
+describe('LabService.getDepartments', () => {
+  it("returns global departments plus this lab's custom departments", async () => {
+    const departments = [
+      {
+        id: 'dept-global',
+        name: 'Hematology',
+        code: 'HEMATOLOGY',
+        labId: null,
+      },
+      {
+        id: 'dept-lab-2',
+        name: 'Urology',
+        code: 'UROLOGY_LAB_2',
+        labId: 'lab-2',
+      },
+    ];
+    databaseSelectMock.mockReturnValue(queryReturning(departments));
+    jest
+      .spyOn(lab, 'attachTestsToDepartments')
+      .mockImplementation(async (...args: unknown[]) => args[1]);
+
+    await expect(LabService.getDepartments('lab-2')).resolves.toEqual(
+      departments
+    );
+
+    const where = argsOf(
+      databaseSelectMock.mock.results[0].value,
+      'where'
+    )[0][0];
+    expect(bindsValue(where, 'lab-2')).toBe(true);
+  });
+
+  it('paginates departments when page or limit is provided', async () => {
+    const allDepartments = [
+      {
+        id: 'dept-global',
+        name: 'Hematology',
+        code: 'HEMATOLOGY',
+        labId: null,
+      },
+      {
+        id: 'dept-lab-2',
+        name: 'Urology',
+        code: 'UROLOGY_LAB_2',
+        labId: 'lab-2',
+      },
+    ];
+    const departments = [allDepartments[1]];
+    databaseSelectMock.mockReturnValueOnce(queryReturning(allDepartments));
+    jest
+      .spyOn(lab, 'attachTestsToDepartments')
+      .mockImplementation(async (...args: unknown[]) => args[1]);
+
+    await expect(
+      LabService.getDepartments('lab-2', { page: 2, limit: 1 })
+    ).resolves.toEqual({
+      departments,
+      pagination: {
+        totalRecords: 2,
+        totalPages: 2,
+        currentPage: 2,
+        pageSize: 1,
+        hasNextPage: false,
+        hasPreviousPage: true,
+      },
+    });
+
+    const dataQuery = databaseSelectMock.mock.results[0].value;
+    expect(argsOf(dataQuery, 'limit')).toHaveLength(0);
+    expect(argsOf(dataQuery, 'offset')).toHaveLength(0);
+    expect(bindsValue(argsOf(dataQuery, 'where')[0][0], 'lab-2')).toBe(true);
+  });
+
+  it('filters departments by status when provided', async () => {
+    const departments = [
+      {
+        id: 'dept-lab-2',
+        name: 'Urology',
+        code: 'UROLOGY_LAB_2',
+        labId: 'lab-2',
+      },
+    ];
+    databaseSelectMock.mockReturnValue(queryReturning(departments));
+    jest
+      .spyOn(lab, 'attachTestsToDepartments')
+      .mockImplementation(async (...args: unknown[]) => args[1]);
+
+    await expect(
+      LabService.getDepartments('lab-2', { status: 'inactive' })
+    ).resolves.toEqual(departments);
+
+    const where = argsOf(
+      databaseSelectMock.mock.results[0].value,
+      'where'
+    )[0][0];
+    expect(bindsValue(where, 'lab-2')).toBe(true);
+    expect(bindsValue(where, 'inactive')).toBe(true);
+  });
+});
+
+describe('LabService.getTemplatesForDepartmentSelection', () => {
+  it('accepts a selected lab catalog test id and resolves it to its master template', async () => {
+    const template = {
+      id: 'tpl-cbc',
+      code: 'CBC',
+      name: 'CBC',
+      sampleType: 'Blood',
+      labId: null,
+      isActive: true,
+    };
+    const tx = fakeTx({
+      selects: [
+        [template],
+        [],
+        [{ id: 'catalog-cbc', testCode: 'CBC', source: 'master' }],
+      ],
+    });
+
+    await expect(
+      lab.getTemplatesForDepartmentSelection(
+        tx,
+        'HEMATOLOGY',
+        ['catalog-cbc'],
+        {
+          labId: 'lab-1',
+          departmentId: 'dept-1',
+        }
+      )
+    ).resolves.toEqual([template]);
+
+    const catalogWhere = argsOf(tx.selects[2], 'where')[0][0];
+    expect(bindsValue(catalogWhere, 'catalog-cbc')).toBe(true);
+    expect(bindsValue(catalogWhere, 'lab-1')).toBe(true);
+    expect(bindsValue(catalogWhere, 'dept-1')).toBe(true);
+  });
+
+  it('accepts a selected lab-specific template when it belongs to a custom catalog test', async () => {
+    const tx = fakeTx({
+      selects: [
+        [{ id: 'tpl-custom', code: 'ADV' }],
+        [{ id: 'catalog-custom', testCode: 'ADV', source: 'custom' }],
+      ],
+    });
+
+    await expect(
+      lab.getTemplatesForDepartmentSelection(tx, 'KYU_5879C9', ['tpl-custom'], {
+        labId: 'lab-1',
+        departmentId: 'dept-1',
+      })
+    ).resolves.toEqual([]);
+
+    const templateWhere = argsOf(tx.selects[0], 'where')[0][0];
+    expect(bindsValue(templateWhere, 'tpl-custom')).toBe(true);
+
+    const catalogWhere = argsOf(tx.selects[1], 'where')[0][0];
+    expect(bindsValue(catalogWhere, 'ADV')).toBe(true);
+    expect(bindsValue(catalogWhere, 'lab-1')).toBe(true);
+    expect(bindsValue(catalogWhere, 'dept-1')).toBe(true);
+  });
+});
+
+describe('LabService.upsertSyncedMasterTest', () => {
+  const payload = {
+    clinicId: 'clinic-1',
+    labId: 'lab-1',
+    departmentId: 'dept-1',
+    departmentName: 'Hematology',
+    template: {
+      id: 'tpl-cbc',
+      name: 'Complete Blood Count',
+      code: 'CBC',
+      sampleType: 'Blood',
+    },
+    userId: 'user-1',
+  };
+
+  it('creates a synced master test with the previous catalog price for the same lab and test code', async () => {
+    const created = { id: 'catalog-new', price: 350 };
+    const tx = fakeTx({
+      selects: [[], [{ price: 350 }], [], []],
+      inserts: [[created]],
+    });
+
+    await expect(lab.upsertSyncedMasterTest(tx, payload)).resolves.toEqual(
+      created
+    );
+
+    expect(tx.inserts[0].model).toBe(LabTestCatalogModel);
+    expect(argsOf(tx.inserts[0].q, 'values')[0][0]).toMatchObject({
+      labId: 'lab-1',
+      testCode: 'CBC',
+      source: 'master',
+      price: 350,
+    });
+  });
+
+  it('leaves price unset when a synced master test has no previous non-zero price', async () => {
+    const created = { id: 'catalog-new', price: null };
+    const tx = fakeTx({
+      selects: [[], [], [], []],
+      inserts: [[created]],
+    });
+
+    await expect(lab.upsertSyncedMasterTest(tx, payload)).resolves.toEqual(
+      created
+    );
+
+    const values = argsOf(tx.inserts[0].q, 'values')[0][0];
+    expect(values).toMatchObject({
+      labId: 'lab-1',
+      testCode: 'CBC',
+      source: 'master',
+    });
+    expect(values).not.toHaveProperty('price');
+  });
+
+  it('restores a zero-price synced master test from a previous priced catalog row', async () => {
+    const updated = { id: 'catalog-existing', price: 450 };
+    const tx = fakeTx({
+      selects: [
+        [{ id: 'catalog-existing', price: 0 }],
+        [{ price: 450 }],
+        [],
+        [],
+      ],
+      updates: [[updated]],
+    });
+
+    await expect(lab.upsertSyncedMasterTest(tx, payload)).resolves.toEqual(
+      updated
+    );
+
+    expect(tx.updates[0].model).toBe(LabTestCatalogModel);
+    expect(argsOf(tx.updates[0].q, 'set')[0][0]).toMatchObject({
+      labId: 'lab-1',
+      testCode: 'CBC',
+      source: 'master',
+      price: 450,
+    });
+  });
+
+  it('clears an existing zero-price synced master test when no previous non-zero price exists', async () => {
+    const updated = { id: 'catalog-existing', price: null };
+    const tx = fakeTx({
+      selects: [[{ id: 'catalog-existing', price: 0 }], [], [], []],
+      updates: [[updated]],
+    });
+
+    await expect(lab.upsertSyncedMasterTest(tx, payload)).resolves.toEqual(
+      updated
+    );
+
+    expect(argsOf(tx.updates[0].q, 'set')[0][0]).toMatchObject({
+      labId: 'lab-1',
+      testCode: 'CBC',
+      source: 'master',
+      price: null,
+    });
+  });
 });
 
 describe('LabService.syncCustomFields', () => {
@@ -221,7 +491,7 @@ describe('LabService.getLabCatalogTestCustomFields', () => {
     expect(tx.insert).not.toHaveBeenCalled();
   });
 
-  it("finds the template by the test's code and returns this lab's active fields", async () => {
+  it("returns this catalog test's active fields by lab_test_catalog_id", async () => {
     const rows = [{ id: 'f-1', parameterName: 'Haemoglobin' }];
     const tx = fakeTx({ selects: [rows] });
     transactionMock.mockImplementation((run: (t: unknown) => unknown) =>
@@ -234,17 +504,15 @@ describe('LabService.getLabCatalogTestCustomFields', () => {
       category: 'Hematology',
       labId: 'lab-1',
     });
-    const byCode = jest
-      .spyOn(lab, 'getActiveReportTemplateByCode')
-      .mockResolvedValue({ id: 'tpl-cbc' });
+    const byCode = jest.spyOn(lab, 'getActiveReportTemplateByCode');
 
     await expect(
       LabService.getLabCatalogTestCustomFields('test-1', CONTEXT)
     ).resolves.toEqual(rows);
 
-    expect(byCode).toHaveBeenCalledWith(tx, 'CBC', 'lab-1');
+    expect(byCode).not.toHaveBeenCalled();
     const where = argsOf(tx.selects[0], 'where')[0][0];
-    expect(bindsValue(where, 'tpl-cbc')).toBe(true);
+    expect(bindsValue(where, 'test-1')).toBe(true);
     expect(bindsValue(where, 'lab-1')).toBe(true);
   });
 });
@@ -309,7 +577,10 @@ describe('LabService.createDepartment', () => {
   });
 
   it("checks names only against global departments and this lab's own", async () => {
-    const tx = fakeTx({ selects: [[{ id: 'dept-1' }]], inserts: [[]] });
+    const tx = fakeTx({
+      selects: [[{ id: 'dept-1', labId: 'lab-1', code: 'UROLOGY_123456' }]],
+      inserts: [[]],
+    });
     transactionMock.mockImplementation((run: (t: unknown) => unknown) =>
       run(tx)
     );
@@ -319,5 +590,74 @@ describe('LabService.createDepartment', () => {
 
     const where = argsOf(tx.selects[0], 'where')[0][0];
     expect(bindsValue(where, 'lab-1')).toBe(true);
+  });
+});
+
+describe('LabService.updateDepartment', () => {
+  const arrangeLab = () =>
+    jest
+      .spyOn(lab, 'getLabAccessForUser')
+      .mockResolvedValue({ labId: 'lab-1', clinicId: 'clinic-1' });
+
+  it("updates only this lab's own department", async () => {
+    const existing = {
+      id: 'dept-1',
+      name: 'Urology',
+      code: 'UROLOGY_123456',
+      status: 'active',
+      labId: 'lab-1',
+    };
+    const updated = { ...existing, name: 'Radiology' };
+    const tx = fakeTx({
+      selects: [[existing], []],
+      updates: [[updated]],
+    });
+    transactionMock.mockImplementation((run: (t: unknown) => unknown) =>
+      run(tx)
+    );
+    arrangeLab();
+    jest
+      .spyOn(lab, 'attachTestsToDepartments')
+      .mockImplementation(async (...args: unknown[]) => args[1]);
+
+    const result = await LabService.updateDepartment(
+      'user-1',
+      'clinic-1',
+      'dept-1',
+      { name: 'Radiology' },
+      {
+        labId: 'lab-1',
+        userRole: 'Lab_Assistant',
+      }
+    );
+
+    expect(result).toEqual(updated);
+    expect(tx.update).toHaveBeenCalledWith(LabDepartmentsMasterModel);
+    expect(argsOf(tx.updates[0].q, 'set')[0][0]).toMatchObject({
+      name: 'Radiology',
+    });
+
+    const loadWhere = argsOf(tx.selects[0], 'where')[0][0];
+    expect(bindsValue(loadWhere, 'dept-1')).toBe(true);
+    expect(bindsValue(loadWhere, 'lab-1')).toBe(true);
+  });
+
+  it('does not update global departments or another lab department', async () => {
+    const tx = fakeTx({ selects: [[]] });
+    transactionMock.mockImplementation((run: (t: unknown) => unknown) =>
+      run(tx)
+    );
+    arrangeLab();
+
+    await expect(
+      LabService.updateDepartment('user-1', 'clinic-1', 'dept-global', {
+        name: 'Radiology',
+      })
+    ).rejects.toMatchObject({
+      status: 404,
+      message: 'Department not found for this lab',
+    });
+
+    expect(tx.update).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import {
 } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
 import {
+  reportsComparisonRangeQuerySchema,
   reportsOverviewQuerySchema,
   reportsOverviewTrendQuerySchema,
 } from '../../schemas/reportsOverview.schemas';
@@ -18,6 +19,7 @@ import {
   reportsAppointmentsTrendQuerySchema,
 } from '../../schemas/reportsAppointments.schemas';
 import {
+  getReportsComparisonRangeController,
   getReportsOverviewController,
   getReportsOverviewTrendController,
 } from '../../controllers/reportsOverview.controller';
@@ -58,7 +60,7 @@ import {
   getReportsCustomSchemaController,
   runReportsCustomController,
 } from '../../controllers/reportsCustom.controller';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 
 const reportsOverviewRouter = express.Router();
 
@@ -74,6 +76,17 @@ reportsOverviewRouter.get(
   requireClinic,
   validate(reportsOverviewQuerySchema, 'query'),
   getReportsOverviewController
+);
+
+/** @route GET /api/v1/reports-overview/comparison-range — the previous period a report range compares with
+ *  @access Admin, Super_Admin */
+reportsOverviewRouter.get(
+  '/comparison-range',
+  requireAuth,
+  requireRole(['Admin', 'Super_Admin']),
+  requireClinic,
+  validate(reportsComparisonRangeQuerySchema, 'query'),
+  getReportsComparisonRangeController
 );
 
 /**
@@ -261,6 +274,15 @@ reportsOverviewRouter.post(
 export default reportsOverviewRouter;
 
 // ─── API Documentation ─────────────────────────────────────────────────────────
+
+docsRegistry.addEndpoint({
+  method: 'get',
+  path: '/api/v1/reports-overview/comparison-range',
+  description:
+    'Get the previous period every report compares the given range with',
+  query: reportsComparisonRangeQuerySchema,
+  tags: ['Reports Overview', 'Analytics'],
+});
 
 docsRegistry.addEndpoint({
   method: 'get',

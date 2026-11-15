@@ -5,13 +5,18 @@ import {
   AppointmentPaymentModel,
   activeAppointmentFilter,
 } from '../models/appointment-payment.model';
-import { FinancialLedgerModel } from '../models/financialLedger.model';
+import { OnlineFeeLedger, type ISplitBreakdown } from '../../payment';
+import { CancellationRequestModel } from '../../cancellation-policy/models/cancellationPolicy.model';
+import { RefundReviewModel } from '../../clinicFinance/models/refundReview.model';
+import { SYSTEM_ACTOR_ID } from '../../money';
+import { AppointmentMoneySync } from './appointmentMoneySync.service';
 import { whatsAppReminderQueue } from '../../notifications/services/appointmentWhatsappReminder.service';
 import { autoNoShowQueue } from './autoNoShow.service';
 import { signalAppointmentChange } from '../../realtime';
 import { HttpError } from '../../../middlewear/errorHandler';
-import { and, eq, ne, gte, lt, sql, inArray } from 'drizzle-orm';
+import { and, eq, ne, gte, lt, inArray } from 'drizzle-orm';
 import logger from '../../../utils/logger';
+import { lockDoctorDay } from '../../../utils/doctorDayLock';
 
 function formatDateOnlyLocal(date: Date) {
   const yyyy = date.getFullYear();
@@ -55,19 +60,8 @@ function parseTimeToMinutes(time?: string | null): number | null {
   return null;
 }
 
-function hashStringToInt32(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
-}
-
 export class PaymentReservationService {
-  /**
-   * Generates a reusable Drizzle filter to omit unpaid online bookings
-   */
+  /** Hides unpaid online checkouts. Reads appointment_payments: the query must join AppointmentPaymentModel. */
   static buildActiveAppointmentFilter = activeAppointmentFilter;
 
   /**
@@ -315,6 +309,14 @@ export class PaymentReservationService {
           })
           .where(eq(AppointmentPaymentModel.appointmentId, appointmentId));
 
+        // Payment window expired: the bill is recorded, no money moved.
+        await AppointmentMoneySync.afterChange(
+          tx,
+          appointmentId,
+          SYSTEM_ACTOR_ID,
+          { chargesOnly: true }
+        );
+
         // 3. Clear Redis Slot Lock
         const lockKey = PaymentReservationService.buildLockKey(
           appointment.doctorId!,
@@ -340,10 +342,6 @@ export class PaymentReservationService {
       if (cancelled) {
         signalAppointmentChange(cancelled, 'appointment.cancelled');
       }
-
-      logger.info(
-        `Successfully cleaned up expired checkout for appointment ${appointmentId}`
-      );
     } catch (err) {
       logger.error(
         `Failed to clean up expired checkout for appointment ${appointmentId}`,
@@ -358,7 +356,7 @@ export class PaymentReservationService {
   static async verifyLatePayment(
     appointmentId: string,
     paymentId: string,
-    _performedByUserId: string
+    performedByUserId: string
   ): Promise<void> {
     // 1. Fetch appointment details
     const [appointment] = await database
@@ -374,12 +372,7 @@ export class PaymentReservationService {
         appointmentDurationMinutes: AppointmentModel.appointmentDurationMinutes,
         price: AppointmentPaymentModel.price,
         paymentStatus: AppointmentPaymentModel.paymentStatus,
-        paymentRecordId: AppointmentPaymentModel.id,
-        platformCommission: AppointmentPaymentModel.platformCommission,
-        pgFee: AppointmentPaymentModel.pgFee,
-        gstAmount: AppointmentPaymentModel.gstAmount,
-        convenienceFee: AppointmentPaymentModel.convenienceFee,
-        transferredAmount: AppointmentPaymentModel.transferredAmount,
+        financialSnapshot: AppointmentPaymentModel.financialSnapshot,
       })
       .from(AppointmentModel)
       .leftJoin(
@@ -407,10 +400,7 @@ export class PaymentReservationService {
     let conflictExists = false;
 
     await database.transaction(async (tx) => {
-      const dateOnlyStr = formatDateOnlyLocal(apptDateObj);
-      const key1 = hashStringToInt32(appointment.doctorId || '');
-      const key2 = hashStringToInt32(dateOnlyStr);
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${key1}, ${key2})`);
+      await lockDoctorDay(tx, appointment.doctorId || '', apptDateObj);
 
       // Query conflicting active appointments on the same date
       const conflictingAppts = await tx
@@ -491,11 +481,41 @@ export class PaymentReservationService {
           .set({
             paymentStatus: 'Paid',
             transactionId: paymentId,
-            refundNotes: 'Refund Required: Slot occupied by another booking',
             paymentNotes: 'Paid via Razorpay. Booking slot occupied.',
             updatedAt: new Date(),
           })
           .where(eq(AppointmentPaymentModel.appointmentId, appointmentId));
+
+        // The money must go back: queue it in Finance → Refund reviews, which then runs the
+        // normal approve/refund flow. Once per appointment, so a repeated confirm adds nothing.
+        const [existingReview] = await tx
+          .select({ id: RefundReviewModel.id })
+          .from(RefundReviewModel)
+          .where(eq(RefundReviewModel.appointmentId, appointmentId))
+          .limit(1);
+        if (!existingReview) {
+          const [request] = await tx
+            .insert(CancellationRequestModel)
+            .values({
+              appointmentId,
+              clinicId: appointment.clinicId,
+              userId: performedByUserId,
+              userRole: 'System',
+              reasonCode: 'scheduling_conflict',
+              comments:
+                'Paid after the payment window closed; the slot was already booked by someone else.',
+            })
+            .returning({ id: CancellationRequestModel.id });
+          await tx.insert(RefundReviewModel).values({
+            clinicId: appointment.clinicId,
+            appointmentId,
+            cancellationRequestId: request.id,
+            reasonCategory: 'scheduling_conflict',
+            policyReference: 'Slot taken after a late online payment',
+            amount: appointment.price || '0',
+            status: 'PENDING',
+          });
+        }
       } else {
         // No conflict, safe to confirm
         await tx
@@ -517,102 +537,31 @@ export class PaymentReservationService {
           .where(eq(AppointmentPaymentModel.appointmentId, appointmentId));
       }
 
-      // 3. Append ledger entries (Idempotency Guard: check if payment_received is already logged)
-      if (appointment.paymentRecordId) {
-        const [existingLedger] = await tx
-          .select({ id: FinancialLedgerModel.id })
-          .from(FinancialLedgerModel)
-          .where(
-            and(
-              eq(FinancialLedgerModel.paymentId, appointment.paymentRecordId),
-              eq(FinancialLedgerModel.entryType, 'PAYMENT_RECEIVED')
-            )
-          )
-          .limit(1);
-
-        if (!existingLedger) {
-          const priceVal = parseFloat(appointment.price || '0');
-          const commVal = parseFloat(appointment.platformCommission || '0');
-          const gstVal = parseFloat(appointment.gstAmount || '0');
-          const pgVal = parseFloat(appointment.pgFee || '0');
-          const convVal = parseFloat(appointment.convenienceFee || '0');
-          const txVal = parseFloat(appointment.transferredAmount || '0');
-
-          const ledgerValues: any[] = [
-            {
-              appointmentId,
-              clinicId: appointment.clinicId,
-              paymentId: appointment.paymentRecordId,
-              entryType: 'PAYMENT_RECEIVED',
-              amount: String(priceVal),
-              description: 'Patient payment captured',
-              gatewayReferenceId: paymentId,
-            },
-          ];
-
-          if (commVal > 0) {
-            ledgerValues.push({
-              appointmentId,
-              clinicId: appointment.clinicId,
-              paymentId: appointment.paymentRecordId,
-              entryType: 'PLATFORM_COMMISSION',
-              amount: String(-commVal),
-              description: 'Platform commission retained',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (gstVal > 0) {
-            ledgerValues.push({
-              appointmentId,
-              clinicId: appointment.clinicId,
-              paymentId: appointment.paymentRecordId,
-              entryType: 'GST',
-              amount: String(-gstVal),
-              description: 'GST on platform commission',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (pgVal > 0) {
-            ledgerValues.push({
-              appointmentId,
-              clinicId: appointment.clinicId,
-              paymentId: appointment.paymentRecordId,
-              entryType: 'PG_FEE',
-              amount: String(-pgVal),
-              description: 'Razorpay PG processing fee',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (convVal > 0) {
-            ledgerValues.push({
-              appointmentId,
-              clinicId: appointment.clinicId,
-              paymentId: appointment.paymentRecordId,
-              entryType: 'CONVENIENCE_FEE',
-              amount: String(convVal),
-              description: 'PG convenience fee markup charged to patient',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          if (txVal > 0) {
-            ledgerValues.push({
-              appointmentId,
-              clinicId: appointment.clinicId,
-              paymentId: appointment.paymentRecordId,
-              entryType: 'TRANSFER_CREATED',
-              amount: String(-txVal),
-              description: 'Routed split transfer to clinic sub-account',
-              gatewayReferenceId: paymentId,
-            });
-          }
-
-          await tx.insert(FinancialLedgerModel).values(ledgerValues);
+      // The Razorpay payment itself, keyed by its id: every confirm path records it once.
+      await AppointmentMoneySync.afterChange(
+        tx,
+        appointmentId,
+        performedByUserId,
+        {
+          move: {
+            kind: 'pay',
+            paymentMode: 'Online',
+            channel: 'online',
+            gatewayRef: paymentId,
+            requestId: `razorpay:pay:${paymentId}`,
+          },
         }
-      }
+      );
+
+      // The payment's fees, keyed by the same Razorpay id, in the same transaction.
+      await OnlineFeeLedger.record(tx, {
+        clinicId: appointment.clinicId,
+        patientId: appointment.patientId,
+        doctorId: appointment.doctorId,
+        appointmentId,
+        paymentId,
+        snapshot: appointment.financialSnapshot as ISplitBreakdown | null,
+      });
     });
 
     // Delete Redis Lock key outside database transaction

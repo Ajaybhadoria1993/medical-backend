@@ -1,0 +1,5094 @@
+{
+  "departments": [
+    {
+      "name": "Hematology",
+      "code": "HEMATOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Complete Blood Count",
+          "testType": "Profile",
+          "testCode": "CBC",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "Haemoglobin",
+              "inputType": "number",
+              "unit": "g/dL",
+              "referenceRange": "Male: 13.0–17.0; Female: 12.0–15.5",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 13,
+                  "highRange": 17
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 12,
+                  "highRange": 15.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "RBC Count",
+              "inputType": "number",
+              "unit": "mill/cu.mm",
+              "referenceRange": "Male: 4.5–5.9; Female: 4.1–5.1",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 4.5,
+                  "highRange": 5.9
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 4.1,
+                  "highRange": 5.1
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Haematocrit",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "Male: 41–53; Female: 36–46",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 41,
+                  "highRange": 53
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 36,
+                  "highRange": 46
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "MCV",
+              "inputType": "number",
+              "unit": "fL",
+              "referenceRange": "80–100",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 80,
+                  "highRange": 100
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "MCH",
+              "inputType": "number",
+              "unit": "pg",
+              "referenceRange": "27–33",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 27,
+                  "highRange": 33
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "MCHC",
+              "inputType": "number",
+              "unit": "g/dL",
+              "referenceRange": "32–36",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 32,
+                  "highRange": 36
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "RDW-CV",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "11.5–14.5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 11.5,
+                  "highRange": 14.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Total Leucocytes Count / TLC",
+              "inputType": "number",
+              "unit": "/cu.mm",
+              "referenceRange": "4,000–11,000",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 4000,
+                  "highRange": 11000
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Neutrophils",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "40–70",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 40,
+                  "highRange": 70
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Lymphocytes",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "20–40",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 20,
+                  "highRange": 40
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Eosinophils",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "1–6",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1,
+                  "highRange": 6
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Basophils",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "0–2",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Absolute Neutrophil Count",
+              "inputType": "number",
+              "unit": "×10^3/µL",
+              "referenceRange": "1.5–7.5 ×10^3/µL",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1.5,
+                  "highRange": 7.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Absolute Lymphocyte Count",
+              "inputType": "number",
+              "unit": "×10^3/µL",
+              "referenceRange": "1.0–4.0 ×10^3/µL",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1,
+                  "highRange": 4
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Absolute Monocyte Count",
+              "inputType": "number",
+              "unit": "×10^3/µL",
+              "referenceRange": "0.2–0.8 ×10^3/µL",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.2,
+                  "highRange": 0.8
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Absolute Eosinophil Count",
+              "inputType": "number",
+              "unit": "×10^3/µL",
+              "referenceRange": "0.0–0.5 ×10^3/µL",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 0.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Absolute Basophil Count",
+              "inputType": "number",
+              "unit": "×10^3/µL",
+              "referenceRange": "0.0–0.1 ×10^3/µL",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 0.1
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Platelet Count",
+              "inputType": "number",
+              "unit": "×10^3/µL",
+              "referenceRange": "150–450 ×10^3/µL",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 150,
+                  "highRange": 450
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Mean Platelet Volume / MPV",
+              "inputType": "number",
+              "unit": "fL",
+              "referenceRange": "7.5–12.0",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 7.5,
+                  "highRange": 12
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Hemoglobin",
+          "testType": "Single Test",
+          "testCode": "HEMOGLOBIN",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "Hemoglobin",
+              "inputType": "number",
+              "unit": "g/dL",
+              "referenceRange": "Male: 13.0–17.0; Female: 12.0–15.5",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 13,
+                  "highRange": 17
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 12,
+                  "highRange": 15.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Total Leukocyte Count",
+          "testType": "Single Test",
+          "testCode": "TLC",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "Total Leukocyte Count / TLC",
+              "inputType": "number",
+              "unit": "/cu.mm",
+              "referenceRange": "4,000–11,000",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 4000,
+                  "highRange": 11000
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Differential Leukocyte Count",
+          "testType": "Differential Count",
+          "testCode": "DLC",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "Neutrophils",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "40–70",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 40,
+                  "highRange": 70
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Lymphocytes",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "20–40",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 20,
+                  "highRange": 40
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Monocytes",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "2–8",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 2,
+                  "highRange": 8
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Eosinophils",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "1–6",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1,
+                  "highRange": 6
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Basophils",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "0–2",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Platelet Count",
+          "testType": "Single Test",
+          "testCode": "PLATELET_COUNT",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "Platelet Count",
+              "inputType": "number",
+              "unit": "×10^3/µL",
+              "referenceRange": "150–450 ×10^3/µL",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 150,
+                  "highRange": 450
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "ESR",
+          "testType": "Inflammatory Marker",
+          "testCode": "ESR",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "ESR",
+              "inputType": "number",
+              "unit": "mm/hr",
+              "referenceRange": "Male: 0–15; Female: 0–20",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 15
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 20
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Peripheral Blood Smear (PBS)",
+          "testType": "Microscopy",
+          "testCode": "PBS",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Peripheral Smear",
+          "parameters": [
+            {
+              "parameterName": "RBC Morphology",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "WBC Morphology",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Platelet Morphology",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Impression",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Reticulocyte Count",
+          "testType": "Single Test",
+          "testCode": "RETICULOCYTE_COUNT",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "Reticulocyte Count",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "Adults approximately 0.5–2.5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.5,
+                  "highRange": 2.5,
+                  "ageFromYears": 18
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Absolute Eosinophil Count",
+          "testType": "Single Test",
+          "testCode": "AEC",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Routine Haematology",
+          "parameters": [
+            {
+              "parameterName": "Absolute Eosinophil Count",
+              "inputType": "number",
+              "unit": "cells/µL",
+              "referenceRange": "0–500",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 500
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Peripheral Smear for Malaria",
+          "testType": "Microscopy",
+          "testCode": "MALARIA_SMEAR",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Plasmodium Species",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Parasite Density",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopy Comment",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Sickle Cell Screening",
+          "testType": "Screening",
+          "testCode": "SICKLE_CELL_SCREEN",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Anaemia Profile",
+          "parameters": [
+            {
+              "parameterName": "Screening Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "G6PD Screening",
+          "testType": "Screening",
+          "testCode": "G6PD_SCREEN",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Anaemia Profile",
+          "parameters": [
+            {
+              "parameterName": "G6PD Screening Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Normal; assay-specific interpretation",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Blood Film for RBC Morphology",
+          "testType": "Microscopy",
+          "testCode": "RBC_MORPHOLOGY",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Peripheral Smear",
+          "parameters": [
+            {
+              "parameterName": "RBC Morphology",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Interpretation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Biochemistry",
+      "code": "BIOCHEMISTRY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Fasting Blood Sugar (FBS)",
+          "testType": "Single Test",
+          "testCode": "FASTING_BLOOD_SUGAR",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Diabetes",
+          "parameters": [
+            {
+              "parameterName": "Fasting Blood Glucose",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "70–99 (normal fasting range; diagnostic interpretation requires clinical criteria)",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 70,
+                  "highRange": 99
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Liver Function Test",
+          "testType": "Profile",
+          "testCode": "LFT",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Liver Function",
+          "parameters": [
+            {
+              "parameterName": "Total Bilirubin",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "0.2–1.2",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.2,
+                  "highRange": 1.2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Direct Bilirubin",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "0.0–0.3",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 0.3
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Indirect Bilirubin",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "0.2–0.9",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.2,
+                  "highRange": 0.9
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "SGOT / AST",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "10–40",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 10,
+                  "highRange": 40
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "SGPT / ALT",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "7–56",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 7,
+                  "highRange": 56
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Alkaline Phosphatase",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "Adults: approximately 40–129",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 40,
+                  "highRange": 129,
+                  "ageFromYears": 18
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Gamma GT / GGT",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "Male: 8–61; Female: 5–36",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 8,
+                  "highRange": 61
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 5,
+                  "highRange": 36
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Total Protein",
+              "inputType": "number",
+              "unit": "g/dL",
+              "referenceRange": "6.0–8.3",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 6,
+                  "highRange": 8.3
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Albumin",
+              "inputType": "number",
+              "unit": "g/dL",
+              "referenceRange": "3.5–5.0",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 3.5,
+                  "highRange": 5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Globulin",
+              "inputType": "number",
+              "unit": "g/dL",
+              "referenceRange": "2.0–3.5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 2,
+                  "highRange": 3.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "A/G Ratio",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": "1.0–2.2",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1,
+                  "highRange": 2.2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Kidney Function Test",
+          "testType": "Profile",
+          "testCode": "KFT",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Kidney Function",
+          "parameters": [
+            {
+              "parameterName": "Urea",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "15–40",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 15,
+                  "highRange": 40
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Blood Urea Nitrogen / BUN",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "7–20",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 7,
+                  "highRange": 20
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Creatinine",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Male: 0.7–1.3; Female: 0.6–1.1",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 0.7,
+                  "highRange": 1.3
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 0.6,
+                  "highRange": 1.1
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Uric Acid",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Male: 3.4–7.0; Female: 2.4–6.0",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 3.4,
+                  "highRange": 7
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 2.4,
+                  "highRange": 6
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Sodium",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "135–145",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 135,
+                  "highRange": 145
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Potassium",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "3.5–5.1",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 3.5,
+                  "highRange": 5.1
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Chloride",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "98–107",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 98,
+                  "highRange": 107
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Calcium",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "8.5–10.5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 8.5,
+                  "highRange": 10.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Lipid Profile",
+          "testType": "Profile",
+          "testCode": "LIPID_PROFILE",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Lipid Profile",
+          "parameters": [
+            {
+              "parameterName": "Total Cholesterol",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Desirable: <200",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 200,
+                  "label": "Desirable"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Triglycerides",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Normal: <150 (fasting)",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 150,
+                  "label": "Normal (fasting)"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "HDL Cholesterol",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Male: >40; Female: >50 (higher is protective)",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "gt",
+                  "lowRange": 40
+                },
+                {
+                  "gender": "Female",
+                  "type": "gt",
+                  "lowRange": 50
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "LDL Cholesterol",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Optimal: <100 (risk-dependent target)",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 100,
+                  "label": "Optimal"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "VLDL Cholesterol",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Approximately 5–40",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 5,
+                  "highRange": 40
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Total Cholesterol / HDL Ratio",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": "Interpret with overall cardiovascular risk; commonly <5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "LDL / HDL Ratio",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": "No universal reference interval; interpret with overall cardiovascular risk",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Uric Acid",
+          "testType": "Single Test",
+          "testCode": "URIC_ACID",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Kidney Function",
+          "parameters": [
+            {
+              "parameterName": "Uric Acid",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Male: 3.4–7.0; Female: 2.4–6.0",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 3.4,
+                  "highRange": 7
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 2.4,
+                  "highRange": 6
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Creatinine",
+          "testType": "Single Test",
+          "testCode": "CREATININE",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Kidney Function",
+          "parameters": [
+            {
+              "parameterName": "Serum Creatinine",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Male: 0.7–1.3; Female: 0.6–1.1",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 0.7,
+                  "highRange": 1.3
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 0.6,
+                  "highRange": 1.1
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "eGFR",
+              "inputType": "number",
+              "unit": "mL/min/1.73m2",
+              "referenceRange": "≥90 usually normal; interpret with age and clinical context",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "gt",
+                  "lowRange": 90
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Postprandial Blood Sugar (PPBS)",
+          "testType": "Single Test",
+          "testCode": "PPBS",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Diabetes",
+          "parameters": [
+            {
+              "parameterName": "Postprandial Plasma Glucose (2 hours)",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "No universal reference interval; interpret using the laboratory method, meal timing, and applicable clinical criteria",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Random Blood Sugar (RBS)",
+          "testType": "Single Test",
+          "testCode": "RBS",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Diabetes",
+          "parameters": [
+            {
+              "parameterName": "Random Plasma Glucose",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "No universal fasting reference interval; interpret with symptoms and clinical criteria",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Oral Glucose Tolerance Test (75 g)",
+          "testType": "Tolerance Test",
+          "testCode": "OGTT_75G",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Diabetes",
+          "parameters": [
+            {
+              "parameterName": "Fasting Plasma Glucose",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Normal <100; diagnostic thresholds depend on guideline",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 100
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "1-Hour Plasma Glucose",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Use protocol-specific reference/decision limits",
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "2-Hour Plasma Glucose",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Normal <140; diagnostic thresholds depend on guideline",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 140
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Serum Electrolytes",
+          "testType": "Profile",
+          "testCode": "SERUM_ELECTROLYTES",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Electrolytes & Minerals",
+          "parameters": [
+            {
+              "parameterName": "Sodium",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "135–145",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 135,
+                  "highRange": 145
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Potassium",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "3.5–5.1",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 3.5,
+                  "highRange": 5.1
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Chloride",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "98–107",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 98,
+                  "highRange": 107
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Bicarbonate / Total CO2",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "22–29",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 22,
+                  "highRange": 29
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Serum Calcium",
+          "testType": "Single Test",
+          "testCode": "SERUM_CALCIUM",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Electrolytes & Minerals",
+          "parameters": [
+            {
+              "parameterName": "Total Calcium",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "8.5–10.5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 8.5,
+                  "highRange": 10.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Ionized Calcium",
+          "testType": "Single Test",
+          "testCode": "IONIZED_CALCIUM",
+          "sampleType": "Whole Blood",
+          "status": "active",
+          "groupName": "Electrolytes & Minerals",
+          "parameters": [
+            {
+              "parameterName": "Ionized Calcium",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "1.12–1.32",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1.12,
+                  "highRange": 1.32
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Serum Phosphorus",
+          "testType": "Single Test",
+          "testCode": "SERUM_PHOSPHORUS",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Electrolytes & Minerals",
+          "parameters": [
+            {
+              "parameterName": "Phosphorus",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Adults: 2.5–4.5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 2.5,
+                  "highRange": 4.5,
+                  "ageFromYears": 18
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Magnesium",
+          "testType": "Single Test",
+          "testCode": "SERUM_MAGNESIUM",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Electrolytes & Minerals",
+          "parameters": [
+            {
+              "parameterName": "Magnesium",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "1.7–2.2",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1.7,
+                  "highRange": 2.2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Amylase",
+          "testType": "Single Test",
+          "testCode": "AMYLASE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Pancreatic Enzymes",
+          "parameters": [
+            {
+              "parameterName": "Amylase",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "Laboratory/method-specific; commonly about 30–110",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 30,
+                  "highRange": 110
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Lipase",
+          "testType": "Single Test",
+          "testCode": "LIPASE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Pancreatic Enzymes",
+          "parameters": [
+            {
+              "parameterName": "Lipase",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "Laboratory/method-specific; use analyzer interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Lactate Dehydrogenase (LDH)",
+          "testType": "Single Test",
+          "testCode": "LDH",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Cardiac Markers",
+          "parameters": [
+            {
+              "parameterName": "LDH",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "Laboratory/method-specific; commonly about 140–280",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 140,
+                  "highRange": 280
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Creatine Kinase (CK)",
+          "testType": "Single Test",
+          "testCode": "CK_TOTAL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Cardiac Markers",
+          "parameters": [
+            {
+              "parameterName": "Creatine Kinase",
+              "inputType": "number",
+              "unit": "U/L",
+              "referenceRange": "Sex-, age- and method-specific; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Iron Studies",
+          "testType": "Profile",
+          "testCode": "IRON_STUDIES",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Anaemia Profile",
+          "parameters": [
+            {
+              "parameterName": "Serum Iron",
+              "inputType": "number",
+              "unit": "µg/dL",
+              "referenceRange": "Male: 65–175; Female: 50–170",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 65,
+                  "highRange": 175
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 50,
+                  "highRange": 170
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "TIBC",
+              "inputType": "number",
+              "unit": "µg/dL",
+              "referenceRange": "250–450",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 250,
+                  "highRange": 450
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Transferrin Saturation",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "20–50",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 20,
+                  "highRange": 50
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Ferritin",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Sex-, age- and method-specific; use laboratory interval",
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Ferritin",
+          "testType": "Single Test",
+          "testCode": "FERRITIN",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Anaemia Profile",
+          "parameters": [
+            {
+              "parameterName": "Ferritin",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Sex-, age- and method-specific; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Lactate",
+          "testType": "Single Test",
+          "testCode": "LACTATE",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Critical Care",
+          "parameters": [
+            {
+              "parameterName": "Lactate",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "Common venous interval about 0.5–2.2; collection dependent",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.5,
+                  "highRange": 2.2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Ammonia",
+          "testType": "Single Test",
+          "testCode": "AMMONIA",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Critical Care",
+          "parameters": [
+            {
+              "parameterName": "Ammonia",
+              "inputType": "number",
+              "unit": "µmol/L",
+              "referenceRange": "Method-, age- and specimen-handling-specific",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Serum Osmolality",
+          "testType": "Single Test",
+          "testCode": "SERUM_OSMOLALITY",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Critical Care",
+          "parameters": [
+            {
+              "parameterName": "Osmolality",
+              "inputType": "number",
+              "unit": "mOsm/kg",
+              "referenceRange": "275–295",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 275,
+                  "highRange": 295
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Urine Microalbumin",
+          "testType": "Single Test",
+          "testCode": "URINE_MICROALBUMIN",
+          "sampleType": "Urine",
+          "status": "active",
+          "groupName": "Kidney Function",
+          "parameters": [
+            {
+              "parameterName": "Urine Albumin",
+              "inputType": "number",
+              "unit": "mg/L",
+              "referenceRange": "Use method-specific interval",
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Urine Albumin/Creatinine Ratio",
+              "inputType": "number",
+              "unit": "mg/g creatinine",
+              "referenceRange": "Normal <30",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 30
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "HbA1c",
+          "testType": "Single Test",
+          "testCode": "HBA1C",
+          "sampleType": "Whole Blood",
+          "status": "active",
+          "groupName": "Diabetes",
+          "parameters": [
+            {
+              "parameterName": "Glycated Hemoglobin (HbA1c)",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "Non-diabetic: <5.7%; diagnostic interpretation per current guideline",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 5.7,
+                  "label": "Non-diabetic"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Clinical Pathology",
+      "code": "CLINICAL_PATHOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Urine Routine",
+          "testType": "Routine Examination",
+          "testCode": "URINE_ROUTINE",
+          "sampleType": "Urine",
+          "status": "active",
+          "groupName": "Urine Examination",
+          "parameters": [
+            {
+              "parameterName": "Colour",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Pale Yellow",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Appearance",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Clear",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Specific Gravity",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": "1.005–1.030",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 1.005,
+                  "highRange": 1.03
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "pH",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": "4.5–8.0",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 4.5,
+                  "highRange": 8
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Protein",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Glucose",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Ketones",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Bilirubin",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Urobilinogen",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Normal",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Blood",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Nitrite",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Leukocyte Esterase",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Pus Cells / WBC",
+              "inputType": "number",
+              "unit": "/hpf",
+              "referenceRange": "0–5 /HPF",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "RBC",
+              "inputType": "number",
+              "unit": "/hpf",
+              "referenceRange": "0–2 /HPF",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Epithelial Cells",
+              "inputType": "number",
+              "unit": "/hpf",
+              "referenceRange": "0–5 /HPF",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Casts",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Crystals",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Bacteria",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Stool Routine",
+          "testType": "Routine Examination",
+          "testCode": "STOOL_ROUTINE",
+          "sampleType": "Stool",
+          "status": "active",
+          "groupName": "Stool Examination",
+          "parameters": [
+            {
+              "parameterName": "Colour",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Brown",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Consistency",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Formed",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Mucus",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Blood",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Occult Blood",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Pus Cells",
+              "inputType": "number",
+              "unit": "/hpf",
+              "referenceRange": "0 - 5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "RBC",
+              "inputType": "number",
+              "unit": "/hpf",
+              "referenceRange": "0–2 /HPF",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0,
+                  "highRange": 2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Ova",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Cyst",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Parasite",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Pregnancy Test",
+          "testType": "Screening",
+          "testCode": "PREGNANCY_TEST",
+          "sampleType": "Urine",
+          "status": "active",
+          "groupName": "Pregnancy",
+          "parameters": [
+            {
+              "parameterName": "Urine hCG Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Urine Albumin/Creatinine Ratio (ACR)",
+          "testType": "Single Test",
+          "testCode": "URINE_ACR",
+          "sampleType": "Urine",
+          "status": "active",
+          "groupName": "Kidney Function",
+          "parameters": [
+            {
+              "parameterName": "Urine Albumin",
+              "inputType": "number",
+              "unit": "mg/L",
+              "referenceRange": "Use method-specific interval",
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Urine Creatinine",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "Use method-specific interval",
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Albumin/Creatinine Ratio",
+              "inputType": "number",
+              "unit": "mg/g creatinine",
+              "referenceRange": "A1: <30; A2: 30–300; A3: >300",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "highRange": 30,
+                  "label": "A1 – normal to mildly increased"
+                },
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "lowRange": 30,
+                  "highRange": 300,
+                  "label": "A2 – moderately increased"
+                },
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "lowRange": 300,
+                  "label": "A3 – severely increased"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "24-Hour Urine Protein",
+          "testType": "Quantitative Test",
+          "testCode": "URINE_PROTEIN_24H",
+          "sampleType": "24-Hour Urine",
+          "status": "active",
+          "groupName": "Kidney Function",
+          "parameters": [
+            {
+              "parameterName": "24-Hour Urine Protein",
+              "inputType": "number",
+              "unit": "mg/24 h",
+              "referenceRange": "Usually <150",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 150
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Semen Analysis",
+          "testType": "Routine Examination",
+          "testCode": "SEMEN_ANALYSIS",
+          "sampleType": "Semen",
+          "status": "active",
+          "groupName": "Fertility & Reproductive Hormones",
+          "parameters": [
+            {
+              "parameterName": "Volume",
+              "inputType": "number",
+              "unit": "mL",
+              "referenceRange": "WHO edition and collection protocol-specific",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Sperm Concentration",
+              "inputType": "number",
+              "unit": "million/mL",
+              "referenceRange": "Use current WHO lower reference limit",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Total Motility",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "Use current WHO lower reference limit",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Progressive Motility",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "Use current WHO lower reference limit",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Normal Morphology",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "Use current WHO lower reference limit",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopy / Impression",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Body Fluid Analysis",
+          "testType": "Routine Examination",
+          "testCode": "BODY_FLUID_ANALYSIS",
+          "sampleType": "Body Fluid",
+          "status": "active",
+          "groupName": "Body Fluid Analysis",
+          "parameters": [
+            {
+              "parameterName": "Fluid Type",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Total Cell Count",
+              "inputType": "number",
+              "unit": "cells/µL",
+              "referenceRange": "Specimen- and method-specific",
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "RBC Count",
+              "inputType": "number",
+              "unit": "cells/µL",
+              "referenceRange": "Specimen-specific",
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Differential Count",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Appearance",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopy / Impression",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Urine Pregnancy Test (UPT)",
+          "testType": "Screening",
+          "testCode": "URINE_PREGNANCY",
+          "sampleType": "Urine",
+          "status": "active",
+          "groupName": "Pregnancy",
+          "parameters": [
+            {
+              "parameterName": "Urine hCG Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Stool Occult Blood",
+          "testType": "Screening",
+          "testCode": "STOOL_OCCULT_BLOOD",
+          "sampleType": "Stool",
+          "status": "active",
+          "groupName": "Stool Examination",
+          "parameters": [
+            {
+              "parameterName": "Occult Blood Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microbiology",
+      "code": "MICROBIOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Blood Culture",
+          "testType": "Culture",
+          "testCode": "BLOOD_CULTURE",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Culture & Sensitivity",
+          "parameters": [
+            {
+              "parameterName": "Gram Stain",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No organism seen",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Culture Growth",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No growth",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Organism Isolated",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "None",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Colony Count",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Antibiotic Sensitivity",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Comments",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Urine Culture",
+          "testType": "Culture",
+          "testCode": "URINE_CULTURE",
+          "sampleType": "Urine",
+          "status": "active",
+          "groupName": "Culture & Sensitivity",
+          "parameters": [
+            {
+              "parameterName": "Culture Growth",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No growth",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Colony Count",
+              "inputType": "text",
+              "unit": "CFU/mL",
+              "referenceRange": "< 100000",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Organism Isolated",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "None",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Antibiotic Sensitivity",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Comments",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Sputum Culture",
+          "testType": "Culture",
+          "testCode": "SPUTUM_CULTURE",
+          "sampleType": "Sputum",
+          "status": "active",
+          "groupName": "Culture & Sensitivity",
+          "parameters": [
+            {
+              "parameterName": "Gram Stain",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No organism seen",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Culture Growth",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No growth",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Organism Isolated",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "None",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "AFB Smear",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Antibiotic Sensitivity",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Comments",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Throat Swab Culture",
+          "testType": "Culture",
+          "testCode": "THROAT_SWAB_CULTURE",
+          "sampleType": "Throat Swab",
+          "status": "active",
+          "groupName": "Culture & Sensitivity",
+          "parameters": [
+            {
+              "parameterName": "Culture Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No significant pathogen isolated",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Organism",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Antibiotic Susceptibility",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Pus / Wound Culture",
+          "testType": "Culture",
+          "testCode": "PUS_WOUND_CULTURE",
+          "sampleType": "Pus / Wound Swab",
+          "status": "active",
+          "groupName": "Culture & Sensitivity",
+          "parameters": [
+            {
+              "parameterName": "Culture Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No growth",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Organism",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Antibiotic Susceptibility",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "AFB Smear",
+          "testType": "Microscopy",
+          "testCode": "AFB_SMEAR",
+          "sampleType": "Sputum / Specimen",
+          "status": "active",
+          "groupName": "Microscopy & Stains",
+          "parameters": [
+            {
+              "parameterName": "AFB Smear Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not seen",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopy Comment",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Fungal KOH Mount",
+          "testType": "Microscopy",
+          "testCode": "FUNGAL_KOH",
+          "sampleType": "Skin / Nail / Hair",
+          "status": "active",
+          "groupName": "Microscopy & Stains",
+          "parameters": [
+            {
+              "parameterName": "KOH Mount Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "No fungal elements seen",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopy Comment",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Gram Stain",
+          "testType": "Microscopy",
+          "testCode": "GRAM_STAIN",
+          "sampleType": "Appropriate Specimen",
+          "status": "active",
+          "groupName": "Microscopy & Stains",
+          "parameters": [
+            {
+              "parameterName": "Gram Stain Findings",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Organisms / Cells",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Antibiotic Susceptibility",
+          "testType": "Susceptibility Testing",
+          "testCode": "ANTIBIOTIC_SUSCEPTIBILITY",
+          "sampleType": "Isolate",
+          "status": "active",
+          "groupName": "Culture & Sensitivity",
+          "parameters": [
+            {
+              "parameterName": "Organism Identification",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Antibiotic Susceptibility Results",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Serology / Immunology",
+      "code": "SEROLOGY_IMMUNOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "HIV Screening",
+          "testType": "Screening",
+          "testCode": "HIV",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Infectious Disease Serology",
+          "parameters": [
+            {
+              "parameterName": "HIV 1 Antibody",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Non Reactive",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "HIV 2 Antibody",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Non Reactive",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "HIV p24 Antigen",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Non Reactive",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Final Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Non Reactive",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Method",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "HBsAg",
+          "testType": "Screening",
+          "testCode": "HBSAG",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Hepatitis Markers",
+          "parameters": [
+            {
+              "parameterName": "HBsAg",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Non Reactive",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Method",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Comments",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Dengue Profile",
+          "testType": "Profile",
+          "testCode": "DENGUE",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Dengue NS1 Antigen",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Dengue IgM Antibody",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Dengue IgG Antibody",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Final Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Typhoid / Widal Test",
+          "testType": "Serology",
+          "testCode": "TYPHOID",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Salmonella Typhi O",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "< 1:80",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Salmonella Typhi H",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "< 1:80",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Salmonella Paratyphi AH",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "< 1:80",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Salmonella Paratyphi BH",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "< 1:80",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Interpretation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "CRP",
+          "testType": "Inflammatory Marker",
+          "testCode": "CRP",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Inflammation Markers",
+          "parameters": [
+            {
+              "parameterName": "C-Reactive Protein",
+              "inputType": "number",
+              "unit": "mg/L",
+              "referenceRange": "<5",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "RA Factor",
+          "testType": "Autoimmune Marker",
+          "testCode": "RA_FACTOR",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Autoimmune & Rheumatology",
+          "parameters": [
+            {
+              "parameterName": "Rheumatoid Factor",
+              "inputType": "number",
+              "unit": "IU/mL",
+              "referenceRange": "Usually <14",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 14
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Hepatitis B Surface Antibody (Anti-HBs)",
+          "testType": "Serology",
+          "testCode": "ANTI_HBS",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Hepatitis Markers",
+          "parameters": [
+            {
+              "parameterName": "Anti-HBs",
+              "inputType": "number",
+              "unit": "mIU/mL",
+              "referenceRange": "<10 non-protective; ≥10 generally protective after vaccination, context-dependent",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "highRange": 10,
+                  "label": "Non-protective"
+                },
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "lowRange": 10,
+                  "label": "Protective"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Anti-HCV",
+          "testType": "Screening",
+          "testCode": "ANTI_HCV",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Hepatitis Markers",
+          "parameters": [
+            {
+              "parameterName": "Anti-HCV Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Non-reactive",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "S/CO or Index",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "VDRL / RPR",
+          "testType": "Screening",
+          "testCode": "VDRL_RPR",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Infectious Disease Serology",
+          "parameters": [
+            {
+              "parameterName": "Screening Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Non-reactive",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Titre",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "ASO Titre",
+          "testType": "Serology",
+          "testCode": "ASO_TITRE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Infectious Disease Serology",
+          "parameters": [
+            {
+              "parameterName": "Antistreptolysin O",
+              "inputType": "number",
+              "unit": "IU/mL",
+              "referenceRange": "Method- and age-specific; often adult upper limit about 200",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 200,
+                  "ageFromYears": 18
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Procalcitonin",
+          "testType": "Inflammatory Marker",
+          "testCode": "PROCALCITONIN",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Inflammation Markers",
+          "parameters": [
+            {
+              "parameterName": "Procalcitonin",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Interpret using assay-specific clinical decision limits",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Dengue NS1 Antigen",
+          "testType": "Screening",
+          "testCode": "DENGUE_NS1",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Dengue NS1 Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Dengue IgM Antibody",
+          "testType": "Serology",
+          "testCode": "DENGUE_IGM",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Dengue IgM Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Dengue IgG Antibody",
+          "testType": "Serology",
+          "testCode": "DENGUE_IGG",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Dengue IgG Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Chikungunya IgM",
+          "testType": "Serology",
+          "testCode": "CHIKUNGUNYA_IGM",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Chikungunya IgM Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Leptospira IgM",
+          "testType": "Serology",
+          "testCode": "LEPTOSPIRA_IGM",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Leptospira IgM Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "H. pylori Antibody",
+          "testType": "Serology",
+          "testCode": "H_PYLORI_AB",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Infectious Disease Serology",
+          "parameters": [
+            {
+              "parameterName": "H. pylori Antibody Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coagulation",
+      "code": "COAGULATION",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "PT INR",
+          "testType": "Coagulation",
+          "testCode": "PT_INR",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Coagulation Profile",
+          "parameters": [
+            {
+              "parameterName": "Prothrombin Time / Patient",
+              "inputType": "number",
+              "unit": "sec",
+              "referenceRange": "Laboratory/method-specific; commonly about 11–13.5 seconds",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 11,
+                  "highRange": 13.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Prothrombin Time / Control",
+              "inputType": "number",
+              "unit": "sec",
+              "referenceRange": "Use laboratory control value",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "INR",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": "0.8–1.2 (not on anticoagulants)",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.8,
+                  "highRange": 1.2,
+                  "label": "Not on anticoagulants"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "ISI",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "APTT",
+          "testType": "Coagulation",
+          "testCode": "APTT",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Coagulation Profile",
+          "parameters": [
+            {
+              "parameterName": "APTT / Patient",
+              "inputType": "number",
+              "unit": "sec",
+              "referenceRange": "Laboratory-specific; commonly about 25–35 seconds",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 25,
+                  "highRange": 35
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "APTT / Control",
+              "inputType": "number",
+              "unit": "sec",
+              "referenceRange": "Use laboratory control value",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Interpretation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": "Normal",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Bleeding Time",
+          "testType": "Coagulation",
+          "testCode": "BLEEDING_TIME",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Coagulation Profile",
+          "parameters": [
+            {
+              "parameterName": "Bleeding Time",
+              "inputType": "number",
+              "unit": "min",
+              "referenceRange": "Method-specific; do not use a universal interval",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Method",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Clotting Time",
+          "testType": "Coagulation",
+          "testCode": "CLOTTING_TIME",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Coagulation Profile",
+          "parameters": [
+            {
+              "parameterName": "Clotting Time",
+              "inputType": "number",
+              "unit": "min",
+              "referenceRange": "Method-specific; do not use a universal interval",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Method",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "D-Dimer",
+          "testType": "Coagulation",
+          "testCode": "D_DIMER",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Coagulation Profile",
+          "parameters": [
+            {
+              "parameterName": "D-Dimer",
+              "inputType": "number",
+              "unit": "mg/L FEU",
+              "referenceRange": "Common cut-off <0.5 mg/L FEU; assay-specific",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 0.5
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Fibrinogen",
+          "testType": "Coagulation",
+          "testCode": "FIBRINOGEN",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Coagulation Profile",
+          "parameters": [
+            {
+              "parameterName": "Fibrinogen",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "200–400",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 200,
+                  "highRange": 400
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Thrombin Time",
+          "testType": "Coagulation",
+          "testCode": "THROMBIN_TIME",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Coagulation Profile",
+          "parameters": [
+            {
+              "parameterName": "Thrombin Time",
+              "inputType": "number",
+              "unit": "sec",
+              "referenceRange": "Method-specific; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Parasitology",
+      "code": "PARASITOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Malaria Test",
+          "testType": "Parasitology",
+          "testCode": "MALARIA",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Fever Profile",
+          "parameters": [
+            {
+              "parameterName": "Malaria Parasite",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Plasmodium Vivax",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Plasmodium Falciparum",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Parasite Density",
+              "inputType": "number",
+              "unit": "/uL",
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Stool Parasite",
+          "testType": "Parasitology",
+          "testCode": "STOOL_PARASITE",
+          "sampleType": "Stool",
+          "status": "active",
+          "groupName": "Parasitology",
+          "parameters": [
+            {
+              "parameterName": "Ova",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Cyst",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Trophozoite",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Larvae",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Absent",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Parasite Identified",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "None",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Comments",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Histopathology",
+      "code": "HISTOPATHOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Biopsy",
+          "testType": "Histopathology",
+          "testCode": "BIOPSY",
+          "sampleType": "Tissue",
+          "status": "active",
+          "groupName": "Histopathology",
+          "parameters": [
+            {
+              "parameterName": "Specimen",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Clinical History",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Gross Examination",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopic Examination",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Diagnosis",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Impression",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "FNAC",
+          "testType": "Cytology",
+          "testCode": "FNAC",
+          "sampleType": "Aspirate",
+          "status": "active",
+          "groupName": "Histopathology",
+          "parameters": [
+            {
+              "parameterName": "Site",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Clinical Details",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Cellularity",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopic Examination",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Impression",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cytology",
+      "code": "CYTOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "PAP Smear",
+          "testType": "Cytology",
+          "testCode": "PAP_SMEAR",
+          "sampleType": "Cervical Smear",
+          "status": "active",
+          "groupName": "Cytology",
+          "parameters": [
+            {
+              "parameterName": "Specimen Adequacy",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Satisfactory",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Epithelial Cell Abnormality",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Organisms",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not Seen",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Inflammation",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Interpretation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": "Negative for intraepithelial lesion or malignancy",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Recommendation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Fluid Cytology",
+          "testType": "Cytology",
+          "testCode": "FLUID_CYTOLOGY",
+          "sampleType": "Fluid",
+          "status": "active",
+          "groupName": "Cytology",
+          "parameters": [
+            {
+              "parameterName": "Fluid Type",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Volume",
+              "inputType": "number",
+              "unit": "mL",
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Appearance",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Cellularity",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Microscopic Examination",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Malignant Cells",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not Seen",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Impression",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Molecular Diagnostics",
+      "code": "MOLECULAR_DIAGNOSTICS",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "RT PCR",
+          "testType": "Molecular Diagnostics",
+          "testCode": "RT_PCR",
+          "sampleType": "Swab",
+          "status": "active",
+          "groupName": "Molecular Diagnostics",
+          "parameters": [
+            {
+              "parameterName": "Target Pathogen / Gene",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not Detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Ct Value",
+              "inputType": "number",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Internal Control",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Valid",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Interpretation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": "Not Detected",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "HPV DNA Test",
+          "testType": "Molecular Diagnostics",
+          "testCode": "HPV_DNA",
+          "sampleType": "Swab",
+          "status": "active",
+          "groupName": "Molecular Diagnostics",
+          "parameters": [
+            {
+              "parameterName": "High Risk HPV DNA",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not Detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "HPV 16",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not Detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "HPV 18",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not Detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Other High Risk Genotypes",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not Detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Interpretation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": "Not Detected",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "COVID-19 RT-PCR",
+          "testType": "Molecular Diagnostics",
+          "testCode": "COVID19_RTPCR",
+          "sampleType": "Nasopharyngeal / Appropriate Specimen",
+          "status": "active",
+          "groupName": "Molecular Diagnostics",
+          "parameters": [
+            {
+              "parameterName": "SARS-CoV-2 RNA Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Internal Control",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Interpretation",
+              "inputType": "textarea",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Hepatitis B Viral Load (HBV DNA)",
+          "testType": "Molecular Diagnostics",
+          "testCode": "HBV_DNA",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Hepatitis Markers",
+          "parameters": [
+            {
+              "parameterName": "HBV DNA",
+              "inputType": "number",
+              "unit": "IU/mL",
+              "referenceRange": "Assay-specific limit of detection/quantification",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Log10 HBV DNA",
+              "inputType": "number",
+              "unit": "log10 IU/mL",
+              "referenceRange": "Calculated from quantitative result",
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Hepatitis C Viral Load (HCV RNA)",
+          "testType": "Molecular Diagnostics",
+          "testCode": "HCV_RNA",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Hepatitis Markers",
+          "parameters": [
+            {
+              "parameterName": "HCV RNA",
+              "inputType": "number",
+              "unit": "IU/mL",
+              "referenceRange": "Assay-specific limit of detection/quantification",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Log10 HCV RNA",
+              "inputType": "number",
+              "unit": "log10 IU/mL",
+              "referenceRange": "Calculated from quantitative result",
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Tuberculosis NAAT",
+          "testType": "Molecular Diagnostics",
+          "testCode": "TB_NAAT",
+          "sampleType": "Sputum / Appropriate Specimen",
+          "status": "active",
+          "groupName": "Molecular Diagnostics",
+          "parameters": [
+            {
+              "parameterName": "MTB Complex Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not detected",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Rifampicin Resistance",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Not detected / Detected / Indeterminate",
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Blood Bank",
+      "code": "BLOOD_BANK",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Blood Grouping",
+          "testType": "Blood Bank",
+          "testCode": "BLOOD_GROUPING",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Blood Bank",
+          "parameters": [
+            {
+              "parameterName": "ABO Group",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Rh Factor",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Cross Match",
+          "testType": "Blood Bank",
+          "testCode": "CROSS_MATCH",
+          "sampleType": "Blood",
+          "status": "active",
+          "groupName": "Blood Bank",
+          "parameters": [
+            {
+              "parameterName": "Recipient Blood Group",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Donor Blood Group",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Compatibility",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Compatible",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Remarks",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Endocrinology",
+      "code": "ENDOCRINOLOGY",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Thyroid Profile (T3, T4, TSH)",
+          "testType": "Profile",
+          "testCode": "THYROID_PROFILE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Thyroid Profile",
+          "parameters": [
+            {
+              "parameterName": "Total T3",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "0.8–2.0",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.8,
+                  "highRange": 2
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Total T4",
+              "inputType": "number",
+              "unit": "µg/dL",
+              "referenceRange": "5.0–12.0",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 5,
+                  "highRange": 12
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "TSH",
+              "inputType": "number",
+              "unit": "µIU/mL",
+              "referenceRange": "Approximately 0.4–4.0; age/pregnancy-specific intervals may apply",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.4,
+                  "highRange": 4
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Free Thyroid Profile",
+          "testType": "Profile",
+          "testCode": "FREE_THYROID_PROFILE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Thyroid Profile",
+          "parameters": [
+            {
+              "parameterName": "Free T3",
+              "inputType": "number",
+              "unit": "pg/mL",
+              "referenceRange": "2.0–4.4",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 2,
+                  "highRange": 4.4
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Free T4",
+              "inputType": "number",
+              "unit": "ng/dL",
+              "referenceRange": "0.8–1.8",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.8,
+                  "highRange": 1.8
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "TSH",
+              "inputType": "number",
+              "unit": "µIU/mL",
+              "referenceRange": "Approximately 0.4–4.0; age/pregnancy-specific intervals may apply",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.4,
+                  "highRange": 4
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "TSH",
+          "testType": "Single Test",
+          "testCode": "TSH",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Thyroid Profile",
+          "parameters": [
+            {
+              "parameterName": "Thyroid Stimulating Hormone (TSH)",
+              "inputType": "number",
+              "unit": "µIU/mL",
+              "referenceRange": "Approximately 0.4–4.0; age/pregnancy-specific intervals may apply",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 0.4,
+                  "highRange": 4
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Insulin (Fasting)",
+          "testType": "Single Test",
+          "testCode": "FASTING_INSULIN",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Diabetes",
+          "parameters": [
+            {
+              "parameterName": "Fasting Insulin",
+              "inputType": "number",
+              "unit": "µIU/mL",
+              "referenceRange": "Method-specific; follow laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "C-Peptide",
+          "testType": "Single Test",
+          "testCode": "C_PEPTIDE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Diabetes",
+          "parameters": [
+            {
+              "parameterName": "C-Peptide",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Fasting/stimulated state and method affect interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Cortisol",
+          "testType": "Single Test",
+          "testCode": "CORTISOL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Endocrine Hormones",
+          "parameters": [
+            {
+              "parameterName": "Cortisol",
+              "inputType": "number",
+              "unit": "µg/dL",
+              "referenceRange": "Time-of-day and stimulation protocol dependent; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Prolactin",
+          "testType": "Single Test",
+          "testCode": "PROLACTIN",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fertility & Reproductive Hormones",
+          "parameters": [
+            {
+              "parameterName": "Prolactin",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Sex-, pregnancy- and method-specific; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Testosterone Total",
+          "testType": "Single Test",
+          "testCode": "TESTOSTERONE_TOTAL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fertility & Reproductive Hormones",
+          "parameters": [
+            {
+              "parameterName": "Total Testosterone",
+              "inputType": "number",
+              "unit": "ng/dL",
+              "referenceRange": "Male: Adult male commonly 300–1000; Female: Adult female method-specific; commonly about 15–70",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 300,
+                  "highRange": 1000,
+                  "ageFromYears": 18
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 15,
+                  "highRange": 70,
+                  "ageFromYears": 18
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "LH & FSH",
+          "testType": "Profile",
+          "testCode": "LH_FSH",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fertility & Reproductive Hormones",
+          "parameters": [
+            {
+              "parameterName": "Luteinizing Hormone (LH)",
+              "inputType": "number",
+              "unit": "mIU/mL",
+              "referenceRange": "Sex-, age- and menstrual-cycle-specific",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Follicle Stimulating Hormone (FSH)",
+              "inputType": "number",
+              "unit": "mIU/mL",
+              "referenceRange": "Sex-, age- and menstrual-cycle-specific",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Estradiol (E2)",
+          "testType": "Single Test",
+          "testCode": "ESTRADIOL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fertility & Reproductive Hormones",
+          "parameters": [
+            {
+              "parameterName": "Estradiol",
+              "inputType": "number",
+              "unit": "pg/mL",
+              "referenceRange": "Sex-, age- and cycle-specific",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Progesterone",
+          "testType": "Single Test",
+          "testCode": "PROGESTERONE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Fertility & Reproductive Hormones",
+          "parameters": [
+            {
+              "parameterName": "Progesterone",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Cycle-, pregnancy- and method-specific",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Parathyroid Hormone (PTH)",
+          "testType": "Single Test",
+          "testCode": "PTH",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Bone & Mineral Health",
+          "parameters": [
+            {
+              "parameterName": "Intact PTH",
+              "inputType": "number",
+              "unit": "pg/mL",
+              "referenceRange": "Method-specific; commonly about 15–65",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 15,
+                  "highRange": 65
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Vitamin D (25-OH)",
+          "testType": "Single Test",
+          "testCode": "VITAMIN_D_25OH",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Bone & Mineral Health",
+          "parameters": [
+            {
+              "parameterName": "25-Hydroxy Vitamin D",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Common interpretation: <20 deficient; 20–29 insufficient; ≥30 sufficient (guidance varies)",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "highRange": 20,
+                  "label": "Deficient"
+                },
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "lowRange": 20,
+                  "highRange": 30,
+                  "label": "Insufficient"
+                },
+                {
+                  "gender": "All",
+                  "type": "band",
+                  "lowRange": 30,
+                  "label": "Sufficient"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cardiac Markers",
+      "code": "CARDIAC_MARKERS",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Troponin I",
+          "testType": "Cardiac Marker",
+          "testCode": "TROPONIN_I",
+          "sampleType": "Serum / Plasma",
+          "status": "active",
+          "groupName": "Cardiac Markers",
+          "parameters": [
+            {
+              "parameterName": "Troponin I",
+              "inputType": "number",
+              "unit": "ng/L",
+              "referenceRange": "Assay-specific 99th percentile; use analyzer-specific cut-off",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "High-Sensitivity Troponin T",
+          "testType": "Cardiac Marker",
+          "testCode": "HS_TROPONIN_T",
+          "sampleType": "Serum / Plasma",
+          "status": "active",
+          "groupName": "Cardiac Markers",
+          "parameters": [
+            {
+              "parameterName": "hs-Troponin T",
+              "inputType": "number",
+              "unit": "ng/L",
+              "referenceRange": "Assay-specific 99th percentile; use analyzer-specific cut-off",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "CK-MB",
+          "testType": "Cardiac Marker",
+          "testCode": "CK_MB",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Cardiac Markers",
+          "parameters": [
+            {
+              "parameterName": "CK-MB",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Assay-specific; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "NT-proBNP",
+          "testType": "Cardiac Marker",
+          "testCode": "NT_PROBNP",
+          "sampleType": "Serum / Plasma",
+          "status": "active",
+          "groupName": "Cardiac Markers",
+          "parameters": [
+            {
+              "parameterName": "NT-proBNP",
+              "inputType": "number",
+              "unit": "pg/mL",
+              "referenceRange": "Age- and clinical-context-specific interpretation",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "BNP",
+          "testType": "Cardiac Marker",
+          "testCode": "BNP",
+          "sampleType": "Plasma",
+          "status": "active",
+          "groupName": "Cardiac Markers",
+          "parameters": [
+            {
+              "parameterName": "B-type Natriuretic Peptide",
+              "inputType": "number",
+              "unit": "pg/mL",
+              "referenceRange": "Assay- and clinical-context-specific interpretation",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Vitamins & Nutrition",
+      "code": "VITAMINS_NUTRITION",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Vitamin B12",
+          "testType": "Vitamin Assay",
+          "testCode": "VITAMIN_B12",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Anaemia Profile",
+          "parameters": [
+            {
+              "parameterName": "Vitamin B12",
+              "inputType": "number",
+              "unit": "pg/mL",
+              "referenceRange": "Commonly about 200–900; assay-specific",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 200,
+                  "highRange": 900
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Folate",
+          "testType": "Vitamin Assay",
+          "testCode": "FOLATE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Anaemia Profile",
+          "parameters": [
+            {
+              "parameterName": "Folate",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Method-specific; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Iron",
+          "testType": "Single Test",
+          "testCode": "SERUM_IRON",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Anaemia Profile",
+          "parameters": [
+            {
+              "parameterName": "Serum Iron",
+              "inputType": "number",
+              "unit": "µg/dL",
+              "referenceRange": "Male: 65–175; Female: 50–170",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "range",
+                  "lowRange": 65,
+                  "highRange": 175
+                },
+                {
+                  "gender": "Female",
+                  "type": "range",
+                  "lowRange": 50,
+                  "highRange": 170
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tumor Markers",
+      "code": "TUMOR_MARKERS",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "PSA Total",
+          "testType": "Tumor Marker",
+          "testCode": "PSA_TOTAL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Tumor Markers",
+          "parameters": [
+            {
+              "parameterName": "Total PSA",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Age- and assay-specific; commonly ≤4.0, not a stand-alone diagnostic test",
+              "ranges": [
+                {
+                  "gender": "Male",
+                  "type": "lt",
+                  "highRange": 4
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Free PSA",
+          "testType": "Tumor Marker",
+          "testCode": "PSA_FREE",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Tumor Markers",
+          "parameters": [
+            {
+              "parameterName": "Free PSA",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Interpret with total PSA and clinical context",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Free/Total PSA Ratio",
+              "inputType": "number",
+              "unit": "%",
+              "referenceRange": "Interpret using validated clinical thresholds",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "CEA",
+          "testType": "Tumor Marker",
+          "testCode": "CEA",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Tumor Markers",
+          "parameters": [
+            {
+              "parameterName": "Carcinoembryonic Antigen",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Non-smokers often <3; smokers may have higher values; assay-specific",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 3,
+                  "label": "Non-smokers"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "CA-125",
+          "testType": "Tumor Marker",
+          "testCode": "CA125",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Tumor Markers",
+          "parameters": [
+            {
+              "parameterName": "CA-125",
+              "inputType": "number",
+              "unit": "U/mL",
+              "referenceRange": "Commonly <35; not for population screening",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 35
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "CA 19-9",
+          "testType": "Tumor Marker",
+          "testCode": "CA199",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Tumor Markers",
+          "parameters": [
+            {
+              "parameterName": "CA 19-9",
+              "inputType": "number",
+              "unit": "U/mL",
+              "referenceRange": "Commonly <37; clinical-context-specific",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 37
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "AFP",
+          "testType": "Tumor Marker",
+          "testCode": "AFP",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Tumor Markers",
+          "parameters": [
+            {
+              "parameterName": "Alpha-Fetoprotein",
+              "inputType": "number",
+              "unit": "ng/mL",
+              "referenceRange": "Age-, pregnancy- and method-specific",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Autoimmune Diagnostics",
+      "code": "AUTOIMMUNE_DIAGNOSTICS",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "ANA Screen",
+          "testType": "Autoimmune Marker",
+          "testCode": "ANA_SCREEN",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Autoimmune & Rheumatology",
+          "parameters": [
+            {
+              "parameterName": "ANA Result",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": "Negative",
+              "isRequired": true,
+              "isActive": true
+            },
+            {
+              "parameterName": "Titer",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            },
+            {
+              "parameterName": "Pattern",
+              "inputType": "text",
+              "unit": null,
+              "referenceRange": null,
+              "isRequired": false,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Anti-dsDNA",
+          "testType": "Autoimmune Marker",
+          "testCode": "ANTI_DSDNA",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Autoimmune & Rheumatology",
+          "parameters": [
+            {
+              "parameterName": "Anti-dsDNA Antibody",
+              "inputType": "number",
+              "unit": "IU/mL",
+              "referenceRange": "Assay-specific; use laboratory interval",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Anti-CCP",
+          "testType": "Autoimmune Marker",
+          "testCode": "ANTI_CCP",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Autoimmune & Rheumatology",
+          "parameters": [
+            {
+              "parameterName": "Anti-CCP Antibody",
+              "inputType": "number",
+              "unit": "U/mL",
+              "referenceRange": "Assay-specific; often <20 negative",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "lt",
+                  "highRange": 20,
+                  "label": "Negative"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Complement C3",
+          "testType": "Complement Assay",
+          "testCode": "COMPLEMENT_C3",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Autoimmune & Rheumatology",
+          "parameters": [
+            {
+              "parameterName": "Complement C3",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "90–180",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 90,
+                  "highRange": 180
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Complement C4",
+          "testType": "Complement Assay",
+          "testCode": "COMPLEMENT_C4",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Autoimmune & Rheumatology",
+          "parameters": [
+            {
+              "parameterName": "Complement C4",
+              "inputType": "number",
+              "unit": "mg/dL",
+              "referenceRange": "10–40",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 10,
+                  "highRange": 40
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Therapeutic Drug Monitoring",
+      "code": "THERAPEUTIC_DRUG_MONITORING",
+      "status": "active",
+      "tests": [
+        {
+          "testName": "Lithium Level",
+          "testType": "Drug Level",
+          "testCode": "LITHIUM_LEVEL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Therapeutic Drug Monitoring",
+          "parameters": [
+            {
+              "parameterName": "Lithium",
+              "inputType": "number",
+              "unit": "mmol/L",
+              "referenceRange": "Therapeutic and toxic thresholds depend on timing and indication",
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Valproic Acid Level",
+          "testType": "Drug Level",
+          "testCode": "VALPROATE_LEVEL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Therapeutic Drug Monitoring",
+          "parameters": [
+            {
+              "parameterName": "Valproic Acid",
+              "inputType": "number",
+              "unit": "µg/mL",
+              "referenceRange": "Common total therapeutic range 50–100; indication/timing-specific",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 50,
+                  "highRange": 100,
+                  "label": "Therapeutic"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Carbamazepine Level",
+          "testType": "Drug Level",
+          "testCode": "CARBAMAZEPINE_LEVEL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Therapeutic Drug Monitoring",
+          "parameters": [
+            {
+              "parameterName": "Carbamazepine",
+              "inputType": "number",
+              "unit": "µg/mL",
+              "referenceRange": "Common therapeutic range 4–12; timing-specific",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 4,
+                  "highRange": 12,
+                  "label": "Therapeutic"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        },
+        {
+          "testName": "Phenytoin Level",
+          "testType": "Drug Level",
+          "testCode": "PHENYTOIN_LEVEL",
+          "sampleType": "Serum",
+          "status": "active",
+          "groupName": "Therapeutic Drug Monitoring",
+          "parameters": [
+            {
+              "parameterName": "Phenytoin Total",
+              "inputType": "number",
+              "unit": "µg/mL",
+              "referenceRange": "Common therapeutic range 10–20; albumin/renal status affect interpretation",
+              "ranges": [
+                {
+                  "gender": "All",
+                  "type": "range",
+                  "lowRange": 10,
+                  "highRange": 20,
+                  "label": "Therapeutic"
+                }
+              ],
+              "isRequired": true,
+              "isActive": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

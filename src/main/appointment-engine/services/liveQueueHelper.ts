@@ -1,13 +1,9 @@
-/**
- * Computes patient-facing live queue payloads, shared by the socket
- * join.live-queue handler, the REST endpoint, and the broadcast service.
- */
-
 import { and, eq } from 'drizzle-orm';
 import redisClient from '../../../configurations/redisConfig';
 import { database } from '../../../configurations/dbConnection';
 import { HttpError } from '../../../middlewear/errorHandler';
 import logger from '../../../utils/logger';
+import { hhmmToMinutes } from '../../../utils/time.util';
 import { AppointmentModel } from '../../appointments/models/appointment.model';
 import { PatientFamilyLinksModel } from '../../patient/models/patientFamilyLinks.model';
 import { IN_CONSULTATION } from '../types/engine.types';
@@ -30,94 +26,46 @@ import {
 export interface LiveQueuePayload {
   appointmentId: string;
   tokenNo: number | null;
-  /**
-   * Which shift this appointment is in, 1-based. Null for a time-based
-   * appointment or a pre-shift-numbering token — both are one undivided queue.
-   * `patientsAhead`/`position`/`queue.stage` are scoped to this same session.
-   */
+  /** 1-based shift; null is one undivided queue. Place in line is counted within this shift. */
   sessionIndex: number | null;
   status: string | null;
-  /**
-   * True once reception has checked the patient in (or they are with the
-   * doctor). Same rule as the reception board's `isCheckedIn`, so both agree.
-   */
+  /** Checked in or with the doctor; same rule as the reception board. */
   isCheckedIn: boolean;
   appointmentTime: string | null;
-  /**
-   * Server clock at the moment this payload was built, ISO-8601. Lets a client
-   * run an honest countdown and grey out a payload that arrived minutes ago,
-   * without trusting the device clock.
-   */
+  /** Server clock (ISO) when built, so countdowns don't trust the device clock. */
   serverTime: string;
   /** True when the patient being consulted is the one this payload is for. */
   isMyTurn: boolean;
   avgConsultationMinutes: number | null;
-  /**
-   * Where `avgConsultationMinutes` came from: `learned` (measured median),
-   * `configured`, `slot`, or `default` (30). Published so a surprising wait
-   * time can be explained.
-   */
+  /** Source of `avgConsultationMinutes`: `learned` | `configured` | `slot` | `default` (30). */
   consultationBasis: string | null;
-  /**
-   * When this patient is currently projected to be seen, "HH:MM". Null once the
-   * appointment is terminal — there is nothing left to predict.
-   */
+  /** Projected "HH:MM" to be seen; null when terminal, held, missed or the doctor hasn't arrived. */
   tentativeStartTime: string | null;
-  /**
-   * Half-width of the band around `tentativeStartTime`: "around 13:45, give or
-   * take 20 minutes". Widens with the patients ahead, each an independent
-   * chance to run over.
-   */
+  /** "Give or take" minutes around `tentativeStartTime`; widens with patients ahead. */
   tentativeRangeMinutes: number | null;
-  /**
-   * Always true when a `tentativeStartTime` is present. Carried explicitly so a
-   * client cannot render the time as a commitment by omission — this is a
-   * projection from a queue that is still moving, not a booked slot.
-   */
+  /** True whenever `tentativeStartTime` is set: an estimate, never a booked slot. */
   isTentative: boolean;
-  /**
-   * True while staff have paused this appointment (Hold or Skip).
-   * `tentativeStartTime` is null alongside it — a countdown next to "you are
-   * on hold" would contradict itself. Clients should render a paused state.
-   */
+  /** Paused by staff (Hold or Skip); no countdown is sent alongside it. */
   isOnHold: boolean;
   /** Only meaningful when isOnHold is true. */
   holdReason: 'held' | 'skipped' | null;
-  /**
-   * True when the patient's shift ran out before they were seen — the queue
-   * would need minutes belonging to the next shift's tokens.
-   * `tentativeStartTime` is null; clients should render missed/overdue.
-   */
+  /** Shift ended before they were seen; no start time, show as missed. */
   isMissedSession: boolean;
+  /** False until the doctor arrives for this shift; times, now serving and next up are then withheld. */
+  doctorArrived: boolean;
 
   /** How late this appointment is running, grouped rather than spread across
    * five separate top-level fields. */
   delay: {
-    /**
-     * Lateness against this appointment's own slot, not time until seen: a
-     * patient booked and projected at 15:00 has delay 0 even with two ahead.
-     * See `untilSeenMinutes` for what a patient means by "wait".
-     */
+    /** Lateness against the patient's own slot, not time until seen (see `untilSeenMinutes`). */
     minutes: number;
-    /**
-     * Whole minutes from now until this patient is projected to be seen. Null
-     * when there is no projection to measure — better than a fabricated 0,
-     * which would read as "you are next".
-     */
+    /** Minutes from now until seen; null with no projection, since 0 would read as "you are next". */
     untilSeenMinutes: number | null;
     isLate: boolean;
-    /**
-     * Effective delay at the moment the running-late notification fired, which
-     * can exceed `minutes` above (measured live at read time). Null unless
-     * `isLate` is true.
-     */
+    /** Minutes late when `isLate`; before the doctor arrives, minutes past the slot. Else null. */
     lateMinutes: number | null;
   };
-  /**
-   * Whoever the doctor is currently with. `label` is a ready-to-render
-   * "Token 4" or "1:00 PM" so clients need not reimplement the choice.
-   * All fields null between patients.
-   */
+  /** Who the doctor is with; `label` is ready to show ("Token 4" / "1:00 PM"). Null between patients. */
   nowServing: {
     /** Null on time-based queues. */
     token: number | null;
@@ -127,18 +75,14 @@ export interface LiveQueuePayload {
     /** "In Consultation" while the doctor is with someone, else null. */
     status: string | null;
   };
-  /**
-   * This patient's place in today's line.
-   */
+  /** Who goes in after `nowServing`, in the patient's shift. Null when nobody waits. */
+  nextUp: { token: number | null; label: string | null };
+  /** This patient's place in today's line. */
   queue: {
     stage: QueueStage | null;
     /** Active (non-held, non-terminal) appointments ahead of this one. */
     patientsAhead: number;
-    /**
-     * 1-based rank among appointments progressing toward being seen: the
-     * patient with the doctor is 1, then everyone waiting. Null for terminal
-     * or held appointments.
-     */
+    /** 1-based rank (the patient with the doctor is 1); null for terminal or held. */
     position: number | null;
   };
 }
@@ -148,12 +92,7 @@ const reject = (status: number, code: string, message: string): never => {
   throw new HttpError(status, message, { code });
 };
 
-/**
- * The one access rule for a patient's live queue, shared by the REST endpoint
- * and the socket join so the two can't drift again. Resolves a paid booking's
- * temp id; the caller must be the patient or their family primary; the
- * appointment must be today's (IST), still open, and have a doctor.
- */
+/** Shared REST/socket access rule: own or family appointment, today (IST), open, with a doctor. */
 export async function loadLiveQueueAppointment(
   appointmentId: string,
   userId: string
@@ -246,6 +185,7 @@ const EMPTY_PAYLOAD: LiveQueuePayload = {
   isOnHold: false,
   holdReason: null,
   isMissedSession: false,
+  doctorArrived: true,
   delay: {
     minutes: 0,
     untilSeenMinutes: null,
@@ -253,16 +193,11 @@ const EMPTY_PAYLOAD: LiveQueuePayload = {
     lateMinutes: null,
   },
   nowServing: { token: null, time: null, label: null, status: null },
+  nextUp: { token: null, label: null },
   queue: { stage: null, patientsAhead: 0, position: null },
 };
 
-/**
- * Confidence band around a projected start time. The next patient in is nearly
- * certain; one six places back depends on six consultations that could each run
- * over. So the band grows with the queue ahead: a fixed floor plus a share of a
- * consultation per patient between. A legibility device, not a statistical
- * interval — a band wider than the wait itself tells the patient nothing.
- */
+/** "Give or take" band: a floor plus a share of a consultation per patient ahead; not a statistical interval. */
 const TENTATIVE_BASE_MINUTES = 5;
 const TENTATIVE_PER_PATIENT_RATIO = 0.25;
 const TENTATIVE_MAX_MINUTES = 60;
@@ -285,12 +220,7 @@ function computeTentativeRange(
   return Math.min(TENTATIVE_MAX_MINUTES, Math.round(spread));
 }
 
-/**
- * Full live queue payload for one appointment. Always recalculates from the DB
- * rather than trusting the cache: real-time delay changes with elapsed time
- * alone, so no event necessarily invalidates a stale entry. Patient-initiated,
- * so cost is bounded by screen-opens — one indexed query per call.
- */
+/** Fresh payload for a screen open; recalculates because delay grows with time alone, with no event. */
 export async function computeLiveQueuePayload(
   appointmentId: string,
   clinicId: string,
@@ -334,15 +264,7 @@ export async function computeLiveQueuePayload(
       .catch(() => {});
   }
 
-  // Evaluate running-late against what we just recalculated, so a patient
-  // opening the screen before the job's next 15-minute repeat doesn't see an
-  // unset flag beside a real delay.
-  //
-  // Single-appointment variant, since this runs on every screen-open and
-  // evaluating the whole queue would re-run for every other patient too.
-  //
-  // Deliberately not awaited: evaluating can dispatch a push notification, and
-  // the payload below doesn't depend on its result.
+  // Not awaited: it may send a push, and the payload doesn't depend on it.
   const notifier = new RunningLateNotifier();
   notifier
     .evaluateSingleFromCache(clinicId, appointmentId, queueData)
@@ -353,13 +275,7 @@ export async function computeLiveQueuePayload(
   return buildPayloadFromQueue(appointmentId, queueData, thresholdMinutes);
 }
 
-/**
- * Serves a patient payload from the cached projection — zero DB queries when
- * warm. For "what is the state right now?" reads: pull-to-refresh, regained
- * focus, reconnect. Falls back to a full recalculation on a cache miss, so a
- * refresh is never worse than a join. Null when the appointment is not in
- * today's queue.
- */
+/** Cached payload for refresh/reconnect, recalculating on a miss; null when not in today's queue. */
 export async function computeLiveQueuePayloadFromCache(
   appointmentId: string,
   clinicId: string,
@@ -402,10 +318,29 @@ export async function computeLiveQueuePayloadFromCache(
   };
 }
 
-/**
- * Builds a patient payload from existing QueueDelayData (no DB call). Pure, so
- * REST, socket join, refresh and every push produce identical payloads.
- */
+/** First active, non-held entry in line that the doctor is not already with. */
+function buildNextUp(
+  appointments: QueueDelayData['appointments'],
+  sessionIndex: number | null | undefined
+): LiveQueuePayload['nextUp'] {
+  const next = appointments.find(
+    (a) =>
+      !isTerminalStatus(a.status) &&
+      !a.isOnHold &&
+      a.status !== IN_CONSULTATION &&
+      (sessionIndex == null || a.sessionIndex === sessionIndex)
+  );
+  if (!next) return { token: null, label: null };
+  return {
+    token: next.tokenNo ?? null,
+    label:
+      next.tokenNo != null
+        ? `Token ${next.tokenNo}`
+        : toDisplayTime(next.scheduledTime),
+  };
+}
+
+/** Pure payload builder, so REST, join, refresh and every push send identical data. */
 export function buildPayloadFromQueue(
   appointmentId: string,
   queueData: QueueDelayData,
@@ -413,15 +348,10 @@ export function buildPayloadFromQueue(
 ): LiveQueuePayload {
   const appointments = queueData.appointments;
 
-  // Only "Confirmed" means the doctor is with this patient. Matching
-  // "Patient Arrived" too reported someone still in the waiting room as being
-  // seen. Agrees with delayTracker and receptionLiveQueue.
+  // Only In Consultation is "with the doctor"; Patient Arrived is still in the waiting room.
   const currentlyServing =
     appointments.find((a) => a.status === IN_CONSULTATION) ?? null;
 
-  // Token-based queues identify a patient by token, time-based ones by slot.
-  // Deciding it here means clients render whatever they are given rather than
-  // each picking a different rule.
   const nowServingLabel = currentlyServing
     ? currentlyServing.tokenNo != null
       ? `Token ${currentlyServing.tokenNo}`
@@ -450,16 +380,14 @@ export function buildPayloadFromQueue(
         label: nowServingLabel,
         status: nowServingStatus,
       },
+      nextUp: buildNextUp(appointments, null),
       avgConsultationMinutes,
       consultationBasis: queueData.consultationBasis ?? null,
       serverTime: new Date().toISOString(),
     };
   }
 
-  // A held/skipped patient is paused, so they must not count as someone
-  // another patient is waiting behind. Scoped to `myEntry`'s session when it
-  // has one — an evening patient isn't behind the morning's. Null sessions
-  // still rank against the whole day.
+  // Held patients aren't "ahead" of anyone; an evening patient isn't behind the morning's.
   const nonHeldActiveAppointments = appointments.filter(
     (a) =>
       !isTerminalStatus(a.status) &&
@@ -484,9 +412,7 @@ export function buildPayloadFromQueue(
     isOnHold: Boolean(myEntry.isOnHold),
   });
 
-  // Terminal, held and missed-session appointments get no tentative time:
-  // none has a live slot to count down to, and a countdown past the end of the
-  // patient's own shift would promise minutes belonging to the next shift.
+  // Nothing live to count down to for terminal, held or missed-shift entries.
   const isTerminal = isTerminalStatus(myEntry.status);
   const tentativeStartTime =
     isTerminal || myEntry.isOnHold || myEntry.isMissedSession
@@ -498,19 +424,13 @@ export function buildPayloadFromQueue(
 
   const delayMinutes = myEntry.estimatedWaitMinutes;
 
-  // What a patient means by "wait": minutes from now until seen. Distinct from
-  // `delayMinutes` (lateness against their own slot) — someone booked and
-  // projected at 15:00 has zero delay but may still wait two hours. Measured
-  // against the server's IST clock, not the device's.
+  // A patient's "wait" is minutes until seen, unlike delay (lateness against their slot).
   const { hours: istHours, minutes: istMinutes } = getISTHoursMinutes();
   const minutesUntilSeen = minutesUntil(
     tentativeStartTime,
     istHours * 60 + istMinutes
   );
-  // Live only, so the banner always matches the queue on screen. The notifier's
-  // `notified:{id}` flag only de-duplicates pushes: it kept the delay at alert
-  // time for 24h, so one bad reading showed "16h behind" long after it passed.
-  // Nothing live applies to a paused appointment.
+  // Live reading only, never the notifier's stored alert value, so the banner matches the screen.
   const isRunningLate =
     !myEntry.isOnHold &&
     thresholdMinutes !== null &&
@@ -518,6 +438,35 @@ export function buildPayloadFromQueue(
 
   const nowServingStatus = currentlyServing ? 'In Consultation' : null;
   const resolvedRunningLateMinutes = isRunningLate ? delayMinutes : null;
+
+  // Before the doctor arrives every projection is a guess, so only place in line is shown.
+  if ((myEntry.doctorArrived ?? queueData.doctorArrived) === false) {
+    const slotMinutes = hhmmToMinutes(myEntry.scheduledTime);
+    const pastSlotBy =
+      slotMinutes === null ? 0 : istHours * 60 + istMinutes - slotMinutes;
+    const lateBeforeArrival = !isTerminal && pastSlotBy > 0;
+    return {
+      ...EMPTY_PAYLOAD,
+      appointmentId: myEntry.appointmentId,
+      tokenNo: myEntry.tokenNo,
+      sessionIndex: myEntry.sessionIndex ?? null,
+      status: myEntry.status,
+      isCheckedIn,
+      appointmentTime: myEntry.scheduledTime,
+      serverTime: new Date().toISOString(),
+      isOnHold: Boolean(myEntry.isOnHold),
+      holdReason: myEntry.holdReason ?? null,
+      isMissedSession: Boolean(myEntry.isMissedSession),
+      doctorArrived: false,
+      delay: {
+        minutes: Math.max(pastSlotBy, 0),
+        untilSeenMinutes: null,
+        isLate: lateBeforeArrival,
+        lateMinutes: lateBeforeArrival ? pastSlotBy : null,
+      },
+      queue: { stage: queuePosition, patientsAhead, position },
+    };
+  }
 
   return {
     appointmentId: myEntry.appointmentId,
@@ -536,6 +485,7 @@ export function buildPayloadFromQueue(
     isOnHold: Boolean(myEntry.isOnHold),
     holdReason: myEntry.holdReason ?? null,
     isMissedSession: Boolean(myEntry.isMissedSession),
+    doctorArrived: true,
     delay: {
       minutes: delayMinutes,
       untilSeenMinutes: minutesUntilSeen,
@@ -548,6 +498,7 @@ export function buildPayloadFromQueue(
       label: nowServingLabel,
       status: nowServingStatus,
     },
+    nextUp: buildNextUp(appointments, myEntry.sessionIndex),
     queue: {
       stage: queuePosition,
       patientsAhead,

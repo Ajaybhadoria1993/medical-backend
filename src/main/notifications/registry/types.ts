@@ -9,6 +9,7 @@ import type {
   notificationKindEnum,
   notificationPriorityEnum,
 } from '../models/notifications.model';
+import type { EmailAttachmentRef } from '../ports/attachment.port';
 import type { DirectoryPort } from '../ports/directory.port';
 import type { WhatsAppTemplateMessage } from '../types/whatsappTemplate.types';
 
@@ -41,9 +42,10 @@ export interface InAppMessage {
 
 export interface EmailMessage {
   subject: string;
-  /** Name of a template in src/htmltamplates — referenced, not authored here. */
+  /** A key of EMAIL_TEMPLATES in notifications/templates; `adminName` and `clinicName` are filled at send time. */
   template: string;
   props: Record<string, unknown>;
+  attachments?: EmailAttachmentRef[];
 }
 
 export interface SmsMessage {

@@ -1,3 +1,4 @@
+import { brandLogoHtml } from './brandLogo';
 export const invoiceTemplate = `
 <!DOCTYPE html>
 <html lang="en">
@@ -362,9 +363,7 @@ export const invoiceTemplate = `
 
     <!-- Logo in Light Green Strip -->
     <div class="logo-strip">
-        <img src="https://infninity-medisatu.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png" 
-             alt="Infinity Medisetu" 
-             style="height: 30px; width: auto; object-fit: contain;" />
+        ${brandLogoHtml(30)}
     </div>
 
     <div class="main-layout">

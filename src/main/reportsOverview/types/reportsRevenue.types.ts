@@ -77,7 +77,7 @@ export interface ReportsRevenueData {
   doctorWiseRevenue: DoctorRevenueItem[];
   appointmentTypeRevenue: AppointmentTypeRevenueItem[];
   outstandingAging: OutstandingAgingItem[];
-  monthlyRevenue: MonthlyRevenueItem[];
-  ytd: YtdSummary;
+  /** The clinic's real payment modes, for the filter dropdown. */
+  paymentModeOptions: { label: string; value: string }[];
   insights: string[];
 }

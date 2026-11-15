@@ -49,6 +49,7 @@ export type PrescriptionSectionKey =
   | 'showAdvice'
   | 'showDietarySuggestion'
   | 'showSurgerySuggested'
+  | 'showTreatmentPlan'
   | 'showClinicalNotes'
   | 'showAdditionalInformation'
   | 'showFollowUp'
@@ -173,9 +174,8 @@ export const PRESCRIPTION_SECTION_GROUPS: PrescriptionSectionGroup[] = [
       },
       {
         key: 'showPreDiagnosis',
-        label: 'Pre-Diagnosis',
-        description:
-          'Preliminary impression recorded before the final diagnosis.',
+        label: 'Chief Complaints',
+        description: 'What the patient came in with, e.g. chest pain or fever.',
       },
       {
         key: 'showClinicalNotes',
@@ -243,10 +243,16 @@ export const PRESCRIPTION_SECTION_GROUPS: PrescriptionSectionGroup[] = [
         description: 'Any surgical procedure you have recommended.',
       },
       {
-        key: 'showAdditionalInformation',
-        label: 'Additional information',
+        key: 'showTreatmentPlan',
+        label: 'Treatment plan',
         description:
-          'The extra fields your speciality records, such as the dental chart.',
+          'The plan you suggested at this visit and its steps, without prices.',
+      },
+      {
+        key: 'showAdditionalInformation',
+        label: 'Specialty charts',
+        description:
+          'Notes from your specialty chart, such as the dental chart, under their own heading.',
       },
       {
         key: 'showFollowUp',
@@ -308,24 +314,13 @@ export const PRESCRIPTION_SECTION_GROUPS: PrescriptionSectionGroup[] = [
         key: 'showFooter',
         label: 'Footer strip',
         description:
-          'Always printed — carries the patient safety notice and Powered by Infinity Medisetu.',
+          'Always printed — carries the patient safety notice and Powered by MediArogya.',
         locked: true,
       },
     ],
   },
 ];
 
-/**
- * Shipped defaults — what a doctor who has never opened the settings screen
- * gets, and the fallback for any key added after they last saved.
- *
- * Everything clinically recorded prints by default: a doctor noticing a missing
- * detail on a printed prescription is a far worse failure than one noticing an
- * extra line they can switch off. The only exception is the QR code, which
- * carries no clinical information (it links to the app) and is off unless asked
- * for. Sections whose data is empty for a visit still collapse on their own —
- * every one is additionally guarded by its own `{{#if}}` on the value.
- */
 export const PRESCRIPTION_SECTION_DEFAULTS: Record<
   PrescriptionSectionKey,
   boolean
@@ -344,7 +339,7 @@ export const PRESCRIPTION_SECTION_DEFAULTS: Record<
   showChiefComplaints: true,
   showVitals: true,
   showAllergies: true,
-  showHabits: true,
+  showHabits: false,
   showDiagnosis: true,
   showPreDiagnosis: true,
   showRxSymbol: true,
@@ -356,6 +351,7 @@ export const PRESCRIPTION_SECTION_DEFAULTS: Record<
   showAdvice: true,
   showDietarySuggestion: true,
   showSurgerySuggested: true,
+  showTreatmentPlan: true,
   showClinicalNotes: true,
   showAdditionalInformation: true,
   showFollowUp: true,
@@ -538,7 +534,16 @@ export class PrescriptionSectionService {
   static hiddenBlockIds(
     config: PrescriptionSectionConfig | null | undefined
   ): string[] {
-    return PrescriptionSectionService.switchedOffKeys(config)
+    // Off-by-default sections (habits) stay hidden until the doctor switches them on.
+    const offByDefault = (
+      Object.keys(PRESCRIPTION_SECTION_DEFAULTS) as PrescriptionSectionKey[]
+    ).filter(
+      (key) => !PRESCRIPTION_SECTION_DEFAULTS[key] && config?.[key] !== true
+    );
+    return [
+      ...PrescriptionSectionService.switchedOffKeys(config),
+      ...offByDefault,
+    ]
       .map((key) => SECTION_BLOCK_IDS[key])
       .filter((blockId): blockId is string => Boolean(blockId));
   }

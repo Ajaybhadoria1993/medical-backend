@@ -67,6 +67,16 @@ export interface DirectoryPort {
 
   getClinicChannelSettings(clinicId: string): Promise<ChannelSettings | null>;
 
+  /** Clinic name and its owner, the account billing emails go to. */
+  getClinic(
+    clinicId: string
+  ): Promise<{ name: string; ownerUserId: string } | null>;
+
+  /** Email addresses and names for the email channel, batched. Users without an email are absent. */
+  getUserEmails(
+    userIds: string[]
+  ): Promise<Map<string, { email: string; name: string; userType: string }>>;
+
   /**
    * Resolved at send time rather than passed down from the caller: a queued
    * reminder may fire hours after scheduling, by which point the appointment

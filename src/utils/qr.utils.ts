@@ -57,3 +57,26 @@ export const buildAppQrDataUrl = async (): Promise<string> => {
     return '';
   }
 };
+
+/**
+ * Builds an embedded QR for a concrete document URL. A report template uses
+ * this only after its final object URL is known, so the code never points at a
+ * temporary or deleted PDF.
+ */
+export const buildReportQrDataUrl = async (
+  reportUrl: string
+): Promise<string> => {
+  if (!reportUrl.trim()) return '';
+
+  try {
+    return await QRCode.toDataURL(reportUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 0,
+      width: 240,
+      color: { dark: '#000000', light: '#FFFFFF' },
+    });
+  } catch (error) {
+    logger.warn('Lab report QR generation failed', error);
+    return '';
+  }
+};

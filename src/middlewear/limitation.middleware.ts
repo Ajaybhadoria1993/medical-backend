@@ -7,20 +7,18 @@ import {
   LimitationService,
   STAFF_USER_TYPES,
   StaffUserType,
-} from '../main/subscription/services/limitation.service';
+} from '../main/subscription';
+import { findUserClinicCached } from './auth/tenancy';
 
-/**
- * Middleware: Require a boolean feature to be enabled on the clinic's plan
- *
- * Usage:
- *   router.use(requireFeature(FEATURE_KEYS.LAB_INTEGRATION))
- */
+/** Pharmacist routes run without requireClinic, so the clinic is found from the user when missing. */
 export const requireFeature = (featureKey: FeatureKey) =>
   asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
-    const clinicId = req.clinicId;
+    const clinicId =
+      req.clinicId ??
+      (req.user ? (await findUserClinicCached(req.user))?.clinicId : undefined);
 
     if (!clinicId) {
-      throw new HttpError(401, 'Clinic context required.');
+      throw new HttpError(403, 'You are not linked to a clinic.');
     }
 
     const result = await LimitationService.isFeatureEnabled(
@@ -254,7 +252,11 @@ export const enforceDateLimit = (featureKey: FeatureKey) =>
       return next();
     }
 
-    const limit = await LimitationService.getPlanLimit(plan.planId, featureKey);
+    const limit = await LimitationService.getPlanLimit(
+      plan.planId,
+      featureKey,
+      plan.planVersionId
+    );
 
     if (!limit || !limit.enabled || limit.isUnlimited) {
       // Unlimited or not configured — allow all dates

@@ -92,7 +92,7 @@ keystroke.
 
 ## 4. Future work
 
-Format matches `docs/BACKEND_OPTIMIZATION_PLAN.md`: `[ ]` not started, `[~]` in
+Format matches `docs/general/BACKEND_OPTIMIZATION_PLAN.md`: `[ ]` not started, `[~]` in
 progress, `[x]` done.
 
 ### Step 1 — Cache `summary` + `filterOptions`

@@ -1,6 +1,6 @@
-import { ReportService } from '../services/report.service';
+import { PrescriptionPrintService } from '../services/prescriptionPrint.service';
 
-const { resolvePatientAge } = ReportService;
+const { resolvePatientAge } = PrescriptionPrintService;
 
 /** A dob string for someone who turned `years` old yesterday. */
 const dobAged = (years: number): string => {
@@ -10,7 +10,7 @@ const dobAged = (years: number): string => {
   return d.toISOString().slice(0, 10);
 };
 
-describe('ReportService.resolvePatientAge', () => {
+describe('PrescriptionPrintService.resolvePatientAge', () => {
   it('prefers a stored age when present', () => {
     expect(resolvePatientAge(36, '1990-01-01')).toBe('36');
     expect(resolvePatientAge('42', null)).toBe('42');

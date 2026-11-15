@@ -19,16 +19,19 @@ import {
   getPrescriptionStatsController,
   updatePrescriptionStatusController,
 } from '../../controllers/prescription.controller';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const prescriptionRouter = express.Router();
 
 prescriptionRouter.get(
   '/get-prescriptions',
   requireAuth,
-  requireUserSubscription,
   requirePharmacist,
   requireClinic,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPrescriptionQueueQuerySchema, 'query'),
   getPrescriptionsController
 );
@@ -36,9 +39,9 @@ prescriptionRouter.get(
 prescriptionRouter.get(
   '/get-prescription/:id',
   requireAuth,
-  requireUserSubscription,
   requirePharmacist,
   requireClinic,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(getPrescriptionByIdParamsSchema, 'params'),
   getPrescriptionByIdController
 );
@@ -46,9 +49,9 @@ prescriptionRouter.get(
 prescriptionRouter.put(
   '/update-prescription-status/:id',
   requireAuth,
-  requireUserSubscription,
   requirePharmacist,
   requireClinic,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   validate(updatePrescriptionStatusParamsSchema, 'params'),
   validate(updatePrescriptionStatusSchema, 'body'),
   updatePrescriptionStatusController
@@ -57,7 +60,7 @@ prescriptionRouter.put(
 prescriptionRouter.post(
   '/check-medicines',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   requirePharmacist,
   validate(checkMedicinesSchema, 'body'),
   checkMedicinesController
@@ -66,7 +69,7 @@ prescriptionRouter.post(
 prescriptionRouter.get(
   '/stats',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getPrescriptionStatsController
 );
 

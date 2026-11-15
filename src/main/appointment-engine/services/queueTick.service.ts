@@ -109,8 +109,9 @@ export class QueueTickService {
       }
 
       const elapsed = Date.now() - startedAt;
-      if (doctorsBroadcast > 0 || elapsed > 5000) {
-        logger.info(
+      // Only a slow tick is worth a line; a normal one runs every minute.
+      if (elapsed > 5000) {
+        logger.warn(
           `[QueueTick] Scanned ${doctorsScanned} doctor(s), broadcast ${doctorsBroadcast}, took ${elapsed}ms`
         );
       }

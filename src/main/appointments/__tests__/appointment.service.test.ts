@@ -1,4 +1,5 @@
 import { AppointmentService } from '../services/appointment.service';
+import { AppointmentSlotsService } from '../services/appointmentSlots.service';
 import { database } from '../../../configurations/dbConnection';
 
 jest.mock('../../../configurations/dbConnection');
@@ -48,42 +49,33 @@ describe('AppointmentService past slots tests', () => {
         .split('/');
       const todayStr = `${istDateParts[2]}-${istDateParts[1]}-${istDateParts[0]}`;
 
-      // Mock transaction queries:
+      // Queries in call order:
       // 1. tokenAvailRows
       // 2. dateUnavailable
-      // 3. dateAvail
-      // 4. availRows
+      // 3. availRows (date override is reused, not re-queried)
       // 5. breaks
       // 6. appointments
-      (database.transaction as jest.Mock).mockImplementation(
-        async (callback) => {
-          const tx = {
-            select: jest
-              .fn()
-              .mockReturnValueOnce(createChain([])) // 1. tokenAvailRows
-              .mockReturnValueOnce(createChain([])) // 2. dateUnavailable
-              .mockReturnValueOnce(createChain([])) // 3. dateAvail
-              .mockReturnValueOnce(
-                createChain([
-                  {
-                    id: 'avail-1',
-                    startTime: '09:00',
-                    endTime: '10:00',
-                    slotMinutes: 30,
-                    noOfPatients: 0,
-                    isAvailable: true,
-                  },
-                ])
-              ) // 4. availRows
-              .mockReturnValueOnce(createChain([])) // 5. breaks
-              .mockReturnValueOnce(createChain([])), // 6. appointments
-          };
-          return callback(tx);
-        }
-      );
+      (database as any).select = jest
+        .fn()
+        .mockReturnValueOnce(createChain([])) // 1. tokenAvailRows
+        .mockReturnValueOnce(createChain([])) // 2. dateUnavailable
+        .mockReturnValueOnce(
+          createChain([
+            {
+              id: 'avail-1',
+              startTime: '09:00',
+              endTime: '10:00',
+              slotMinutes: 30,
+              noOfPatients: 0,
+              isAvailable: true,
+            },
+          ])
+        ) // 4. availRows
+        .mockReturnValueOnce(createChain([])) // 5. breaks
+        .mockReturnValueOnce(createChain([])); // 6. appointments
 
       // Let's pass 09:15 as the current time
-      const result = await AppointmentService.getAvailableSlotsForDate(
+      const result = await AppointmentSlotsService.getAvailableSlotsForDate(
         'clinic-1',
         {
           date: todayStr,
@@ -111,57 +103,50 @@ describe('AppointmentService past slots tests', () => {
         .split('/');
       const todayStr = `${istDateParts[2]}-${istDateParts[1]}-${istDateParts[0]}`;
 
-      // Mock transaction queries:
+      // Queries in call order:
       // 1. tokenAvailRows
       // 2. dateUnavailable
       // 3. booked (empty)
       // 4. breaks (empty)
-      (database.transaction as jest.Mock).mockImplementation(
-        async (callback) => {
-          const tx = {
-            select: jest
-              .fn()
-              .mockReturnValueOnce(
-                createChain([
-                  {
-                    id: 'avail-2',
-                    startTime: '09:00',
-                    endTime: '13:00',
-                    noOfPatients: 10,
-                    isAvailable: true,
-                  },
-                ])
-              ) // 1. tokenAvailRows
-              .mockReturnValueOnce(createChain([])) // 2. dateUnavailable
-              .mockReturnValueOnce(createChain([])) // 3. booked
-              .mockReturnValueOnce(createChain([])) // 4. breaks
-              // The response is now built per shift, so the day is resolved
-              // into its blocks: no date-specific row, then the weekly row and
-              // its breaks. One 09:00-13:00 block, so a single session.
-              .mockReturnValueOnce(createChain([])) // 5. clinic_date_availability
-              .mockReturnValueOnce(
-                createChain([
-                  {
-                    id: 'avail-2',
-                    startTime: '09:00',
-                    endTime: '13:00',
-                    noOfPatients: 10,
-                    isAvailable: true,
-                  },
-                ])
-              ) // 6. weekly row
-              .mockReturnValueOnce(createChain([])) // 7. no breaks
-              // Then that session's capacity: no override, so the weekly
-              // number applies.
-              .mockReturnValueOnce(createChain([])) // 8. no slot_config override
-              .mockReturnValueOnce(createChain([{ noOfPatients: 10 }])), // 9. weekly capacity
-          };
-          return callback(tx);
-        }
-      );
+      (database as any).select = jest
+        .fn()
+        .mockReturnValueOnce(
+          createChain([
+            {
+              id: 'avail-2',
+              startTime: '09:00',
+              endTime: '13:00',
+              noOfPatients: 10,
+              isAvailable: true,
+            },
+          ])
+        ) // 1. tokenAvailRows
+        .mockReturnValueOnce(createChain([])) // 2. dateUnavailable
+        .mockReturnValueOnce(createChain([])) // 3. booked
+        .mockReturnValueOnce(createChain([])) // 4. breaks
+        // The response is now built per shift, so the day is resolved
+        // into its blocks: no date-specific row, then the weekly row and
+        // its breaks. One 09:00-13:00 block, so a single session.
+        .mockReturnValueOnce(createChain([])) // 5. clinic_date_availability
+        .mockReturnValueOnce(
+          createChain([
+            {
+              id: 'avail-2',
+              startTime: '09:00',
+              endTime: '13:00',
+              noOfPatients: 10,
+              isAvailable: true,
+            },
+          ])
+        ) // 6. weekly row
+        .mockReturnValueOnce(createChain([])) // 7. no breaks
+        // Then that session's capacity: no override, so the weekly
+        // number applies.
+        .mockReturnValueOnce(createChain([])) // 8. no slot_config override
+        .mockReturnValueOnce(createChain([{ noOfPatients: 10 }])); // 9. weekly capacity
 
       // Pass 14:00 as the current time (shift ended at 13:00)
-      const result = await AppointmentService.getAvailableSlotsForDate(
+      const result = await AppointmentSlotsService.getAvailableSlotsForDate(
         'clinic-1',
         {
           date: todayStr,
@@ -186,53 +171,46 @@ describe('AppointmentService past slots tests', () => {
         .split('/');
       const tomorrowStr = `${istDatePartsTomorrow[2]}-${istDatePartsTomorrow[1]}-${istDatePartsTomorrow[0]}`;
 
-      // Mock transaction queries:
+      // Queries in call order:
       // 1. tokenAvailRows
       // 2. dateUnavailable
       // 3. booked (empty)
       // 4. breaks (empty)
-      (database.transaction as jest.Mock).mockImplementation(
-        async (callback) => {
-          const tx = {
-            select: jest
-              .fn()
-              .mockReturnValueOnce(
-                createChain([
-                  {
-                    id: 'avail-3',
-                    startTime: '09:00',
-                    endTime: '13:00',
-                    noOfPatients: 10,
-                    isAvailable: true,
-                  },
-                ])
-              ) // 1. tokenAvailRows
-              .mockReturnValueOnce(createChain([])) // 2. dateUnavailable
-              .mockReturnValueOnce(createChain([])) // 3. booked
-              .mockReturnValueOnce(createChain([])) // 4. breaks
-              // Per-shift resolution, as above: one 09:00-13:00 session.
-              .mockReturnValueOnce(createChain([])) // 5. clinic_date_availability
-              .mockReturnValueOnce(
-                createChain([
-                  {
-                    id: 'avail-3',
-                    startTime: '09:00',
-                    endTime: '13:00',
-                    noOfPatients: 10,
-                    isAvailable: true,
-                  },
-                ])
-              ) // 6. weekly row
-              .mockReturnValueOnce(createChain([])) // 7. no breaks
-              .mockReturnValueOnce(createChain([])) // 8. no slot_config override
-              .mockReturnValueOnce(createChain([{ noOfPatients: 10 }])), // 9. weekly capacity
-          };
-          return callback(tx);
-        }
-      );
+      (database as any).select = jest
+        .fn()
+        .mockReturnValueOnce(
+          createChain([
+            {
+              id: 'avail-3',
+              startTime: '09:00',
+              endTime: '13:00',
+              noOfPatients: 10,
+              isAvailable: true,
+            },
+          ])
+        ) // 1. tokenAvailRows
+        .mockReturnValueOnce(createChain([])) // 2. dateUnavailable
+        .mockReturnValueOnce(createChain([])) // 3. booked
+        .mockReturnValueOnce(createChain([])) // 4. breaks
+        // Per-shift resolution, as above: one 09:00-13:00 session.
+        .mockReturnValueOnce(createChain([])) // 5. clinic_date_availability
+        .mockReturnValueOnce(
+          createChain([
+            {
+              id: 'avail-3',
+              startTime: '09:00',
+              endTime: '13:00',
+              noOfPatients: 10,
+              isAvailable: true,
+            },
+          ])
+        ) // 6. weekly row
+        .mockReturnValueOnce(createChain([])) // 7. no breaks
+        .mockReturnValueOnce(createChain([])) // 8. no slot_config override
+        .mockReturnValueOnce(createChain([{ noOfPatients: 10 }])); // 9. weekly capacity
 
       // Pass 14:00 as the current time (shift ends at 13:00)
-      const result = await AppointmentService.getAvailableSlotsForDate(
+      const result = await AppointmentSlotsService.getAvailableSlotsForDate(
         'clinic-1',
         {
           date: tomorrowStr,
@@ -267,32 +245,25 @@ describe('AppointmentService past slots tests', () => {
         isAvailable: true,
       };
 
-      (database.transaction as jest.Mock).mockImplementation(
-        async (callback) => {
-          const tx = {
-            select: jest
-              .fn()
-              .mockReturnValueOnce(createChain([weeklyRow])) // tokenAvailRows
-              .mockReturnValueOnce(createChain([])) // dateUnavailable
-              .mockReturnValueOnce(createChain([])) // booked
-              .mockReturnValueOnce(createChain([])) // breaks (display)
-              .mockReturnValueOnce(createChain([])) // no date-specific row
-              .mockReturnValueOnce(createChain([weeklyRow])) // weekly row
-              .mockReturnValueOnce(
-                createChain([{ startTime: '01:00 PM', endTime: '05:00 PM' }])
-              ) // the break that splits the day
-              // Both sessions then resolve their capacity concurrently, so
-              // their reads interleave: an override lookup (none) and the
-              // weekly number, twice over in no fixed order. Answered by a
-              // default rather than a queue, since a queue would depend on
-              // which promise happened to run first.
-              .mockImplementation(() => createChain([{ noOfPatients: 20 }])),
-          };
-          return callback(tx);
-        }
-      );
+      (database as any).select = jest
+        .fn()
+        .mockReturnValueOnce(createChain([weeklyRow])) // tokenAvailRows
+        .mockReturnValueOnce(createChain([])) // dateUnavailable
+        .mockReturnValueOnce(createChain([])) // booked
+        .mockReturnValueOnce(createChain([])) // breaks (display)
+        .mockReturnValueOnce(createChain([])) // no date-specific row
+        .mockReturnValueOnce(createChain([weeklyRow])) // weekly row
+        .mockReturnValueOnce(
+          createChain([{ startTime: '01:00 PM', endTime: '05:00 PM' }])
+        ) // the break that splits the day
+        // Both sessions then resolve their capacity concurrently, so
+        // their reads interleave: an override lookup (none) and the
+        // weekly number, twice over in no fixed order. Answered by a
+        // default rather than a queue, since a queue would depend on
+        // which promise happened to run first.
+        .mockImplementation(() => createChain([{ noOfPatients: 20 }]));
 
-      const result = await AppointmentService.getAvailableSlotsForDate(
+      const result = await AppointmentSlotsService.getAvailableSlotsForDate(
         'clinic-1',
         { date: tomorrowStr },
         { doctorId: 'doctor-1' }

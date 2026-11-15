@@ -2,19 +2,20 @@
 import express from 'express';
 
 import {
-  requireAdmin,
+  CLINIC_STAFF_ROLES,
+  enforceClinicAutoLogout,
   requireAuth,
   requireClinic,
-  requireUser,
+  requireRole,
   requireSuperAdmin,
-  enforceClinicAutoLogout,
+  requireUser,
 } from '../../../../middlewear/auth.middleware';
 import {
   otpRateLimit,
   strictRateLimit,
 } from '../../../../middlewear/rateLimit.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   assignClincToUserCrontroller,
   createCliniController,
@@ -22,6 +23,7 @@ import {
   getCliniController,
   updateCliniController,
   getAvailableClinicsController,
+  lookupClinicsController,
   getClinicDetailController,
   updateClinicStatusController,
   resetClinicOnboardingController,
@@ -32,16 +34,10 @@ import {
   getClinicSettingsController,
   deleteClinicReminderController,
   getClinicsWithDoctorsController,
-  onboardClinicRouteController,
-  activateClinicRouteController,
   setDoctorOnlineBookingController,
   setDoctorConsultationDurationController,
   getDoctorConsultationDurationController,
   getDoctorOnlineBookingController,
-  getClinicBankDetailsController,
-  onboardDocumentsController,
-  updateClinicBankDetailsController,
-  getClinicOnboardingStatusController,
   requestClinicPhoneUpdateController,
   verifyClinicPhoneController,
   resendClinicPhoneOtpController,
@@ -52,6 +48,7 @@ import {
   getClinicSchema,
   updateClinicSchema,
   availableClinicsQuerySchema,
+  clinicLookupQuerySchema,
   clinicDetailParamsSchema,
   resetClinicOnboardingSchema,
   deleteClinicSchema,
@@ -62,20 +59,12 @@ import {
   doctorOnlineBookingParamsSchema,
   doctorOnlineBookingBodySchema,
   doctorConsultationDurationBodySchema,
-  onboardRouteSchema,
-  updateBankDetailsSchema,
   updatePhoneRequestSchema,
   verifyPhoneSchema,
 } from '../../schemas/clinic.schemas';
 
 import { uploadClinicForm } from '../../../../middlewear/upload.middleware';
 import { parseMultipartDoctorData } from '../../../doctor/routes/v1/doctor.route';
-import multer from 'multer';
-
-const uploadDoc = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-});
 
 const ClinicRouter = express.Router();
 
@@ -171,59 +160,9 @@ ClinicRouter.get(
 );
 
 ClinicRouter.post(
-  '/onboard-route',
-  requireAuth,
-  requireClinic,
-  enforceClinicAutoLogout,
-  validate(onboardRouteSchema, 'body'),
-  onboardClinicRouteController
-);
-
-ClinicRouter.post(
-  '/activate-route',
-  requireAuth,
-  requireClinic,
-  enforceClinicAutoLogout,
-  activateClinicRouteController
-);
-
-ClinicRouter.post(
-  '/onboard-documents',
-  requireAuth,
-  requireClinic,
-  enforceClinicAutoLogout,
-  uploadDoc.single('file'),
-  onboardDocumentsController
-);
-
-ClinicRouter.get(
-  '/onboarding-status',
-  requireAuth,
-  requireClinic,
-  enforceClinicAutoLogout,
-  getClinicOnboardingStatusController
-);
-
-ClinicRouter.patch(
-  '/bank-details',
-  requireAuth,
-  requireClinic,
-  enforceClinicAutoLogout,
-  validate(updateBankDetailsSchema, 'body'),
-  updateClinicBankDetailsController
-);
-
-ClinicRouter.get(
-  '/bank-details',
-  requireAuth,
-  requireClinic,
-  enforceClinicAutoLogout,
-  getClinicBankDetailsController
-);
-
-ClinicRouter.post(
   '/settings',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(upsertClinicSettingsSchema, 'body'),
@@ -233,6 +172,7 @@ ClinicRouter.post(
 ClinicRouter.get(
   '/settings',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   getClinicSettingsController
@@ -241,6 +181,7 @@ ClinicRouter.get(
 ClinicRouter.post(
   '/phone/update-request',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(updatePhoneRequestSchema, 'body'),
@@ -250,6 +191,7 @@ ClinicRouter.post(
 ClinicRouter.post(
   '/phone/verify',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(verifyPhoneSchema, 'body'),
@@ -259,6 +201,7 @@ ClinicRouter.post(
 ClinicRouter.post(
   '/phone/resend-otp',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   otpRateLimit,
@@ -269,6 +212,7 @@ ClinicRouter.post(
 ClinicRouter.get(
   '/doctors/:doctorId/online-booking',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(doctorOnlineBookingParamsSchema, 'params'),
@@ -278,6 +222,7 @@ ClinicRouter.get(
 ClinicRouter.patch(
   '/doctors/:doctorId/online-booking',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(doctorOnlineBookingParamsSchema, 'params'),
@@ -288,6 +233,7 @@ ClinicRouter.patch(
 ClinicRouter.get(
   '/doctors/:doctorId/consultation-duration',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(doctorOnlineBookingParamsSchema, 'params'),
@@ -302,6 +248,7 @@ ClinicRouter.get(
 ClinicRouter.patch(
   '/doctors/:doctorId/consultation-duration',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   enforceClinicAutoLogout,
   validate(doctorOnlineBookingParamsSchema, 'params'),
@@ -312,6 +259,7 @@ ClinicRouter.patch(
 ClinicRouter.put(
   '/delete-reminder/:reminderId',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(reminderParamsSchema, 'params'),
   deleteClinicReminderController
@@ -328,6 +276,19 @@ ClinicRouter.get(
   requireSuperAdmin,
   validate(availableClinicsQuerySchema, 'query'),
   getAvailableClinicsController
+);
+
+/**
+ * @route GET /api/v1/clinic/lookup
+ * @desc Picker lookup: id/name/code by search text or ids, max 20
+ * @access Private (SuperAdmin)
+ */
+ClinicRouter.get(
+  '/lookup',
+  requireAuth,
+  requireSuperAdmin,
+  validate(clinicLookupQuerySchema, 'query'),
+  lookupClinicsController
 );
 
 /**
@@ -411,7 +372,7 @@ ClinicRouter.post(
 ClinicRouter.post(
   '/',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   uploadClinicForm.fields([
     { name: 'clinicLogo', maxCount: 1 },
     { name: 'profileImage', maxCount: 1 },
@@ -429,7 +390,7 @@ ClinicRouter.post(
 ClinicRouter.put(
   '/',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   uploadClinicForm.fields([
     { name: 'clinicLogo', maxCount: 1 },
     { name: 'profileImage', maxCount: 1 },
@@ -443,7 +404,7 @@ ClinicRouter.put(
 ClinicRouter.put(
   '/:clinicId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getClinicSchema, 'params'),
   uploadClinicForm.fields([
@@ -477,7 +438,7 @@ ClinicRouter.get(
 ClinicRouter.get(
   '/:clinicId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   validate(getClinicSchema, 'params'),
   getCliniController
@@ -491,7 +452,7 @@ ClinicRouter.get(
 ClinicRouter.get(
   '/assign/:clinicId',
   requireAuth,
-  requireAdmin,
+  requireRole(CLINIC_STAFF_ROLES),
   validate(assignClincToUserSchemas, 'params'),
   assignClincToUserCrontroller
 );
@@ -598,22 +559,6 @@ docsRegistry.addEndpoint({
     'plan. Appointments cancelled by the delete stay cancelled.',
   params: clinicDetailParamsSchema,
   requestSchema: deleteClinicSchema,
-  tags: ['clinic'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'post',
-  path: '/api/v1/clinic/onboard-route',
-  description:
-    'Onboard clinic to Razorpay Route (Create linked partner account)',
-  tags: ['clinic'],
-});
-
-docsRegistry.addEndpoint({
-  method: 'get',
-  path: '/api/v1/clinic/bank-details',
-  description:
-    'Get currently active verified Razorpay bank account details for clinic',
   tags: ['clinic'],
 });
 

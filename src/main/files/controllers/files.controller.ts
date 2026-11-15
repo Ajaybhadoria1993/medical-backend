@@ -19,7 +19,7 @@ export const signDocumentController = asyncHandler(
     if (!clinicId) throw new HttpError(403, 'No clinic selected for this user');
 
     const query = req.validatedQuery as SignDocumentQuery;
-    const result = await signClinicDocument(query, clinicId);
+    const result = await signClinicDocument(query, clinicId, req.user);
 
     return sendOk(res, 'Signed URL generated', result);
   }
@@ -31,7 +31,7 @@ export const downloadDocumentController = asyncHandler(
     if (!clinicId) throw new HttpError(403, 'No clinic selected for this user');
 
     const query = req.validatedQuery as DownloadDocumentQuery;
-    const file = await readClinicDocument(query, clinicId);
+    const file = await readClinicDocument(query, clinicId, req.user);
 
     // A binary body, so the JSON envelope helpers don't apply.
     res.setHeader('Content-Disposition', attachmentDisposition(file.fileName));

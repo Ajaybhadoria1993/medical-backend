@@ -11,6 +11,8 @@ export const queueConnection = {
   host: envConfig.REDIS_HOST,
   port: envConfig.REDIS_PORT,
   password: envConfig.REDIS_PASSWORD,
+  username: envConfig.REDIS_USERNAME,
+  tls: envConfig.REDIS_TLS,
   maxRetriesPerRequest: null,
   /**
    * Logical database for queues, so a cache flush cannot take pending jobs with

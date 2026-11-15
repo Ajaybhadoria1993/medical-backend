@@ -2,6 +2,7 @@ import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import redisClient from '../../../configurations/redisConfig';
 import logger from '../../../utils/logger';
+import { CacheKeys, invalidateCache } from '../../../utils/cache.util';
 import { HttpError } from '../../../middlewear/errorHandler';
 import {
   getISTDateString,
@@ -18,7 +19,8 @@ import {
 } from '../../clinic/models/clinic.model';
 import { realtimeBus, target } from '../../realtime';
 import { invalidateClinicDashboardCaches } from '../../dashboard/utils/dashboardCache.utils';
-import { getRedisKey, normalizeBreaks } from '../utils/helpers';
+import { getRedisKey } from '../utils/helpers';
+import { shiftWindowsForDay } from '../../../utils/timeWindow.util';
 import { hhmmToMinutes } from '../../../utils/time.util';
 import { getCurrentAppointmentId } from './queueHoldStore.service';
 
@@ -523,6 +525,9 @@ export class ScheduleShiftService {
     });
 
     await this.invalidateDayConfig(clinicId, doctorId, date);
+    await invalidateCache(
+      CacheKeys.followUpDoctorDay(clinicId, doctorId, date)
+    );
     this.signal(clinicId, doctorId, date, plan);
 
     logger.info(
@@ -918,35 +923,10 @@ export class ScheduleShiftService {
         )
       );
 
-    const breaks = normalizeBreaks([
-      // The legacy single break pair still populated on older rows.
-      {
-        startMinutes: toMinutes(availability.breaksStart),
-        endMinutes: toMinutes(availability.breaksEnd),
-      },
-      ...breakRows.map((row) => ({
-        startMinutes: toMinutes(row.startTime),
-        endMinutes: toMinutes(row.endTime),
-      })),
-    ]);
-
-    const segments: Array<{ start: number; end: number }> = [];
-    let cursor = start;
-    for (const window of breaks) {
-      if (window.startMinutes > cursor) {
-        segments.push({
-          start: cursor,
-          end: Math.min(window.startMinutes, end),
-        });
-      }
-      cursor = Math.max(cursor, window.endMinutes);
-    }
-    if (cursor < end) segments.push({ start: cursor, end });
-
     return {
       slotMinutes: availability.slotMinutes,
       stepMinutes: availability.stepMinutes,
-      segments: segments.filter((segment) => segment.end > segment.start),
+      segments: shiftWindowsForDay(availability, breakRows),
     };
   }
 

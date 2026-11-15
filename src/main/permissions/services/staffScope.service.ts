@@ -111,15 +111,13 @@ export class StaffScopeService {
     );
   }
 
+  // Admin: whole clinic. Doctor: own appointments. Receptionist/Nurse: assigned doctors.
   // Access follows the appointment's own doctor, never who created it.
   static async assertAppointmentAllowed(
     user: ScopeActor,
     clinicId: string,
     appointmentId: string
   ): Promise<void> {
-    const allowed = await this.getAccessibleDoctorIds(user, clinicId);
-    if (allowed === null) return;
-
     const [appointment] = await database
       .select({ doctorId: AppointmentModel.doctorId })
       .from(AppointmentModel)
@@ -132,6 +130,14 @@ export class StaffScopeService {
       .limit(1);
 
     if (!appointment) throw new HttpError(404, 'Appointment not found');
+
+    if (user.userType === 'Doctor') {
+      if (appointment.doctorId === user.id) return;
+      throw new HttpError(403, 'This appointment belongs to another doctor.');
+    }
+
+    const allowed = await this.getAccessibleDoctorIds(user, clinicId);
+    if (allowed === null) return;
     if (appointment.doctorId && allowed.includes(appointment.doctorId)) return;
 
     throw new HttpError(

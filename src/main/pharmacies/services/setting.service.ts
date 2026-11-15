@@ -7,6 +7,25 @@ import {
 } from '../../pharmacy/models/pharmacy.model';
 
 export class SettingService {
+  static async getNoLoss(pharmacyId: string) {
+    const [pharmacy] = await database
+      .select({ id: PharmacyModel.id, noLoss: PharmacyModel.noLoss })
+      .from(PharmacyModel)
+      .where(
+        and(
+          eq(PharmacyModel.id, pharmacyId),
+          eq(PharmacyModel.isDeleted, false)
+        )
+      )
+      .limit(1);
+
+    if (!pharmacy) {
+      throw new HttpError(404, 'Pharmacy not found');
+    }
+
+    return pharmacy;
+  }
+
   static async noLoss(userId: string, pharmacyId: string) {
     const [pharmacy] = await database
       .select({ id: PharmacyModel.id, noLoss: PharmacyModel.noLoss })

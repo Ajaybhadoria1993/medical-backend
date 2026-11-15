@@ -1,0 +1,2305 @@
+[
+  {
+    "code": "dental.root_canal",
+    "name": "Root canal treatment",
+    "specialty": "Dentist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": [
+      "root canal",
+      "rct",
+      "pulpitis",
+      "periapical abscess",
+      "tooth infection"
+    ],
+    "steps": [
+      { "name": "Access opening", "gapDays": 0 },
+      { "name": "Cleaning and shaping", "gapDays": 2, "maxGapDays": 3 },
+      { "name": "Medication", "gapDays": 3 },
+      { "name": "Obturation", "gapDays": 3 },
+      { "name": "Crown fitting", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "dental.implant",
+    "name": "Dental implant",
+    "specialty": "Dentist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["missing tooth", "implant", "edentulous"],
+    "steps": [
+      { "name": "Implant placement", "gapDays": 0, "durationMinutes": 90 },
+      { "name": "Review", "gapDays": 7, "maxGapDays": 10 },
+      { "name": "Impression", "gapDays": 90, "maxGapDays": 180 },
+      { "name": "Crown fitting", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "hair.transplant",
+    "name": "Hair transplant",
+    "specialty": "Dermatologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "taxable": true,
+    "diagnosisKeywords": [
+      "hair loss",
+      "baldness",
+      "alopecia",
+      "hair transplant"
+    ],
+    "steps": [
+      { "name": "Surgery", "gapDays": 0, "durationMinutes": 360 },
+      { "name": "Wash and review", "gapDays": 1, "maxGapDays": 2 },
+      { "name": "Review", "gapDays": 10 },
+      { "name": "Review", "gapDays": 90 },
+      { "name": "Result review and photos", "gapDays": 180 }
+    ]
+  },
+  {
+    "code": "gynae.laparoscopy",
+    "name": "Laparoscopy",
+    "specialty": "Gynecologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": [
+      "laparoscopy",
+      "ovarian cyst",
+      "endometriosis",
+      "fibroid"
+    ],
+    "steps": [
+      { "name": "Pre-op tests", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 1 },
+      { "name": "Stitch check", "gapDays": 7, "maxGapDays": 10 },
+      { "name": "Review", "gapDays": 28, "maxGapDays": 42 }
+    ]
+  },
+  {
+    "code": "eye.cataract",
+    "name": "Cataract surgery",
+    "specialty": "Ophthalmologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["cataract", "lens opacity"],
+    "steps": [
+      { "name": "Surgery", "gapDays": 0 },
+      { "name": "Next-day review", "gapDays": 1 },
+      { "name": "One-week review", "gapDays": 6 },
+      { "name": "One-month review", "gapDays": 23 }
+    ]
+  },
+  {
+    "code": "derma.laser_hair_reduction",
+    "name": "Laser hair reduction",
+    "specialty": "Dermatologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 28,
+    "packageExpiryDays": 240,
+    "taxable": true,
+    "diagnosisKeywords": ["unwanted hair", "hirsutism", "laser hair reduction"]
+  },
+  {
+    "code": "hair.prp",
+    "name": "Hair PRP",
+    "specialty": "Dermatologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 4,
+    "intervalDays": 30,
+    "packageExpiryDays": 150,
+    "taxable": true,
+    "diagnosisKeywords": ["hair loss", "hair thinning", "prp"]
+  },
+  {
+    "code": "derma.chemical_peel",
+    "name": "Chemical peel",
+    "specialty": "Dermatologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 4,
+    "intervalDays": 14,
+    "packageExpiryDays": 90,
+    "taxable": true,
+    "diagnosisKeywords": [
+      "acne scars",
+      "pigmentation",
+      "melasma",
+      "chemical peel"
+    ]
+  },
+  {
+    "code": "physio.sessions",
+    "name": "Physiotherapy sessions",
+    "specialty": "Physiotherapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 10,
+    "intervalDays": 2,
+    "packageExpiryDays": 45,
+    "diagnosisKeywords": [
+      "back pain",
+      "neck pain",
+      "frozen shoulder",
+      "physiotherapy"
+    ]
+  },
+  {
+    "code": "dental.teeth_whitening",
+    "name": "Teeth whitening",
+    "specialty": "Dentist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 2,
+    "intervalDays": 7,
+    "packageExpiryDays": 30,
+    "diagnosisKeywords": ["tooth discoloration", "whitening", "stained teeth"]
+  },
+  {
+    "code": "gynae.pcos_review",
+    "name": "PCOS care",
+    "specialty": "Gynecologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 56,
+    "diagnosisKeywords": ["pcos", "pcod", "polycystic ovary", "irregular periods"],
+    "steps": [{ "name": "PCOS review", "gapDays": 0 }]
+  },
+  {
+    "code": "general.diabetes_review",
+    "name": "Diabetes review",
+    "specialty": "General Physician",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["diabetes", "type 2 diabetes", "high blood sugar", "hba1c"],
+    "steps": [{ "name": "Diabetes review", "gapDays": 0 }]
+  },
+  {
+    "code": "endo.thyroid_review",
+    "name": "Thyroid review",
+    "specialty": "Endocrinologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 3,
+    "intervalDays": 42,
+    "diagnosisKeywords": ["hypothyroidism", "hyperthyroidism", "thyroid", "tsh"],
+    "steps": [{ "name": "Thyroid review", "gapDays": 0 }]
+  },
+  {
+    "code": "derma.acne_review",
+    "name": "Acne on medicines",
+    "specialty": "Dermatologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 28,
+    "diagnosisKeywords": ["acne", "pimples", "acne vulgaris"],
+    "steps": [{ "name": "Acne review", "gapDays": 0 }]
+  },
+  {
+    "code": "dental.routine_checkup",
+    "name": "Routine dental check-up",
+    "specialty": "Dentist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 2,
+    "intervalDays": 180,
+    "diagnosisKeywords": ["dental check-up", "routine check-up", "scaling", "oral check-up"],
+    "steps": [{ "name": "Dental check-up", "gapDays": 0 }]
+  },
+  {
+    "code": "ent.tonsillectomy",
+    "name": "Tonsillectomy",
+    "specialty": "ENT Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["tonsillectomy", "chronic tonsillitis", "recurrent tonsillitis", "tonsils"],
+    "steps": [
+      { "name": "Pre-op check", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 60 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Final review", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "ent.septoplasty",
+    "name": "Septoplasty",
+    "specialty": "ENT Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["septoplasty", "dns", "deviated septum", "deviated nasal septum", "blocked nose"],
+    "steps": [
+      { "name": "Pre-op check", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 60 },
+      { "name": "Pack removal", "gapDays": 2 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Final review", "gapDays": 21 }
+    ]
+  },
+  {
+    "code": "ent.fess",
+    "name": "Sinus surgery (FESS)",
+    "specialty": "ENT Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["fess", "chronic sinusitis", "sinusitis", "nasal polyps", "sinus surgery"],
+    "steps": [
+      { "name": "Pre-op check and CT PNS review", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 120 },
+      { "name": "Pack removal", "gapDays": 2 },
+      { "name": "Nasal cleaning", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Final review", "gapDays": 28 }
+    ]
+  },
+  {
+    "code": "ent.tympanoplasty",
+    "name": "Ear drum repair (tympanoplasty)",
+    "specialty": "ENT Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["tympanoplasty", "csom", "ear drum perforation", "perforation", "ear drum repair"],
+    "steps": [
+      { "name": "Pre-op check and hearing test", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 120 },
+      { "name": "Pack and suture removal", "gapDays": 7 },
+      { "name": "Review", "gapDays": 21 },
+      { "name": "Hearing test review", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "ent.ear_wax",
+    "name": "Ear wax removal",
+    "specialty": "ENT Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "diagnosisKeywords": ["ear wax", "impacted wax", "wax removal", "cerumen"],
+    "steps": [
+      { "name": "Start softening drops", "gapDays": 0 },
+      { "name": "Wax removal", "gapDays": 5 }
+    ]
+  },
+  {
+    "code": "eye.lasik",
+    "name": "LASIK",
+    "specialty": "Ophthalmologist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["lasik", "myopia", "refractive error", "spectacle removal"],
+    "steps": [
+      { "name": "Pre-op evaluation", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30 },
+      { "name": "Day 1 review", "gapDays": 1 },
+      { "name": "Week 1 review", "gapDays": 6 },
+      { "name": "Month 1 review", "gapDays": 23 },
+      { "name": "Month 3 review", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "eye.anti_vegf",
+    "name": "Anti-VEGF injections (loading)",
+    "specialty": "Ophthalmologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["anti-vegf", "amd", "macular degeneration", "macular edema", "diabetic macular edema"],
+    "steps": [
+      { "name": "Injection 1", "gapDays": 0 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Injection 2", "gapDays": 21, "maxGapDays": 35 },
+      { "name": "Injection 3", "gapDays": 28, "maxGapDays": 35 },
+      { "name": "Review after loading", "gapDays": 28 }
+    ]
+  },
+  {
+    "code": "eye.pterygium",
+    "name": "Pterygium excision",
+    "specialty": "Ophthalmologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["pterygium", "pterygium excision"],
+    "steps": [
+      { "name": "Surgery", "gapDays": 0 },
+      { "name": "Day 1 review", "gapDays": 1 },
+      { "name": "Week 1 review", "gapDays": 6 },
+      { "name": "Month 1 review", "gapDays": 23 }
+    ]
+  },
+  {
+    "code": "eye.squint",
+    "name": "Squint surgery",
+    "specialty": "Ophthalmologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["squint", "strabismus", "squint surgery"],
+    "steps": [
+      { "name": "Pre-op orthoptic check", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 7, "maxGapDays": 30 },
+      { "name": "Day 1 review", "gapDays": 1 },
+      { "name": "Week 1 review", "gapDays": 6 },
+      { "name": "Month 1 review", "gapDays": 23 }
+    ]
+  },
+  {
+    "code": "eye.retinal_laser",
+    "name": "Retinal laser (PRP, 3 sittings)",
+    "specialty": "Ophthalmologist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "diagnosisKeywords": ["retinal laser", "prp", "panretinal photocoagulation", "diabetic retinopathy", "proliferative diabetic retinopathy"],
+    "steps": [
+      { "name": "Sitting 1", "gapDays": 0 },
+      { "name": "Sitting 2", "gapDays": 7 },
+      { "name": "Sitting 3", "gapDays": 7 },
+      { "name": "Review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "eye.glaucoma_review",
+    "name": "Glaucoma review",
+    "specialty": "Ophthalmologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["glaucoma", "poag", "ocular hypertension", "raised iop", "glaucoma suspect"],
+    "steps": [{ "name": "Glaucoma review (IOP and vision)", "gapDays": 0 }]
+  },
+  {
+    "code": "surgery.hernia_repair",
+    "name": "Hernia repair (open / lap)",
+    "specialty": "General Surgeon",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["hernia", "inguinal hernia", "umbilical hernia", "incisional hernia", "hernia repair"],
+    "steps": [
+      { "name": "Pre-op check and tests", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 90 },
+      { "name": "Wound review", "gapDays": 3 },
+      { "name": "Suture removal", "gapDays": 7 },
+      { "name": "Final review", "gapDays": 21 }
+    ]
+  },
+  {
+    "code": "surgery.lap_cholecystectomy",
+    "name": "Lap cholecystectomy",
+    "specialty": "General Surgeon",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["gallstones", "cholelithiasis", "cholecystitis", "lap cholecystectomy"],
+    "steps": [
+      { "name": "Pre-op check, USG and tests", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 90 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "HPE report and final review", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "surgery.abscess_id",
+    "name": "Abscess I&D and dressings",
+    "specialty": "General Surgeon",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["abscess", "boil", "incision and drainage", "i&d"],
+    "steps": [
+      { "name": "Incision and drainage", "gapDays": 0 },
+      { "name": "Dressing 1", "gapDays": 1 },
+      { "name": "Dressing 2", "gapDays": 2 },
+      { "name": "Dressing 3", "gapDays": 2 },
+      { "name": "Review", "gapDays": 5 }
+    ]
+  },
+  {
+    "code": "surgery.hemorrhoidectomy",
+    "name": "Piles surgery (open / laser)",
+    "specialty": "General Surgeon",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["piles", "hemorrhoids", "haemorrhoids", "fissure", "hemorrhoidectomy"],
+    "steps": [
+      { "name": "Pre-op check", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Final review", "gapDays": 21 }
+    ]
+  },
+  {
+    "code": "surgery.lump_excision",
+    "name": "Lump / lipoma excision",
+    "specialty": "General Surgeon",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["lipoma", "lump", "cyst", "sebaceous cyst", "lump excision"],
+    "steps": [
+      { "name": "Excision under local anaesthesia", "gapDays": 0, "durationMinutes": 45 },
+      { "name": "Suture removal", "gapDays": 7 },
+      { "name": "HPE report review", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "ortho.fracture_cast",
+    "name": "Fracture — cast care",
+    "specialty": "Orthopedic Doctor",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["fracture", "cast", "plaster", "distal radius fracture", "ankle fracture", "clavicle fracture"],
+    "steps": [
+      { "name": "Cast applied", "gapDays": 0 },
+      { "name": "Check X-ray", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Cast removal and X-ray", "gapDays": 21 },
+      { "name": "Mobilisation review", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "ortho.fracture_fixation",
+    "name": "Fracture fixation (ORIF)",
+    "specialty": "Orthopedic Doctor",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["fracture fixation", "orif", "plating", "neck of femur fracture", "displaced fracture"],
+    "steps": [
+      { "name": "Pre-op check", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 1, "maxGapDays": 7, "durationMinutes": 120 },
+      { "name": "Wound review", "gapDays": 3 },
+      { "name": "Suture removal", "gapDays": 11 },
+      { "name": "X-ray review", "gapDays": 28 },
+      { "name": "X-ray review", "gapDays": 42 }
+    ]
+  },
+  {
+    "code": "ortho.knee_replacement",
+    "name": "Total knee replacement",
+    "specialty": "Orthopedic Doctor",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["knee replacement", "tkr", "knee oa", "knee osteoarthritis"],
+    "steps": [
+      { "name": "Pre-op check", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 7, "maxGapDays": 60, "durationMinutes": 150 },
+      { "name": "Wound review", "gapDays": 3 },
+      { "name": "Staple removal", "gapDays": 11 },
+      { "name": "Review", "gapDays": 28 },
+      { "name": "Review", "gapDays": 42 },
+      { "name": "Review", "gapDays": 90 }
+    ]
+  },
+  {
+    "code": "ortho.acl_arthroscopy",
+    "name": "Arthroscopy / ACL reconstruction",
+    "specialty": "Orthopedic Doctor",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["acl tear", "meniscus tear", "arthroscopy", "acl reconstruction"],
+    "steps": [
+      { "name": "Pre-op check and MRI review", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 90 },
+      { "name": "Review", "gapDays": 3 },
+      { "name": "Suture removal", "gapDays": 11 },
+      { "name": "Review", "gapDays": 28 },
+      { "name": "Review", "gapDays": 60 },
+      { "name": "Return-to-sport review", "gapDays": 90 }
+    ]
+  },
+  {
+    "code": "ortho.knee_injection_series",
+    "name": "Knee injection series (PRP / gel)",
+    "specialty": "Orthopedic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 3,
+    "intervalDays": 21,
+    "packageExpiryDays": 120,
+    "diagnosisKeywords": ["knee injection", "prp", "viscosupplementation", "knee oa"]
+  },
+  {
+    "code": "plastic.rhinoplasty",
+    "name": "Rhinoplasty",
+    "specialty": "Plastic Surgeon",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "taxable": true,
+    "diagnosisKeywords": ["rhinoplasty", "nasal deformity", "nose reshaping"],
+    "steps": [
+      { "name": "Pre-op check and photos", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 7, "maxGapDays": 60, "durationMinutes": 180 },
+      { "name": "Splint removal", "gapDays": 7 },
+      { "name": "Review", "gapDays": 21 },
+      { "name": "Review", "gapDays": 60 },
+      { "name": "Result review and photos", "gapDays": 90 }
+    ]
+  },
+  {
+    "code": "plastic.liposuction",
+    "name": "Liposuction",
+    "specialty": "Plastic Surgeon",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "taxable": true,
+    "diagnosisKeywords": ["liposuction", "fat deposits", "localised fat deposits"],
+    "steps": [
+      { "name": "Pre-op check and photos", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 7, "maxGapDays": 60, "durationMinutes": 180 },
+      { "name": "Drain and dressing check", "gapDays": 2 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Review", "gapDays": 21 },
+      { "name": "Result review and photos", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "plastic.keloid_injections",
+    "name": "Keloid / scar injections",
+    "specialty": "Plastic Surgeon",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 4,
+    "intervalDays": 28,
+    "packageExpiryDays": 180,
+    "diagnosisKeywords": ["keloid", "hypertrophic scar", "scar injection"]
+  },
+  {
+    "code": "plastic.blepharoplasty",
+    "name": "Eyelid surgery (blepharoplasty)",
+    "specialty": "Plastic Surgeon",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "taxable": true,
+    "diagnosisKeywords": ["blepharoplasty", "droopy eyelids", "dermatochalasis", "eyelid surgery"],
+    "steps": [
+      { "name": "Pre-op check and photos", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 7, "maxGapDays": 60, "durationMinutes": 90 },
+      { "name": "Suture removal", "gapDays": 5 },
+      { "name": "Review", "gapDays": 21 },
+      { "name": "Result review", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "uro.eswl",
+    "name": "Shock-wave stone treatment (ESWL)",
+    "specialty": "Urologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 3,
+    "intervalDays": 14,
+    "packageExpiryDays": 90,
+    "diagnosisKeywords": ["eswl", "lithotripsy", "kidney stone", "renal stone", "renal calculus"]
+  },
+  {
+    "code": "uro.urs_stent",
+    "name": "Ureteroscopy and DJ stent",
+    "specialty": "Urologist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["ureteric stone", "ureteroscopy", "urs", "dj stent", "ureteric calculus"],
+    "steps": [
+      { "name": "Pre-op check", "gapDays": 0 },
+      { "name": "URS and DJ stent", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 90 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "DJ stent removal", "gapDays": 21, "maxGapDays": 35 },
+      { "name": "USG review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "uro.turp",
+    "name": "Prostate surgery (TURP)",
+    "specialty": "Urologist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["turp", "bph", "enlarged prostate", "benign prostatic hyperplasia"],
+    "steps": [
+      { "name": "Pre-op check, PSA and uroflow", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 7, "maxGapDays": 60, "durationMinutes": 90 },
+      { "name": "Catheter removal", "gapDays": 3 },
+      { "name": "Review", "gapDays": 11 },
+      { "name": "Uroflow review", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "uro.circumcision",
+    "name": "Circumcision",
+    "specialty": "Urologist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["circumcision", "phimosis", "paraphimosis"],
+    "steps": [
+      { "name": "Procedure", "gapDays": 0, "durationMinutes": 45 },
+      { "name": "Review", "gapDays": 3 },
+      { "name": "Final review", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "uro.vasectomy",
+    "name": "Vasectomy",
+    "specialty": "Urologist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["vasectomy", "sterilisation", "male sterilization"],
+    "steps": [
+      { "name": "Procedure", "gapDays": 0, "durationMinutes": 30 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Semen test review", "gapDays": 84 }
+    ]
+  },
+  {
+    "code": "vascular.varicose_laser",
+    "name": "Varicose vein laser / RFA",
+    "specialty": "Vascular Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["varicose veins", "evla", "rfa", "endovenous laser", "chronic venous insufficiency"],
+    "steps": [
+      { "name": "Pre-op Doppler", "gapDays": 0 },
+      { "name": "Procedure", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 60 },
+      { "name": "Review and Doppler", "gapDays": 3 },
+      { "name": "Review", "gapDays": 28 },
+      { "name": "Final review and Doppler", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "vascular.sclerotherapy",
+    "name": "Sclerotherapy (spider veins)",
+    "specialty": "Vascular Specialist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 4,
+    "intervalDays": 21,
+    "packageExpiryDays": 180,
+    "diagnosisKeywords": ["sclerotherapy", "spider veins", "reticular veins"]
+  },
+  {
+    "code": "vascular.venous_ulcer",
+    "name": "Venous ulcer compression care",
+    "specialty": "Vascular Specialist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 8,
+    "intervalDays": 7,
+    "packageExpiryDays": 90,
+    "diagnosisKeywords": ["venous ulcer", "leg ulcer", "compression bandage"]
+  },
+  {
+    "code": "vascular.wound_debridement",
+    "name": "Diabetic foot / wound debridement",
+    "specialty": "Vascular Specialist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["diabetic foot", "gangrene", "non-healing wound", "debridement"],
+    "steps": [
+      { "name": "Debridement", "gapDays": 0 },
+      { "name": "Dressing", "gapDays": 2 },
+      { "name": "Dressing", "gapDays": 3 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "vascular.av_fistula",
+    "name": "AV fistula for dialysis",
+    "specialty": "Vascular Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["av fistula", "dialysis access", "ckd", "arteriovenous fistula"],
+    "steps": [
+      { "name": "Pre-op vein mapping", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 3, "maxGapDays": 30, "durationMinutes": 90 },
+      { "name": "Wound review", "gapDays": 7 },
+      { "name": "Suture removal", "gapDays": 7 },
+      { "name": "Maturation check", "gapDays": 28 },
+      { "name": "Ready-for-use check", "gapDays": 28 }
+    ]
+  },
+  {
+    "code": "derma.vitiligo_nbuvb",
+    "name": "Vitiligo / psoriasis phototherapy (NB-UVB)",
+    "specialty": "Dermatologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 24,
+    "intervalDays": 3,
+    "packageExpiryDays": 120,
+    "diagnosisKeywords": ["phototherapy", "nb-uvb", "vitiligo", "psoriasis"]
+  },
+  {
+    "code": "derma.pigmentation_laser",
+    "name": "Pigmentation laser (Q-switched)",
+    "specialty": "Dermatologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 28,
+    "packageExpiryDays": 240,
+    "taxable": true,
+    "diagnosisKeywords": ["pigmentation", "melasma", "freckles", "pigmentation laser"]
+  },
+  {
+    "code": "derma.wart_cryo",
+    "name": "Wart cryotherapy",
+    "specialty": "Dermatologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 4,
+    "intervalDays": 14,
+    "packageExpiryDays": 90,
+    "diagnosisKeywords": ["warts", "verruca", "cryotherapy"]
+  },
+  {
+    "code": "derma.microneedling",
+    "name": "Microneedling for acne scars",
+    "specialty": "Dermatologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 4,
+    "intervalDays": 28,
+    "packageExpiryDays": 180,
+    "taxable": true,
+    "diagnosisKeywords": ["acne scars", "microneedling", "scar revision"]
+  },
+  {
+    "code": "physio.knee_replacement_rehab",
+    "name": "Knee replacement rehab",
+    "specialty": "Physiotherapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 18,
+    "intervalDays": 2,
+    "packageExpiryDays": 60,
+    "diagnosisKeywords": ["knee replacement rehab", "post-tkr rehab", "tkr", "knee replacement"]
+  },
+  {
+    "code": "physio.acl_rehab",
+    "name": "ACL reconstruction rehab",
+    "specialty": "Physiotherapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 24,
+    "intervalDays": 3,
+    "packageExpiryDays": 120,
+    "diagnosisKeywords": ["acl rehab", "acl reconstruction", "arthroscopy rehab", "acl"]
+  },
+  {
+    "code": "physio.frozen_shoulder",
+    "name": "Frozen shoulder",
+    "specialty": "Physiotherapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 12,
+    "intervalDays": 2,
+    "packageExpiryDays": 45,
+    "diagnosisKeywords": ["frozen shoulder", "adhesive capsulitis", "shoulder stiffness"]
+  },
+  {
+    "code": "physio.stroke_rehab",
+    "name": "Stroke rehab (neuro)",
+    "specialty": "Physiotherapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 24,
+    "intervalDays": 2,
+    "packageExpiryDays": 90,
+    "diagnosisKeywords": ["stroke", "hemiplegia", "paralysis", "weakness after stroke"]
+  },
+  {
+    "code": "physio.sports_injury",
+    "name": "Sprain / sports injury",
+    "specialty": "Physiotherapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 8,
+    "intervalDays": 2,
+    "packageExpiryDays": 30,
+    "diagnosisKeywords": ["ankle sprain", "sports injury", "muscle strain", "sprain"]
+  },
+  {
+    "code": "anaes.epidural_steroid",
+    "name": "Epidural steroid injection",
+    "specialty": "Anesthesiologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["epidural","back pain","sciatica","lumbar radiculopathy"],
+    "steps": [
+      { "name": "Injection", "gapDays": 0 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 42 }
+    ]
+  },
+  {
+    "code": "anaes.rf_ablation",
+    "name": "Radiofrequency ablation",
+    "specialty": "Anesthesiologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["radiofrequency ablation","rfa","facet pain","knee pain"],
+    "steps": [
+      { "name": "Diagnostic block", "gapDays": 0 },
+      { "name": "Radiofrequency ablation", "gapDays": 14 },
+      { "name": "Review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "anaes.pain_block_series",
+    "name": "Nerve block series",
+    "specialty": "Anesthesiologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 3,
+    "intervalDays": 14,
+    "packageExpiryDays": 60,
+    "diagnosisKeywords": ["nerve block","chronic pain","genicular nerve block"]
+  },
+  {
+    "code": "anaes.cancer_pain_review",
+    "name": "Cancer pain review",
+    "specialty": "Anesthesiologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 14,
+    "diagnosisKeywords": ["cancer pain","palliative pain"],
+    "steps": [
+      { "name": "Cancer pain review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "ayur.panchakarma_7",
+    "name": "Panchakarma (7 days)",
+    "specialty": "Ayurvedic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 7,
+    "intervalDays": 1,
+    "packageExpiryDays": 14,
+    "diagnosisKeywords": ["panchakarma","detox"]
+  },
+  {
+    "code": "ayur.virechana",
+    "name": "Virechana (purgation)",
+    "specialty": "Ayurvedic Doctor",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["virechana","skin disease","acidity"],
+    "steps": [
+      { "name": "Snehapana start", "gapDays": 0 },
+      { "name": "Snehapana check", "gapDays": 3 },
+      { "name": "Abhyanga and Swedana", "gapDays": 2 },
+      { "name": "Virechana day", "gapDays": 1 },
+      { "name": "Diet review", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "ayur.shirodhara",
+    "name": "Shirodhara",
+    "specialty": "Ayurvedic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 7,
+    "intervalDays": 1,
+    "packageExpiryDays": 14,
+    "diagnosisKeywords": ["shirodhara","stress","insomnia","anxiety","headache"]
+  },
+  {
+    "code": "ayur.kati_janu_basti",
+    "name": "Kati / Janu Basti (back / knee)",
+    "specialty": "Ayurvedic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 7,
+    "intervalDays": 1,
+    "packageExpiryDays": 14,
+    "diagnosisKeywords": ["kati basti","janu basti","back pain","knee pain","sciatica"]
+  },
+  {
+    "code": "ayur.nasya",
+    "name": "Nasya",
+    "specialty": "Ayurvedic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 7,
+    "intervalDays": 1,
+    "packageExpiryDays": 14,
+    "diagnosisKeywords": ["nasya","sinusitis","migraine","rhinitis"]
+  },
+  {
+    "code": "cardio.post_angioplasty",
+    "name": "Post-angioplasty follow-up",
+    "specialty": "Cardiologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["angioplasty","pci","stent","post-pci"],
+    "steps": [
+      { "name": "Discharge review", "gapDays": 0 },
+      { "name": "1-week review", "gapDays": 7 },
+      { "name": "1-month review", "gapDays": 23 },
+      { "name": "3-month review", "gapDays": 60 },
+      { "name": "6-month review", "gapDays": 90 }
+    ]
+  },
+  {
+    "code": "cardio.cardiac_rehab",
+    "name": "Cardiac rehab (12 sessions)",
+    "specialty": "Cardiologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 12,
+    "intervalDays": 3,
+    "packageExpiryDays": 60,
+    "diagnosisKeywords": ["cardiac rehab","post-mi","heart attack recovery"]
+  },
+  {
+    "code": "cardio.heart_failure_review",
+    "name": "Heart failure review",
+    "specialty": "Cardiologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "diagnosisKeywords": ["heart failure","cardiac failure"],
+    "steps": [
+      { "name": "Heart failure review (weight and swelling)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "cardio.inr_review",
+    "name": "Warfarin INR review",
+    "specialty": "Cardiologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 28,
+    "diagnosisKeywords": ["warfarin","inr","atrial fibrillation","valve replacement"],
+    "steps": [
+      { "name": "INR review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "cardio.device_check",
+    "name": "Pacemaker / device check",
+    "specialty": "Cardiologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 2,
+    "intervalDays": 180,
+    "diagnosisKeywords": ["pacemaker","icd","device check"],
+    "steps": [
+      { "name": "Device check", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "dental.ortho_braces",
+    "name": "Braces",
+    "specialty": "Dentist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "instalmentsAllowed": true,
+    "sessionCount": 19,
+    "intervalDays": 30,
+    "packageExpiryDays": 913,
+    "diagnosisKeywords": ["braces","malocclusion","orthodontic"]
+  },
+  {
+    "code": "dental.scaling_root_planing",
+    "name": "Gum treatment (scaling and root planing)",
+    "specialty": "Dentist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["periodontitis","bleeding gums","scaling","root planing"],
+    "steps": [
+      { "name": "Upper scaling", "gapDays": 0 },
+      { "name": "Lower scaling", "gapDays": 7 },
+      { "name": "Review", "gapDays": 28, "maxGapDays": 42 }
+    ]
+  },
+  {
+    "code": "dental.fixed_bridge",
+    "name": "Bridge (3-unit)",
+    "specialty": "Dentist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["bridge","missing tooth","fixed partial denture"],
+    "steps": [
+      { "name": "Preparation and impression", "gapDays": 0 },
+      { "name": "Try-in", "gapDays": 7 },
+      { "name": "Cementation", "gapDays": 3 },
+      { "name": "Review", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "dental.complete_denture",
+    "name": "Complete denture",
+    "specialty": "Dentist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "diagnosisKeywords": ["complete denture","edentulous","denture"],
+    "steps": [
+      { "name": "Primary impression", "gapDays": 0 },
+      { "name": "Final impression", "gapDays": 7 },
+      { "name": "Jaw relation", "gapDays": 7 },
+      { "name": "Try-in", "gapDays": 7 },
+      { "name": "Insertion", "gapDays": 7 },
+      { "name": "Review", "gapDays": 3 }
+    ]
+  },
+  {
+    "code": "dental.surgical_extraction",
+    "name": "Wisdom tooth removal",
+    "specialty": "Dentist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["wisdom tooth","impacted tooth","surgical extraction"],
+    "steps": [
+      { "name": "Extraction", "gapDays": 0, "durationMinutes": 60 },
+      { "name": "Review", "gapDays": 3 },
+      { "name": "Suture removal", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "diet.weight_loss_3m",
+    "name": "Weight-loss programme (3 months)",
+    "specialty": "Dietitian / Nutritionist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 12,
+    "intervalDays": 7,
+    "packageExpiryDays": 100,
+    "diagnosisKeywords": ["weight loss","obesity","overweight"]
+  },
+  {
+    "code": "diet.diabetes",
+    "name": "Diabetes diet programme",
+    "specialty": "Dietitian / Nutritionist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 14,
+    "packageExpiryDays": 100,
+    "diagnosisKeywords": ["diabetes","high sugar","prediabetes"]
+  },
+  {
+    "code": "diet.pcos",
+    "name": "PCOS diet programme",
+    "specialty": "Dietitian / Nutritionist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 14,
+    "packageExpiryDays": 100,
+    "diagnosisKeywords": ["pcos","pcod","irregular periods"]
+  },
+  {
+    "code": "diet.weight_gain",
+    "name": "Weight-gain / muscle programme",
+    "specialty": "Dietitian / Nutritionist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 8,
+    "intervalDays": 14,
+    "packageExpiryDays": 130,
+    "diagnosisKeywords": ["weight gain","underweight","muscle gain"]
+  },
+  {
+    "code": "diet.kidney",
+    "name": "Kidney (CKD) diet",
+    "specialty": "Dietitian / Nutritionist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "packageExpiryDays": 200,
+    "diagnosisKeywords": ["ckd","kidney disease","high creatinine"]
+  },
+  {
+    "code": "er.anti_rabies",
+    "name": "Anti-rabies vaccine (animal bite)",
+    "specialty": "Emergency Medicine Specialist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["dog bite","animal bite","rabies"],
+    "steps": [
+      { "name": "Day 0 dose", "gapDays": 0 },
+      { "name": "Day 3 dose", "gapDays": 3 },
+      { "name": "Day 7 dose", "gapDays": 4 },
+      { "name": "Day 28 dose", "gapDays": 21 }
+    ]
+  },
+  {
+    "code": "er.suture_care",
+    "name": "Wound suturing and removal",
+    "specialty": "Emergency Medicine Specialist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["laceration","cut","sutures"],
+    "steps": [
+      { "name": "Suturing", "gapDays": 0 },
+      { "name": "Wound check", "gapDays": 2 },
+      { "name": "Suture removal", "gapDays": 5 }
+    ]
+  },
+  {
+    "code": "er.post_er_review",
+    "name": "Review after emergency visit",
+    "specialty": "Emergency Medicine Specialist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["emergency follow-up","post emergency review"],
+    "steps": [
+      { "name": "Next-day review", "gapDays": 1 },
+      { "name": "1-week review", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "er.burn_dressing",
+    "name": "Burn dressing series",
+    "specialty": "Emergency Medicine Specialist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 2,
+    "packageExpiryDays": 20,
+    "diagnosisKeywords": ["burn","burn dressing"]
+  },
+  {
+    "code": "endo.insulin_start",
+    "name": "Insulin start and titration",
+    "specialty": "Endocrinologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["insulin start","uncontrolled diabetes","insulin"],
+    "steps": [
+      { "name": "Insulin start", "gapDays": 0 },
+      { "name": "Review", "gapDays": 3 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "endo.diabetes_review",
+    "name": "Diabetes review",
+    "specialty": "Endocrinologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["diabetes","type 2 diabetes","type 1 diabetes"],
+    "steps": [
+      { "name": "Diabetes review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "endo.pcos_6m",
+    "name": "PCOS programme (6 months)",
+    "specialty": "Endocrinologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "packageExpiryDays": 200,
+    "diagnosisKeywords": ["pcos","pcod"]
+  },
+  {
+    "code": "endo.osteoporosis",
+    "name": "Osteoporosis injection (yearly)",
+    "specialty": "Endocrinologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 3,
+    "intervalDays": 365,
+    "packageExpiryDays": 800,
+    "diagnosisKeywords": ["osteoporosis","zoledronic acid","low bone density"]
+  },
+  {
+    "code": "fert.iui_cycle",
+    "name": "IUI cycle",
+    "specialty": "Fertility Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["iui","intrauterine insemination"],
+    "steps": [
+      { "name": "Baseline scan (cycle day 2)", "gapDays": 0 },
+      { "name": "Follicle scan (day 9)", "gapDays": 7 },
+      { "name": "Follicle scan (day 11)", "gapDays": 2 },
+      { "name": "IUI", "gapDays": 2, "maxGapDays": 3 },
+      { "name": "Pregnancy test", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "fert.ivf_cycle",
+    "name": "IVF cycle",
+    "specialty": "Fertility Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["ivf","icsi","in vitro fertilisation"],
+    "steps": [
+      { "name": "Baseline scan (cycle day 2)", "gapDays": 0 },
+      { "name": "Stimulation scan (day 6)", "gapDays": 4 },
+      { "name": "Stimulation scan (day 8)", "gapDays": 2 },
+      { "name": "Stimulation scan (day 10)", "gapDays": 2 },
+      { "name": "Egg retrieval", "gapDays": 2, "maxGapDays": 4 },
+      { "name": "Embryo transfer", "gapDays": 3, "maxGapDays": 5 },
+      { "name": "Pregnancy test", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "fert.fet",
+    "name": "Frozen embryo transfer",
+    "specialty": "Fertility Specialist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["fet","frozen embryo transfer"],
+    "steps": [
+      { "name": "Baseline scan (cycle day 2)", "gapDays": 0 },
+      { "name": "Lining scan (day 10)", "gapDays": 8 },
+      { "name": "Embryo transfer", "gapDays": 6, "maxGapDays": 9 },
+      { "name": "Pregnancy test", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "fert.ovulation_induction",
+    "name": "Ovulation induction (3 cycles)",
+    "specialty": "Fertility Specialist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 3,
+    "intervalDays": 28,
+    "packageExpiryDays": 100,
+    "diagnosisKeywords": ["ovulation induction","letrozole","anovulation"]
+  },
+  {
+    "code": "gastro.h_pylori",
+    "name": "H. pylori course and retest",
+    "specialty": "Gastroenterologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["h. pylori","gastritis","peptic ulcer"],
+    "steps": [
+      { "name": "Start 14-day course", "gapDays": 0 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Breath test retest", "gapDays": 42 }
+    ]
+  },
+  {
+    "code": "gastro.endoscopy_biopsy",
+    "name": "Endoscopy and biopsy follow-up",
+    "specialty": "Gastroenterologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["endoscopy","biopsy","dyspepsia"],
+    "steps": [
+      { "name": "Endoscopy", "gapDays": 0 },
+      { "name": "Biopsy report review", "gapDays": 7 },
+      { "name": "Review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "gastro.colonoscopy",
+    "name": "Colonoscopy",
+    "specialty": "Gastroenterologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["colonoscopy","polyp","bleeding per rectum"],
+    "steps": [
+      { "name": "Prep advice", "gapDays": 0 },
+      { "name": "Colonoscopy", "gapDays": 3, "maxGapDays": 14 },
+      { "name": "Report review", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "gastro.fatty_liver",
+    "name": "Fatty liver programme",
+    "specialty": "Gastroenterologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "packageExpiryDays": 200,
+    "diagnosisKeywords": ["fatty liver","nafld","masld"]
+  },
+  {
+    "code": "gastro.hep_b_review",
+    "name": "Hepatitis B review",
+    "specialty": "Gastroenterologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 2,
+    "intervalDays": 180,
+    "diagnosisKeywords": ["hepatitis b","hbsag positive"],
+    "steps": [
+      { "name": "Hepatitis B review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "gp.bp_review",
+    "name": "BP review",
+    "specialty": "General Physician",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "diagnosisKeywords": ["hypertension","high bp","blood pressure"],
+    "steps": [
+      { "name": "BP review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "gp.thyroid_review",
+    "name": "Thyroid review",
+    "specialty": "General Physician",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 2,
+    "intervalDays": 180,
+    "diagnosisKeywords": ["hypothyroidism","thyroid"],
+    "steps": [
+      { "name": "Thyroid review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "gp.hep_b_vaccine",
+    "name": "Hepatitis B vaccine (3 doses)",
+    "specialty": "General Physician",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["hepatitis b vaccine","vaccination"],
+    "steps": [
+      { "name": "Dose 1", "gapDays": 0 },
+      { "name": "Dose 2", "gapDays": 30 },
+      { "name": "Dose 3", "gapDays": 150 }
+    ]
+  },
+  {
+    "code": "gp.dressing_series",
+    "name": "Wound dressing series",
+    "specialty": "General Physician",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 5,
+    "intervalDays": 2,
+    "packageExpiryDays": 20,
+    "diagnosisKeywords": ["wound","dressing"]
+  },
+  {
+    "code": "geri.post_discharge",
+    "name": "After-hospital follow-up",
+    "specialty": "Geriatrician",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["discharge","post-hospital","after hospital"],
+    "steps": [
+      { "name": "Review", "gapDays": 3 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "geri.falls_programme",
+    "name": "Falls prevention programme",
+    "specialty": "Geriatrician",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 8,
+    "intervalDays": 7,
+    "packageExpiryDays": 70,
+    "diagnosisKeywords": ["falls","balance","fall risk"]
+  },
+  {
+    "code": "geri.comprehensive_review",
+    "name": "Comprehensive geriatric review",
+    "specialty": "Geriatrician",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["frailty","elderly care"],
+    "steps": [
+      { "name": "Geriatric review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "geri.memory_review",
+    "name": "Memory clinic review",
+    "specialty": "Geriatrician",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["dementia","memory loss","cognitive impairment"],
+    "steps": [
+      { "name": "Memory review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "geri.pneumococcal",
+    "name": "Pneumococcal vaccine (PCV and PPSV)",
+    "specialty": "Geriatrician",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["pneumococcal vaccine","vaccination"],
+    "steps": [
+      { "name": "PCV dose", "gapDays": 0 },
+      { "name": "PPSV dose", "gapDays": 365 }
+    ]
+  },
+  {
+    "code": "gynae.antenatal",
+    "name": "Antenatal care",
+    "specialty": "Gynecologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["pregnancy","antenatal","anc"],
+    "steps": [
+      { "name": "First visit (8–12 weeks)", "gapDays": 0 },
+      { "name": "16 weeks", "gapDays": 42 },
+      { "name": "20 weeks (anomaly scan)", "gapDays": 28 },
+      { "name": "24 weeks", "gapDays": 28 },
+      { "name": "28 weeks (OGTT)", "gapDays": 28 },
+      { "name": "32 weeks", "gapDays": 28 },
+      { "name": "34 weeks", "gapDays": 14 },
+      { "name": "36 weeks", "gapDays": 14 },
+      { "name": "38 weeks", "gapDays": 14 },
+      { "name": "40 weeks", "gapDays": 14 }
+    ]
+  },
+  {
+    "code": "gynae.postnatal",
+    "name": "Postnatal care",
+    "specialty": "Gynecologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["postnatal","after delivery","postpartum"],
+    "steps": [
+      { "name": "Day 7 review", "gapDays": 7 },
+      { "name": "6-week review", "gapDays": 35 }
+    ]
+  },
+  {
+    "code": "gynae.iud_check",
+    "name": "IUD insertion and check",
+    "specialty": "Gynecologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["iud","copper-t","contraception"],
+    "steps": [
+      { "name": "Insertion", "gapDays": 0 },
+      { "name": "Thread check", "gapDays": 42 },
+      { "name": "Review", "gapDays": 365 }
+    ]
+  },
+  {
+    "code": "gynae.menopause_review",
+    "name": "Menopause review",
+    "specialty": "Gynecologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 2,
+    "intervalDays": 180,
+    "diagnosisKeywords": ["menopause","hrt"],
+    "steps": [
+      { "name": "Menopause review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "hemat.iron_infusion",
+    "name": "Iron infusion series",
+    "specialty": "Hematologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 3,
+    "intervalDays": 7,
+    "packageExpiryDays": 30,
+    "diagnosisKeywords": ["iron deficiency","iv iron","iron infusion"]
+  },
+  {
+    "code": "hemat.b12_course",
+    "name": "Vitamin B12 injection course",
+    "specialty": "Hematologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["b12 deficiency","vitamin b12"],
+    "steps": [
+      { "name": "Daily injection 1", "gapDays": 0 },
+      { "name": "Daily injection 2", "gapDays": 1 },
+      { "name": "Daily injection 3", "gapDays": 1 },
+      { "name": "Daily injection 4", "gapDays": 1 },
+      { "name": "Daily injection 5", "gapDays": 1 },
+      { "name": "Daily injection 6", "gapDays": 1 },
+      { "name": "Daily injection 7", "gapDays": 1 },
+      { "name": "Weekly injection 1", "gapDays": 7 },
+      { "name": "Weekly injection 2", "gapDays": 7 },
+      { "name": "Weekly injection 3", "gapDays": 7 },
+      { "name": "Weekly injection 4", "gapDays": 7 },
+      { "name": "Monthly review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "hemat.itp_steroid",
+    "name": "ITP steroid course",
+    "specialty": "Hematologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["itp","low platelets","thrombocytopenia"],
+    "steps": [
+      { "name": "Start", "gapDays": 0 },
+      { "name": "Platelet check", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Taper review", "gapDays": 28 }
+    ]
+  },
+  {
+    "code": "hemat.thal_transfusion",
+    "name": "Thalassaemia transfusion",
+    "specialty": "Hematologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 12,
+    "intervalDays": 21,
+    "diagnosisKeywords": ["thalassaemia major","transfusion"],
+    "steps": [
+      { "name": "Transfusion (Hb and ferritin)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "hemat.anaemia_review",
+    "name": "Anaemia review",
+    "specialty": "Hematologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 60,
+    "diagnosisKeywords": ["anaemia","low hemoglobin"],
+    "steps": [
+      { "name": "Anaemia review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "homeo.constitutional_review",
+    "name": "Constitutional treatment (monthly review)",
+    "specialty": "Homeopathic Doctor",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "diagnosisKeywords": ["chronic disease","constitutional"],
+    "steps": [
+      { "name": "Monthly review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "homeo.allergy_course",
+    "name": "Allergy / recurrent cold course",
+    "specialty": "Homeopathic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "packageExpiryDays": 200,
+    "diagnosisKeywords": ["allergic rhinitis","recurrent cold","allergy"]
+  },
+  {
+    "code": "homeo.skin_course",
+    "name": "Skin course",
+    "specialty": "Homeopathic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "packageExpiryDays": 200,
+    "diagnosisKeywords": ["eczema","psoriasis","acne"]
+  },
+  {
+    "code": "homeo.hair_course",
+    "name": "Hair fall course",
+    "specialty": "Homeopathic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 4,
+    "intervalDays": 30,
+    "packageExpiryDays": 150,
+    "diagnosisKeywords": ["hair fall","alopecia"]
+  },
+  {
+    "code": "homeo.child_immunity",
+    "name": "Child immunity course",
+    "specialty": "Homeopathic Doctor",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "packageExpiryDays": 200,
+    "diagnosisKeywords": ["recurrent infections","child immunity"]
+  },
+  {
+    "code": "immuno.scit_buildup",
+    "name": "Allergy shots (build-up)",
+    "specialty": "Immunologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 12,
+    "intervalDays": 7,
+    "packageExpiryDays": 100,
+    "diagnosisKeywords": ["allergen immunotherapy","allergy shots","scit"]
+  },
+  {
+    "code": "immuno.scit_maintenance",
+    "name": "Allergy shots (maintenance)",
+    "specialty": "Immunologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 36,
+    "intervalDays": 30,
+    "diagnosisKeywords": ["immunotherapy maintenance","scit maintenance"],
+    "steps": [
+      { "name": "Maintenance shot", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "immuno.slit_review",
+    "name": "Under-tongue drops (SLIT) review",
+    "specialty": "Immunologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["slit","sublingual immunotherapy"],
+    "steps": [
+      { "name": "Under-tongue drops (SLIT) review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "immuno.urticaria_review",
+    "name": "Chronic urticaria review",
+    "specialty": "Immunologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "diagnosisKeywords": ["urticaria","hives"],
+    "steps": [
+      { "name": "Urticaria review (UAS7)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "nephro.haemodialysis",
+    "name": "Haemodialysis (monthly block)",
+    "specialty": "Nephrologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 13,
+    "intervalDays": 2,
+    "packageExpiryDays": 35,
+    "diagnosisKeywords": ["dialysis","haemodialysis","esrd"]
+  },
+  {
+    "code": "nephro.ckd_review",
+    "name": "CKD review",
+    "specialty": "Nephrologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["ckd","chronic kidney disease"],
+    "steps": [
+      { "name": "CKD review (creatinine and eGFR)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "nephro.transplant_followup",
+    "name": "Kidney transplant follow-up",
+    "specialty": "Nephrologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["kidney transplant","renal transplant"],
+    "steps": [
+      { "name": "Weekly review 1", "gapDays": 7 },
+      { "name": "Weekly review 2", "gapDays": 7 },
+      { "name": "Weekly review 3", "gapDays": 7 },
+      { "name": "Weekly review 4", "gapDays": 7 },
+      { "name": "Monthly review 1", "gapDays": 30 },
+      { "name": "Monthly review 2", "gapDays": 30 },
+      { "name": "Monthly review 3", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "nephro.nephrotic_steroid",
+    "name": "Nephrotic syndrome steroid course",
+    "specialty": "Nephrologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["nephrotic syndrome"],
+    "steps": [
+      { "name": "Start", "gapDays": 0 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 28 },
+      { "name": "Taper review", "gapDays": 28 }
+    ]
+  },
+  {
+    "code": "neuro.stroke_followup",
+    "name": "Stroke follow-up",
+    "specialty": "Neurologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["stroke","tia"],
+    "steps": [
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Review", "gapDays": 30 },
+      { "name": "Review", "gapDays": 90 }
+    ]
+  },
+  {
+    "code": "neuro.neurosurgery_postop",
+    "name": "After neurosurgery",
+    "specialty": "Neurologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["neurosurgery","spine surgery"],
+    "steps": [
+      { "name": "Wound check", "gapDays": 7 },
+      { "name": "Suture removal", "gapDays": 7 },
+      { "name": "Review", "gapDays": 30 },
+      { "name": "Scan review", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "neuro.botox_migraine",
+    "name": "Botox for chronic migraine",
+    "specialty": "Neurologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["chronic migraine","botox"],
+    "steps": [
+      { "name": "Botox session 1", "gapDays": 0 },
+      { "name": "Botox session 2", "gapDays": 84 },
+      { "name": "Botox session 3", "gapDays": 84 },
+      { "name": "Botox session 4", "gapDays": 84 }
+    ]
+  },
+  {
+    "code": "neuro.epilepsy_review",
+    "name": "Epilepsy review",
+    "specialty": "Neurologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["epilepsy","seizures"],
+    "steps": [
+      { "name": "Epilepsy review (seizure count)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "neuro.parkinson_review",
+    "name": "Parkinson's review",
+    "specialty": "Neurologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["parkinson's","parkinson disease"],
+    "steps": [
+      { "name": "Parkinson's review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "onco.chemo_21d",
+    "name": "Chemotherapy (21-day cycles)",
+    "specialty": "Oncologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["chemotherapy","chemo"],
+    "steps": [
+      { "name": "Cycle 1", "gapDays": 0 },
+      { "name": "Cycle 2", "gapDays": 21 },
+      { "name": "Cycle 3", "gapDays": 21 },
+      { "name": "Cycle 4", "gapDays": 21 },
+      { "name": "Cycle 5", "gapDays": 21 },
+      { "name": "Cycle 6", "gapDays": 21 }
+    ]
+  },
+  {
+    "code": "onco.chemo_weekly",
+    "name": "Weekly chemotherapy",
+    "specialty": "Oncologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["weekly chemotherapy","weekly paclitaxel"],
+    "steps": [
+      { "name": "Week 1", "gapDays": 0 },
+      { "name": "Week 2", "gapDays": 7 },
+      { "name": "Week 3", "gapDays": 7 },
+      { "name": "Week 4", "gapDays": 7 },
+      { "name": "Week 5", "gapDays": 7 },
+      { "name": "Week 6", "gapDays": 7 },
+      { "name": "Week 7", "gapDays": 7 },
+      { "name": "Week 8", "gapDays": 7 },
+      { "name": "Week 9", "gapDays": 7 },
+      { "name": "Week 10", "gapDays": 7 },
+      { "name": "Week 11", "gapDays": 7 },
+      { "name": "Week 12", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "onco.radiation_25",
+    "name": "Radiation (25 fractions)",
+    "specialty": "Oncologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 25,
+    "intervalDays": 1,
+    "packageExpiryDays": 40,
+    "diagnosisKeywords": ["radiotherapy","radiation"]
+  },
+  {
+    "code": "onco.surgery",
+    "name": "Cancer surgery",
+    "specialty": "Oncologist",
+    "planType": "staged",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "diagnosisKeywords": ["surgical oncology","cancer surgery"],
+    "steps": [
+      { "name": "Pre-op check", "gapDays": 0 },
+      { "name": "Surgery", "gapDays": 7, "maxGapDays": 30 },
+      { "name": "Drain and wound check", "gapDays": 5 },
+      { "name": "Biopsy report review", "gapDays": 10 }
+    ]
+  },
+  {
+    "code": "onco.surveillance",
+    "name": "Follow-up after treatment",
+    "specialty": "Oncologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["surveillance","remission","cancer follow-up"],
+    "steps": [
+      { "name": "Surveillance review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "peds.iap_schedule",
+    "name": "Vaccination schedule (IAP, birth to 18 months)",
+    "specialty": "Pediatrician",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["vaccination","iap","immunisation"],
+    "steps": [
+      { "name": "Birth", "gapDays": 0 },
+      { "name": "6 weeks", "gapDays": 42 },
+      { "name": "10 weeks", "gapDays": 28 },
+      { "name": "14 weeks", "gapDays": 28 },
+      { "name": "6 months", "gapDays": 84 },
+      { "name": "9 months", "gapDays": 91 },
+      { "name": "12 months", "gapDays": 92 },
+      { "name": "15 months", "gapDays": 91 },
+      { "name": "16–18 months", "gapDays": 60, "maxGapDays": 90 }
+    ]
+  },
+  {
+    "code": "peds.newborn_followup",
+    "name": "Newborn follow-up",
+    "specialty": "Pediatrician",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["newborn","neonatal"],
+    "steps": [
+      { "name": "Day 3 review", "gapDays": 3 },
+      { "name": "Day 7 review", "gapDays": 4 },
+      { "name": "6-week review", "gapDays": 35 }
+    ]
+  },
+  {
+    "code": "peds.growth_review",
+    "name": "Growth review (under 5)",
+    "specialty": "Pediatrician",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["growth","failure to thrive","growth monitoring"],
+    "steps": [
+      { "name": "Growth review (weight, height, head)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "peds.nebulisation",
+    "name": "Nebulisation course",
+    "specialty": "Pediatrician",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 5,
+    "intervalDays": 1,
+    "packageExpiryDays": 10,
+    "diagnosisKeywords": ["wheeze","bronchiolitis","nebulisation"]
+  },
+  {
+    "code": "psychiatry.deaddiction",
+    "name": "De-addiction programme",
+    "specialty": "Psychiatrist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["alcohol dependence","de-addiction","substance use"],
+    "steps": [
+      { "name": "Start", "gapDays": 0 },
+      { "name": "Review", "gapDays": 3 },
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 30 }
+    ]
+  },
+  {
+    "code": "psychiatry.ect_course",
+    "name": "ECT course",
+    "specialty": "Psychiatrist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 8,
+    "intervalDays": 2,
+    "packageExpiryDays": 30,
+    "diagnosisKeywords": ["ect","severe depression"]
+  },
+  {
+    "code": "psychiatry.rtms",
+    "name": "rTMS course",
+    "specialty": "Psychiatrist",
+    "planType": "package",
+    "pricingMode": "package",
+    "consentRequired": true,
+    "sessionCount": 20,
+    "intervalDays": 1,
+    "packageExpiryDays": 35,
+    "diagnosisKeywords": ["rtms","depression"]
+  },
+  {
+    "code": "psychiatry.depot",
+    "name": "Long-acting injection",
+    "specialty": "Psychiatrist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 28,
+    "diagnosisKeywords": ["depot","long-acting injection"],
+    "steps": [
+      { "name": "Injection", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "psychiatry.med_review",
+    "name": "Medication review",
+    "specialty": "Psychiatrist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "diagnosisKeywords": ["depression","bipolar","schizophrenia","anxiety"],
+    "steps": [
+      { "name": "Medication review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "psych.therapy_8",
+    "name": "Therapy (8 sessions)",
+    "specialty": "Psychologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 8,
+    "intervalDays": 7,
+    "packageExpiryDays": 90,
+    "diagnosisKeywords": ["anxiety","depression","cbt"]
+  },
+  {
+    "code": "psych.therapy_12",
+    "name": "Therapy (12 sessions)",
+    "specialty": "Psychologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 12,
+    "intervalDays": 7,
+    "packageExpiryDays": 120,
+    "diagnosisKeywords": ["ocd","ptsd","depression"]
+  },
+  {
+    "code": "psych.couple_family",
+    "name": "Couple / family counselling",
+    "specialty": "Psychologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 14,
+    "packageExpiryDays": 120,
+    "diagnosisKeywords": ["marital issues","family conflict","couple counselling"]
+  },
+  {
+    "code": "psych.child_assessment",
+    "name": "Child assessment (learning / ADHD / autism)",
+    "specialty": "Psychologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["adhd","learning disability","autism"],
+    "steps": [
+      { "name": "History", "gapDays": 0 },
+      { "name": "Testing", "gapDays": 7 },
+      { "name": "Feedback", "gapDays": 7 }
+    ]
+  },
+  {
+    "code": "psych.stress_program",
+    "name": "Stress / sleep programme",
+    "specialty": "Psychologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 7,
+    "packageExpiryDays": 60,
+    "diagnosisKeywords": ["stress","insomnia","burnout"]
+  },
+  {
+    "code": "pulmo.tb_6m",
+    "name": "TB treatment (6 months)",
+    "specialty": "Pulmonologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 6,
+    "intervalDays": 30,
+    "packageExpiryDays": 200,
+    "diagnosisKeywords": ["tuberculosis","tb"]
+  },
+  {
+    "code": "pulmo.pulmonary_rehab",
+    "name": "Pulmonary rehab (12 sessions)",
+    "specialty": "Pulmonologist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 12,
+    "intervalDays": 3,
+    "packageExpiryDays": 60,
+    "diagnosisKeywords": ["copd","pulmonary rehab"]
+  },
+  {
+    "code": "pulmo.cpap_trial",
+    "name": "Sleep apnoea CPAP trial",
+    "specialty": "Pulmonologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["sleep apnoea","cpap","osa"],
+    "steps": [
+      { "name": "Sleep study", "gapDays": 0 },
+      { "name": "CPAP trial", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 60 }
+    ]
+  },
+  {
+    "code": "pulmo.post_pneumonia",
+    "name": "Post-pneumonia follow-up",
+    "specialty": "Pulmonologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["pneumonia"],
+    "steps": [
+      { "name": "Review", "gapDays": 7 },
+      { "name": "Chest X-ray review", "gapDays": 42 }
+    ]
+  },
+  {
+    "code": "pulmo.asthma_copd_review",
+    "name": "Asthma / COPD review",
+    "specialty": "Pulmonologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["asthma","copd"],
+    "steps": [
+      { "name": "Review (peak flow and inhaler check)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "rheum.biologic_infusion",
+    "name": "Biologic infusion cycle",
+    "specialty": "Rheumatologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "consentRequired": true,
+    "diagnosisKeywords": ["biologic","infliximab","rituximab"],
+    "steps": [
+      { "name": "Infusion (week 0)", "gapDays": 0 },
+      { "name": "Infusion (week 2)", "gapDays": 14 },
+      { "name": "Infusion (week 6)", "gapDays": 28 },
+      { "name": "Infusion", "gapDays": 56 },
+      { "name": "Infusion", "gapDays": 56 },
+      { "name": "Infusion", "gapDays": 56 }
+    ]
+  },
+  {
+    "code": "rheum.ra_review",
+    "name": "RA review",
+    "specialty": "Rheumatologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 4,
+    "intervalDays": 90,
+    "diagnosisKeywords": ["rheumatoid arthritis","ra"],
+    "steps": [
+      { "name": "RA review (DAS28)", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "rheum.mtx_monitoring",
+    "name": "Methotrexate monitoring",
+    "specialty": "Rheumatologist",
+    "planType": "review",
+    "pricingMode": "per_step",
+    "sessionCount": 6,
+    "intervalDays": 60,
+    "diagnosisKeywords": ["methotrexate"],
+    "steps": [
+      { "name": "Methotrexate blood test review", "gapDays": 0 }
+    ]
+  },
+  {
+    "code": "rheum.gout_titration",
+    "name": "Gout (urate-lowering start)",
+    "specialty": "Rheumatologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["gout","uric acid","hyperuricemia"],
+    "steps": [
+      { "name": "Start", "gapDays": 0 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 28 },
+      { "name": "Review", "gapDays": 56 }
+    ]
+  },
+  {
+    "code": "rheum.steroid_taper",
+    "name": "Steroid taper",
+    "specialty": "Rheumatologist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["steroid taper","pmr","polymyalgia"],
+    "steps": [
+      { "name": "Start", "gapDays": 0 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 28 }
+    ]
+  },
+  {
+    "code": "speech.therapy_12",
+    "name": "Speech therapy (12 sessions)",
+    "specialty": "Speech Therapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 12,
+    "intervalDays": 3,
+    "packageExpiryDays": 60,
+    "diagnosisKeywords": ["articulation","unclear speech","dysarthria"]
+  },
+  {
+    "code": "speech.child_language",
+    "name": "Child language delay programme",
+    "specialty": "Speech Therapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 24,
+    "intervalDays": 3,
+    "packageExpiryDays": 100,
+    "diagnosisKeywords": ["language delay","late talker","autism"]
+  },
+  {
+    "code": "speech.stuttering",
+    "name": "Stuttering (fluency) programme",
+    "specialty": "Speech Therapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 16,
+    "intervalDays": 7,
+    "packageExpiryDays": 150,
+    "diagnosisKeywords": ["stuttering","stammering","fluency"]
+  },
+  {
+    "code": "speech.swallowing",
+    "name": "Swallowing therapy (dysphagia)",
+    "specialty": "Speech Therapist",
+    "planType": "package",
+    "pricingMode": "package",
+    "sessionCount": 10,
+    "intervalDays": 2,
+    "packageExpiryDays": 30,
+    "diagnosisKeywords": ["dysphagia","swallowing difficulty"]
+  },
+  {
+    "code": "speech.hearing_aid",
+    "name": "Hearing aid trial and fitting",
+    "specialty": "Speech Therapist",
+    "planType": "staged",
+    "pricingMode": "per_step",
+    "diagnosisKeywords": ["hearing loss","hearing aid"],
+    "steps": [
+      { "name": "Hearing test", "gapDays": 0 },
+      { "name": "Trial", "gapDays": 3 },
+      { "name": "Fitting", "gapDays": 7 },
+      { "name": "Review", "gapDays": 14 },
+      { "name": "Review", "gapDays": 30 }
+    ]
+  }
+]

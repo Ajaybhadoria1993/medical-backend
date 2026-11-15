@@ -41,16 +41,16 @@ import { orderLikeBoard } from '../utils/queueBoard';
 import { fetchDoctorDayQueue } from './dayQueue.service';
 import { SessionOverrideService } from './sessionOverride.service';
 import { ConsultationDurationService } from './consultationDuration.service';
+import { DoctorArrivalModel } from '../models/doctorArrival.model';
+
+/** A gap this long between two blocks is a separate sitting needing its own arrival, not lunch. */
+const SEPARATE_SITTING_GAP_MINUTES = 120;
 
 const DELAY_TTL_SECONDS = 24 * 60 * 60; // 24 hours
 
 /** Computes and caches delay data for a doctor's daily queue (time- or token-based). */
 export class DelayTrackerService {
-  /**
-   * Recalculates estimated wait and cumulative delay for all non-terminal
-   * appointments, by walking the queue in order and cascading
-   * projectedStart = max(scheduledTime, previousProjectedEnd). Cached 24h.
-   */
+  /** Walks the day's queue cascading projectedStart = max(slot, previous end); cached 24h. */
   async recalculate(
     clinicId: string,
     doctorId: string,
@@ -62,15 +62,13 @@ export class DelayTrackerService {
       getNextAppointmentIds(clinicId, doctorId, date),
     ]);
 
-    // Who is with the doctor: a Redis pointer, not `appointmentStatus` —
-    // marking the row `Confirmed` would claim the *booking* was confirmed,
-    // which shows up in activity entries and reports. Stamped onto the
-    // engine's own view below, so downstream status readers are unaffected.
-    const currentAppointmentId = await getCurrentAppointmentId(
-      clinicId,
-      doctorId,
-      date
-    );
+    // The room is a Redis pointer, not a stored status; one left on a finished visit is ignored.
+    const pointerId = await getCurrentAppointmentId(clinicId, doctorId, date);
+    const currentAppointmentId = dayQueue.some(
+      (a) => a.id === pointerId && !isTerminalStatus(a.appointmentStatus)
+    )
+      ? pointerId
+      : null;
 
     // Real wall-clock start, for an accurate elapsed-time display — only
     // meaningful when someone is actually in the room.
@@ -78,9 +76,7 @@ export class DelayTrackerService {
       ? await getConsultationStartedAt(clinicId, doctorId, date)
       : null;
 
-    // When the doctor last became free, in minutes since midnight. Only read
-    // for an empty room, so the queue projects from when they actually
-    // finished rather than the planned end of a slot they beat.
+    // When the doctor last became free: an empty room projects from then, not the planned slot end.
     const endedAtIso = currentAppointmentId
       ? null
       : await getConsultationEndedAt(clinicId, doctorId, date);
@@ -92,10 +88,7 @@ export class DelayTrackerService {
       return hours * 60 + minutes;
     })();
 
-    // Who is paused (Hold or Skip) — a Redis flag, since a held patient's DB
-    // status stays `Patient Arrived`. Excluded from the cascade below: a
-    // paused patient isn't progressing, so they must not push others later
-    // or count as "ahead" of them.
+    // Held/skipped is a Redis flag (DB status stays Patient Arrived); they don't push others later.
     const heldAppointments = await getHeldAppointments(
       clinicId,
       doctorId,
@@ -110,9 +103,7 @@ export class DelayTrackerService {
       heldAppointments,
       priorityIds
     );
-    /** The status the engine should see for one row: in-room beats stored. */
-    // Not `Confirmed`: that is a real persisted booking status, so stamping it
-    // here hid the difference from the patient actually in the room.
+    /** The status the engine sees: in-room (not `Confirmed`, a stored booking status) beats stored. */
     const engineStatus = (appt: { id: string; appointmentStatus: string }) =>
       appt.id === currentAppointmentId
         ? IN_CONSULTATION
@@ -129,9 +120,7 @@ export class DelayTrackerService {
     const { hours: istHours, minutes: istMinutes } = getISTHoursMinutes();
     const nowMinutes = istHours * 60 + istMinutes;
 
-    // No known start (no weekly or date availability for today): anchor the
-    // token grid at now. Midnight made every token "~17 hours late" and pushed
-    // that as a running-late alert; unknown hours can't make anyone late.
+    // No hours configured today: anchor tokens at now, since unknown hours can't make anyone late.
     const sessionStartMinutes = resolvedSessionStart ?? nowMinutes;
 
     // Where each shift opens, so a token schedules from its own session's
@@ -149,20 +138,14 @@ export class DelayTrackerService {
     // next slot. Keyed by id: identity-based indexOf broke once rows were copied.
     const indexOfAppointment = new Map(appointments.map((a, i) => [a.id, i]));
 
-    // A staff-announced delay ("running 30 minutes behind") — the only signal
-    // for a doctor stuck in surgery who never touched the app. Applied as a
-    // floor, never a replacement, so a worse measured delay still wins; the
-    // rest of the queue inherits it through the cascade.
+    // Staff-announced delay is a floor: a worse measured delay still wins.
     const announcedDelayMinutes = await SessionOverrideService.getActiveMinutes(
       clinicId,
       doctorId,
       date
     );
 
-    // How long this doctor actually takes, measured from completed
-    // consultations rather than assumed from the booking slot. Resolved once
-    // per queue, not per appointment — it is a property of the doctor, and the
-    // Redis cache behind it would otherwise be read once per row.
+    // Measured consultation length, read once per queue rather than per row.
     const consultationDuration =
       await ConsultationDurationService.resolveForDoctor(clinicId, doctorId);
     const durationFallbacks = {
@@ -209,10 +192,7 @@ export class DelayTrackerService {
     const delayEntries: AppointmentDelayEntry[] = [];
     let previousProjectedEnd: number | null = null;
     let cumulativeDelayMinutes = 0;
-    /**
-     * The session most recently walked, so a boundary crossing can be
-     * detected and the cascade reset — see the reset block below.
-     */
+    /** Last session walked, to reset the cascade at a shift boundary. */
     let previousSessionIndex: number | null | undefined = undefined;
 
     // A shift token's stored time is not a slot (the app saves the shift start as it was at
@@ -242,10 +222,7 @@ export class DelayTrackerService {
         durationFallbacks
       );
 
-      // A new shift doesn't continue the last one's delay: otherwise a
-      // morning clinic running two hours late dragged the unrelated evening
-      // session's first token with it. Reset only on a real session change —
-      // a null session is one undivided queue.
+      // A new shift starts fresh: a late morning must not drag the evening's first token.
       if (
         previousSessionIndex !== undefined &&
         appt.sessionIndex != null &&
@@ -260,12 +237,7 @@ export class DelayTrackerService {
       const isHeld = Boolean(holdReason);
 
       if (isTerminalStatus(appt.appointmentStatus) || isHeld) {
-        // Terminal and held appointments stay in the entries but not the
-        // timeline — neither is going to be seen next, so neither may cascade
-        // onto whoever is behind. Times derived as usual so they don't
-        // surface as 00:00.
-        // Always published as HH:MM: "13:00:00" beside "13:00" is the
-        // inconsistency that reached the patient payload.
+        // Terminal and held rows are listed but don't cascade onto anyone behind them.
         const anchorTime = minutesToTimeString(scheduledMinutesFor(appt));
         delayEntries.push({
           appointmentId: appt.id,
@@ -275,9 +247,7 @@ export class DelayTrackerService {
           scheduledTime: anchorTime,
           tokenNo: appt.tokenNo ?? null,
           sessionIndex: appt.sessionIndex ?? null,
-          // The anchor, not a live projection: a held patient has no scheduled
-          // moment to resume at, and `isOnHold` tells the client not to read
-          // this as an estimate (see AppointmentDelayEntry.isOnHold).
+          // Their own slot as an anchor; `isOnHold` tells clients it isn't an estimate.
           projectedStartTime: anchorTime,
           estimatedWaitMinutes: 0,
           durationMinutes: duration,
@@ -290,27 +260,18 @@ export class DelayTrackerService {
         continue;
       }
 
-      // Resolve scheduled time in minutes since midnight. A token appointment
-      // has no appointmentTime, so its slot is derived from the session start
-      // plus everyone ahead of it. An appointment that claims a time but whose
-      // value is unparseable falls back to the same derivation rather than
-      // silently becoming midnight.
+      // Tokens (and unparseable times) derive a slot from the shift start plus everyone ahead.
       const scheduledMinutes = scheduledMinutesFor(appt);
 
       // Compute projected start
       let projectedStartMinutes: number;
 
       if (previousProjectedEnd === null) {
-        // First non-terminal appointment: if the doctor hasn't started and is
-        // past the scheduled time, project from now. Token queues included —
-        // they carry a real scheduled time, so excluding them pinned them to
-        // zero delay.
+        // First in line and the slot has passed without a start: project from now.
         if (!isAnyoneBeingServed && nowMinutes > scheduledMinutes) {
           projectedStartMinutes = nowMinutes;
         } else if (!isAnyoneBeingServed && freeSinceMinutes !== null) {
-          // Doctor finished early and the room is still empty: a doctor free
-          // since 12:40 can start the 13:00 patient then. Only ever moves a
-          // start forward, and only from a recorded end.
+          // Doctor free early with an empty room: the next patient can start then.
           projectedStartMinutes = Math.min(scheduledMinutes, freeSinceMinutes);
         } else {
           projectedStartMinutes = scheduledMinutes;
@@ -331,13 +292,7 @@ export class DelayTrackerService {
         );
       }
 
-      // A projected start landing inside a break moves to its end, after the
-      // cascade so the push propagates to everyone behind.
-      //
-      // Skipped for a numbered session: its end *is* the following break, so
-      // shifting past it would relocate a late morning token into the evening
-      // shift, colliding with that shift's own token 1. Those are confined by
-      // the clamp below instead; sessionless days are one continuous queue.
+      // A start inside a break moves past it; not for numbered shifts, whose end is that break.
       if (appt.sessionIndex == null) {
         projectedStartMinutes = shiftPastBreaks(projectedStartMinutes, breaks);
       }
@@ -354,24 +309,17 @@ export class DelayTrackerService {
         }
       }
 
-      // Nobody still waiting can be seen in the past: otherwise a doctor
-      // still on the 13:00 patient at 15:46 projected 13:00 → 13:30 → …, and
-      // every waiting patient reported zero delay. The patient in the room is
-      // excluded — their start really is in the past.
+      // Nobody waiting can be seen in the past; the patient in the room is the exception.
       if (!isBeingSeenNow) {
         projectedStartMinutes = Math.max(projectedStartMinutes, nowMinutes);
       }
 
-      // A projection past its own shift's end is a missed appointment, not a
-      // booking in the next shift — those minutes belong to the next shift's
-      // own token holders. Flagged rather than blanked so the row can read
-      // "(Missed)" with a time behind it. Sessioned appointments only.
+      // Missed only once the projection runs past the NEXT sitting's start; the gap
+      // before it is usable overflow. The last or only sitting never closes early.
       let isMissedSession = false;
-      if (appt.sessionIndex != null && !isBeingSeenNow) {
-        // Only the next sitting's start closes this one; the gap before it is usable overflow.
-        // The last (or only) sitting has nothing after it, so its patients just keep waiting.
-        const nextStart = sessionStarts[appt.sessionIndex] ?? null;
-        if (nextStart !== null && projectedStartMinutes > nextStart) {
+      if (!isBeingSeenNow && appt.sessionIndex != null) {
+        const nextStart = sessionStarts[appt.sessionIndex];
+        if (nextStart !== undefined && projectedStartMinutes > nextStart) {
           isMissedSession = true;
         }
       }
@@ -382,9 +330,7 @@ export class DelayTrackerService {
         projectedStartMinutes - scheduledMinutes
       );
 
-      // An in-progress consultation finishes no earlier than now — the patient
-      // is still in the room. Everyone behind cascades from that floor, which
-      // is what makes an overrunning consultation visible to the queue.
+      // An ongoing consultation ends no earlier than now, so an overrun pushes everyone behind.
       previousProjectedEnd = isBeingSeenNow
         ? Math.max(projectedStartMinutes + duration, nowMinutes)
         : projectedStartMinutes + duration;
@@ -397,10 +343,7 @@ export class DelayTrackerService {
         patientId: appt.patientId,
         userId: appt.patientId,
         status: engineStatus(appt) as AppointmentDelayEntry['status'],
-        // Token appointments have no stored time, so publish the derived slot.
-        // RunningLateNotifier gates its real-time-delay branch on this field
-        // being present — leaving it null is what suppressed running-late
-        // notifications for every token-based appointment.
+        // Tokens publish their derived slot; the running-late check needs a time to compare.
         scheduledTime: minutesToTimeString(scheduledMinutes),
         tokenNo: appt.tokenNo ?? null,
         sessionIndex: appt.sessionIndex ?? null,
@@ -426,6 +369,14 @@ export class DelayTrackerService {
       consultationBasis: effectiveConsultationMinutes.basis,
       consultationMinutes: effectiveConsultationMinutes.minutes,
       consultationSampleSize: consultationDuration.sampleSize,
+      doctorArrived: await this.readDoctorArrival(
+        doctorId,
+        date,
+        delayEntries,
+        resolvedSessionStart,
+        breaks ?? [],
+        nowMinutes
+      ),
     };
 
     // Store in Redis with 24h TTL
@@ -434,10 +385,77 @@ export class DelayTrackerService {
     return queueDelayData;
   }
 
-  /**
-   * Estimated wait for one appointment: per-appointment cache key, then the
-   * full queue cache, then an on-the-fly recalculation. 0 if not found.
-   */
+  /** Clock-shift arrival, plus each entry's own: its token shift, or its sitting on a time day. Fails open. */
+  private async readDoctorArrival(
+    doctorId: string,
+    date: string,
+    entries: AppointmentDelayEntry[],
+    dayStartMinutes: number | null,
+    breaks: BreakWindow[],
+    nowMinutes: number
+  ): Promise<boolean> {
+    try {
+      // Shifts come from the cached day config the recalculation already holds.
+      const dayBreaks =
+        dayStartMinutes === null
+          ? []
+          : breaks.filter((b) => b.endMinutes > dayStartMinutes);
+      const starts = [
+        dayStartMinutes ?? 0,
+        ...dayBreaks.map((b) => b.endMinutes),
+      ];
+      const sessionAt = (minutes: number) =>
+        dayBreaks.filter((b) => b.startMinutes <= minutes).length;
+      // ponytail: schedules don't say lunch vs second sitting, so a long gap means a new sitting; add a flag if this misfires.
+      const sittingOf = [0];
+      for (const b of dayBreaks) {
+        const long =
+          b.endMinutes - b.startMinutes >= SEPARATE_SITTING_GAP_MINUTES;
+        sittingOf.push(sittingOf[sittingOf.length - 1] + (long ? 1 : 0));
+      }
+
+      const rows = await database
+        .select({ sessionStart: DoctorArrivalModel.sessionStart })
+        .from(DoctorArrivalModel)
+        .where(
+          and(
+            eq(DoctorArrivalModel.doctorId, doctorId),
+            eq(DoctorArrivalModel.forDate, date)
+          )
+        );
+      const arrivedSessions = new Set(
+        rows.map((r) =>
+          r.sessionStart == null
+            ? 0
+            : starts.indexOf(parseTimeToMinutes(r.sessionStart) ?? -1)
+        )
+      );
+      arrivedSessions.delete(-1);
+      if (starts.length < 2) return rows.length > 0;
+      const arrivedSittings = new Set(
+        [...arrivedSessions].map((i) => sittingOf[i])
+      );
+
+      for (const entry of entries) {
+        if (entry.sessionIndex != null) {
+          entry.doctorArrived = arrivedSessions.has(entry.sessionIndex - 1);
+          continue;
+        }
+        const slot = parseTimeToMinutes(entry.scheduledTime);
+        if (slot === null) continue;
+        entry.doctorArrived = arrivedSittings.has(sittingOf[sessionAt(slot)]);
+      }
+      return arrivedSittings.has(sittingOf[sessionAt(nowMinutes)]);
+    } catch (error) {
+      logger.warn(
+        `[DelayTracker] Arrival read failed for doctor=${doctorId} date=${date}`,
+        { error }
+      );
+      return true;
+    }
+  }
+
+  /** One appointment's wait: its own cache key, then the queue cache, then a recalculation; 0 if absent. */
   async getEstimatedWaitTime(appointmentId: string): Promise<number> {
     // Step 1: Try per-appointment cache key (fastest path — no DB query)
     try {
@@ -539,11 +557,7 @@ export class DelayTrackerService {
     return fetchDoctorDayQueue(clinicId, doctorId, date);
   }
 
-  /**
-   * Resolves the slot duration for this doctor/clinic/date.
-   * Priority: Redis cache → ClinicDateAvailability → ClinicAvailability → null
-   * Cached in Redis for 1 hour (slot config rarely changes during the day).
-   */
+  /** Slot length: Redis (1h), then date availability, then weekly availability; null if none. */
   async resolveSlotMinutes(
     clinicId: string,
     doctorId: string,
@@ -619,11 +633,8 @@ export class DelayTrackerService {
     let sessionStartMinutes: number | null = null;
     let sessionEndMinutes: number | null = null;
 
-    /*
-     * Each available date slot is one working window. A doctor with a morning
-     * and an evening shift has two, and the gap between them is not working
-     * time — see `dateGapBreaks` below.
-     */
+    // Each date slot is a working window; the gap between two shifts is not working time.
+
     const dateWindows: Array<{ start: number; end: number }> = [];
 
     for (const row of dateRows) {
@@ -689,10 +700,7 @@ export class DelayTrackerService {
     sessionEndMinutes =
       sessionEndMinutes ?? parseTimeToMinutes(weekday?.endTime ?? null);
 
-    // Two break sources, both legitimate: the single inline window on the
-    // availability row, and any number of typed rows beside it. Collected
-    // together and merged so overlapping definitions of the same lunch break
-    // don't get counted twice.
+    // Inline and typed breaks are merged so one lunch defined twice counts once.
     const rawBreaks: Array<{
       startMinutes: number | null;
       endMinutes: number | null;
@@ -713,11 +721,8 @@ export class DelayTrackerService {
       });
     }
 
-    /*
-     * A split shift defined for this specific date. Added last; normalizeBreaks
-     * sorts and merges, so a gap that coincides with the weekly lunch break is
-     * counted once rather than twice.
-     */
+    // This date's split-shift gap; merged so it doesn't double-count the weekly lunch.
+
     rawBreaks.push(...dateGapBreaks);
 
     const breaks = normalizeBreaks(rawBreaks);
@@ -735,16 +740,10 @@ export class DelayTrackerService {
     return result;
   }
 
-  /**
-   * Start of each shift in minutes since midnight, by 1-based session number:
-   * session 1 opens at the day's start, session N+1 where break N ends. Mirrors
-   * `resolveDaySegmentsForTokens` without repeating its queries.
-   */
+  /** Each shift's start (minutes): shift 1 at day start, shift N+1 where break N ends. */
   private deriveSessionStarts(
     dayStartMinutes: number,
-    // Tolerates a missing list for the same reason shiftPastBreaks does: this
-    // is reached from a Redis-cached day config that predates breaks, and from
-    // callers that build a config object by hand.
+    // Older cached configs have no breaks list.
     breaks?: BreakWindow[] | null
   ): number[] {
     const starts = [dayStartMinutes];
@@ -755,15 +754,7 @@ export class DelayTrackerService {
     return starts;
   }
 
-  /**
-   * Scheduled start for a token appointment: its session's start plus the
-   * duration of every non-terminal appointment ahead of it in that same
-   * session. Terminal rows are skipped so this matches the projection walk.
-   *
-   * Both halves must be session-scoped — seeding from the day's start instead
-   * of the session's put a session-2 token at 09:30 rather than 17:15. A null
-   * session sums from the day's start, as one undivided queue.
-   */
+  /** Token slot: its shift's start plus every non-terminal booking ahead of it in that shift. */
   private computeTokenScheduledMinutes(
     currentIndex: number,
     allAppointments: Array<{
@@ -778,9 +769,7 @@ export class DelayTrackerService {
     configuredMinutes: number | null = null
   ): number {
     const currentSession = allAppointments[currentIndex]?.sessionIndex ?? null;
-    // Falls back to the day's start when this session has no derived opening
-    // time — a token numbered beyond the shifts the schedule actually
-    // describes, which is a data mismatch rather than a reason to return 00:00.
+    // A shift beyond the schedule falls back to the day's start, not 00:00.
     let cumulativeMinutes =
       (currentSession != null
         ? sessionStarts[currentSession - 1]
@@ -796,10 +785,7 @@ export class DelayTrackerService {
       ) {
         continue;
       }
-      // Skip breaks here too. Wait is `projected - scheduled`, and the
-      // projection steps over lunch — if the nominal schedule didn't, a
-      // 60-minute lunch would report every afternoon patient as 60 minutes
-      // late. A break is part of the promised grid; consultation pace is not.
+      // The slot steps over breaks like the projection, or lunch would read as lateness.
       cumulativeMinutes = shiftPastBreaks(cumulativeMinutes, breaks);
       // A doctor-set length spaces the nominal grid; a learned one never does,
       // since that would shift the baseline the delay is measured from.
@@ -810,24 +796,15 @@ export class DelayTrackerService {
       );
     }
 
-    // Shift the appointment's own slot too: the last patient before lunch
-    // pushes the next nominal start into the break, and it belongs after it.
-    // This is what lands a second session's token 1 at its own start time.
+    // A slot landing in a break belongs after it, which puts shift 2's token 1 at its start.
     return shiftPastBreaks(cumulativeMinutes, breaks);
   }
 
-  /**
-   * Stores delay data in Redis (24h TTL) behind an atomic Lua compare-and-set,
-   * skipping the write if a newer version is already there. Also writes the
-   * per-appointment wait keys. Warns rather than throws if Redis is down.
-   */
+  /** Caches queue data (24h) with a Lua compare-and-set so an older result never overwrites a newer one. */
   private async storeInRedis(data: QueueDelayData): Promise<void> {
     const key = getRedisKey('delay', data.clinicId, data.doctorId, data.date);
 
     try {
-      // Atomically set only if our version is newer than what's currently stored.
-      // The Lua script reads the current version, and only writes if the new
-      // version is greater, preventing stale data from overwriting fresh data.
       const luaScript = `
                 local current = redis.call('GET', KEYS[1])
                 local newVersion = tonumber(ARGV[2])
@@ -841,9 +818,7 @@ export class DelayTrackerService {
                 return 1
             `;
 
-      // Version comes from lastCalculatedAt, not a read-then-increment: two
-      // concurrent instances would read the same value and compute the same
-      // "next" one, which the Lua compare-and-set can't tell apart.
+      // Versioned by timestamp: two instances incrementing would compute the same next value.
       const newVersion = Date.parse(data.lastCalculatedAt);
 
       const payload = JSON.stringify({ ...data, version: newVersion });
@@ -873,10 +848,7 @@ export class DelayTrackerService {
     }
   }
 
-  /**
-   * Writes `appointment_engine:wait:{appointmentId}` (24h) per non-terminal
-   * appointment, so the patient detail API needs one Redis GET and no DB hit.
-   */
+  /** Per-appointment wait keys (24h), so the patient detail API needs one Redis GET. */
   private async storePerAppointmentCache(data: QueueDelayData): Promise<void> {
     const pipeline = redisClient.pipeline();
 
@@ -910,12 +882,7 @@ export class DelayTrackerService {
 
 // ─── Local Helper Functions ───────────────────────────────────────────────────
 
-/** Parses a time string into minutes since midnight; 0 if unparseable. */
-/**
- * Parse a time label into minutes since midnight, or null when absent. Null
- * rather than 0, since 0 is a valid time (midnight) and coercing "missing" to
- * it produced appointments apparently scheduled at 00:00.
- */
+/** Time label to minutes since midnight; null when absent, since 0 is a real time. */
 function parseTimeToMinutes(time: string | null | undefined): number | null {
   if (!time) return null;
   const t = time.trim();
@@ -943,9 +910,7 @@ function parseTimeToMinutes(time: string | null | undefined): number | null {
   return null;
 }
 
-/**
- * Converts minutes since midnight back to a "HH:MM" time string.
- */
+/** Minutes since midnight to "HH:MM". */
 function minutesToTimeString(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;

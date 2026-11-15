@@ -1,7 +1,11 @@
 // src/main/settings/routes/v1/settings.route.ts
 import express from 'express';
 
-import { requireAuth } from '../../../../middlewear/auth.middleware';
+import {
+  CLINIC_STAFF_ROLES,
+  requireAuth,
+  requireRole,
+} from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
 import {
   getSettingsController,
@@ -14,7 +18,7 @@ import {
   updateSettingsSchema,
   updateNotificationPreferencesSchema,
 } from '../../schemas/setting.schemas';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 
 const settingRouter = express.Router();
 
@@ -23,7 +27,12 @@ const settingRouter = express.Router();
  * @desc Get application settings for the current user/clinic
  * @access Private
  */
-settingRouter.get('/', requireAuth, getSettingsController);
+settingRouter.get(
+  '/',
+  requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
+  getSettingsController
+);
 
 /**
  * @route PUT /api/v1/settings/
@@ -45,6 +54,7 @@ settingRouter.put(
 settingRouter.get(
   '/notification-preferences',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   getNotificationPreferencesController
 );
 
@@ -56,6 +66,7 @@ settingRouter.get(
 settingRouter.put(
   '/notification-preferences',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   validate(updateNotificationPreferencesSchema, 'body'),
   updateNotificationPreferencesController
 );
@@ -68,6 +79,7 @@ settingRouter.put(
 settingRouter.get(
   '/notification-preferences/defaults',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   getDefaultPreferencesController
 );
 

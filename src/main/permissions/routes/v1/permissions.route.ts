@@ -1,11 +1,12 @@
 import express from 'express';
 import {
+  CLINIC_STAFF_ROLES,
   requireAuth,
   requireClinic,
   requireRole,
 } from '../../../../middlewear/auth.middleware';
 import { validate } from '../../../../middlewear/validation.middleware';
-import { docsRegistry } from '../../../../utils/docsRegistry';
+import { docsRegistry } from '../../../../apiDocs';
 import {
   getMyPermissionsController,
   getPermissionCatalogController,
@@ -80,6 +81,7 @@ permissionsRouter.put(
 permissionsRouter.get(
   '/me/scope',
   requireAuth,
+  requireRole(CLINIC_STAFF_ROLES),
   requireClinic,
   getMyScopeController
 );

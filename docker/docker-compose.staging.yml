@@ -13,6 +13,9 @@ services:
       start_period: 5s
     logging:
       driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
 
   app:
     image: harhsitsharma/cms-backend:${IMAGE_TAG:-staging}
@@ -27,6 +30,8 @@ services:
       - ../.env
     environment:
       NODE_ENV: staging
+      APP_VERSION: ${IMAGE_TAG:-staging}
+      NODE_OPTIONS: --max-old-space-size=1536
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 5000
@@ -35,8 +40,17 @@ services:
       interval: 30s
       retries: 3
       start_period: 40s
+    # Same caps as prod: a leak restarts the app instead of starving the host.
+    mem_limit: 3g
+    # Ships to CloudWatch via the instance role; non-blocking so a CloudWatch outage or the $3 budget deny drops lines instead of freezing the app.
     logging:
-      driver: json-file
+      driver: awslogs
+      options:
+        awslogs-region: ap-south-1
+        awslogs-group: /infinity-medisetu/staging
+        tag: '{{.Name}}-{{.ID}}'
+        mode: non-blocking
+        max-buffer-size: 4m
 
 volumes:
   redis-data-stg:

@@ -1,0 +1,1 @@
+CREATE INDEX "appointment_multiple_service_appointment_id_idx" ON "appointment_multiple_service" USING btree ("appointment_id");

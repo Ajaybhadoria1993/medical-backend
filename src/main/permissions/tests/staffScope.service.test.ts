@@ -164,3 +164,70 @@ describe('scopeCacheKey', () => {
     expect(scopeCacheKey(['b', 'a'])).toBe(scopeCacheKey(['a', 'b']));
   });
 });
+
+describe('StaffScopeService.assertAppointmentAllowed', () => {
+  const { database } = jest.requireMock('../../../configurations/dbConnection');
+  let getScopeSpy: jest.SpyInstance;
+
+  // Makes the appointment lookup resolve to `rows`.
+  const appointmentRows = (rows: unknown[]) => {
+    const chain: any = {};
+    ['from', 'where'].forEach((m) => (chain[m] = jest.fn(() => chain)));
+    chain.limit = jest.fn().mockResolvedValue(rows);
+    database.select.mockReturnValueOnce(chain);
+  };
+
+  const check = (user: { id: string; userType: string }) =>
+    StaffScopeService.assertAppointmentAllowed(user, 'clinic-1', 'appt-1');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getScopeSpy = jest.spyOn(StaffScopeService, 'getScope');
+  });
+
+  afterEach(() => getScopeSpy.mockRestore());
+
+  it('returns 404 for an appointment outside the clinic, even for an Admin', async () => {
+    appointmentRows([]);
+    await expect(
+      check({ id: 'admin-1', userType: 'Admin' })
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('lets an Admin act on any doctor in the clinic', async () => {
+    appointmentRows([{ doctorId: 'doctor-a' }]);
+    await expect(
+      check({ id: 'admin-1', userType: 'Admin' })
+    ).resolves.toBeUndefined();
+  });
+
+  it('lets a Doctor act on their own appointment', async () => {
+    appointmentRows([{ doctorId: 'doctor-a' }]);
+    await expect(
+      check({ id: 'doctor-a', userType: 'Doctor' })
+    ).resolves.toBeUndefined();
+  });
+
+  it("refuses a Doctor on another doctor's appointment", async () => {
+    appointmentRows([{ doctorId: 'doctor-a' }]);
+    await expect(
+      check({ id: 'doctor-b', userType: 'Doctor' })
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('lets a receptionist act on an assigned doctor', async () => {
+    appointmentRows([{ doctorId: 'doctor-a' }]);
+    getScopeSpy.mockResolvedValue(scope({ doctorIds: ['doctor-a'] }));
+    await expect(
+      check({ id: 'rec-1', userType: 'Receptionist' })
+    ).resolves.toBeUndefined();
+  });
+
+  it('refuses a receptionist on an unassigned doctor', async () => {
+    appointmentRows([{ doctorId: 'doctor-b' }]);
+    getScopeSpy.mockResolvedValue(scope({ doctorIds: ['doctor-a'] }));
+    await expect(
+      check({ id: 'rec-1', userType: 'Receptionist' })
+    ).rejects.toMatchObject({ status: 403 });
+  });
+});

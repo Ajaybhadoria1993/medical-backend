@@ -17,35 +17,38 @@ import {
   dashboardSummaryQuerySchema,
   salesOverviewQuerySchema,
 } from '../../schemas/dashboard.schema';
-import { requireUserSubscription } from '../../../../middlewear/subscriptionAccess.middleware';
+import {
+  FEATURE_KEYS,
+  requireFeature,
+} from '../../../../middlewear/limitation.middleware';
 
 const dashboardRouter = express.Router();
 
 dashboardRouter.get(
   '/stats',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getDashboardStatsController
 );
 
 dashboardRouter.get(
   '/sales-chart',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getSalesChartDataController
 );
 
 dashboardRouter.get(
   '/top-selling-medicines',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getTopSellingMedicinesController
 );
 
 dashboardRouter.get(
   '/top-suppliers',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getTopSuppliersController
 );
 
@@ -53,7 +56,7 @@ dashboardRouter.get(
   '/summary',
   requireAuth,
   validate(dashboardSummaryQuerySchema, 'query'),
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getDashboardSummaryController
 );
 
@@ -61,7 +64,7 @@ dashboardRouter.get(
   '/sales-overview',
   requireAuth,
   validate(salesOverviewQuerySchema, 'query'),
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getSalesOverviewController
 );
 
@@ -69,7 +72,7 @@ dashboardRouter.get(
   '/category-revenue',
   requireAuth,
   validate(dashboardPeriodQuerySchema, 'query'),
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getCategoryRevenueController
 );
 
@@ -77,14 +80,14 @@ dashboardRouter.get(
   '/top-performers',
   requireAuth,
   validate(dashboardPeriodQuerySchema, 'query'),
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getTopPerformersController
 );
 
 dashboardRouter.get(
   '/ai-stock-prediction',
   requireAuth,
-  requireUserSubscription,
+  requireFeature(FEATURE_KEYS.PHARMACY_INTEGRATION),
   getAiStockPredictionController
 );
 
