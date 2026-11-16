@@ -167,7 +167,7 @@ So "service added after the first payment" automatically becomes a new invoice f
 
 ## 9. Screens (FE)
 
-Read the Medisetu Frontend Design Spec for these modules first; update the Feature tracker rows when done. All screens follow the CLAUDE.md UX rules (four data states, shared form controls, confirm dialogs naming the invoice).
+Read the MediArogya Frontend Design Spec for these modules first; update the Feature tracker rows when done. All screens follow the CLAUDE.md UX rules (four data states, shared form controls, confirm dialogs naming the invoice).
 
 - **Finance → Billing**: `CommonTable` list (number, date, patient, kind, total, status via `StatusChip`), filters, detail drawer with lines, receipts, credit notes; actions Collect payment, View, Download; Void + Credit note (Admin, `danger`, confirm dialog).
 - **Shared invoice viewer** (`components/billing/InvoiceViewer.tsx`): shows the stored PDF. Used by appointment, plan and Billing page.

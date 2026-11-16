@@ -1,6 +1,6 @@
 # Patient Flow & API Reference Documentation
 
-This document describes the complete patient lifecycle, flow sequences, and detailed API specifications for the patient-facing module in **MediSetu**.
+This document describes the complete patient lifecycle, flow sequences, and detailed API specifications for the patient-facing module in **MediArogya**.
 
 ---
 
@@ -12,7 +12,7 @@ The patient journey follows a streamlined sequence of interactions:
 sequenceDiagram
     actor Patient
     participant App as Patient Mobile App
-    participant BE as MediSetu Backend
+    participant BE as MediArogya Backend
     participant SNS as AWS SNS (SMS)
     participant Redis as Redis Cache
 
@@ -208,7 +208,7 @@ sequenceDiagram
         "state": "Maharashtra",
         "address": "Flat 402, Sea Breeze Apts",
         "zipCode": "400001",
-        "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/primary.jpg",
+        "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/primary.jpg",
         "age": 30,
         "dob": "1996-05-15",
         "bloodGroup": "O+",
@@ -272,7 +272,7 @@ sequenceDiagram
       "state": "Maharashtra",
       "address": "Flat 402, Sea Breeze Apts",
       "zipCode": "400001",
-      "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/primary.jpg",
+      "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/primary.jpg",
       "age": 30,
       "dob": "1996-05-15",
       "bloodGroup": "O+",
@@ -328,7 +328,7 @@ sequenceDiagram
     "success": true,
     "message": "Profile image updated successfully",
     "data": {
-      "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/e22a4fc8-3694-46c5-8461-8152e008fb56.jpg"
+      "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/e22a4fc8-3694-46c5-8461-8152e008fb56.jpg"
     }
   }
   ```
@@ -451,7 +451,7 @@ sequenceDiagram
     "success": true,
     "message": "Family member profile image updated successfully",
     "data": {
-      "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/family-member-uuid.jpg"
+      "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/family-member-uuid.jpg"
     }
   }
   ```
@@ -492,13 +492,13 @@ sequenceDiagram
         "doctor": {
           "id": "aa1a8848-bc6c-4f11-9a7b-eef41208a002",
           "name": "Dr. Ramesh Sharma",
-          "email": "ramesh@medisetu.com",
+          "email": "ramesh@mediarogya.com",
           "mobile": "9898989898",
           "gender": "Male",
           "qualification": "MBBS, MD",
           "yearsOfExperience": 12,
           "speciality": "Cardiology",
-          "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
+          "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
           "createdAt": "2026-05-01T08:00:00.000Z"
         },
         "clinic": {
@@ -509,7 +509,7 @@ sequenceDiagram
           "state": "Maharashtra",
           "city": "Mumbai",
           "zipCode": "400050",
-          "clinicLogo": "https://medisetu-s3.s3.amazonaws.com/logos/heartcare.png",
+          "clinicLogo": "https://mediarogya-s3.s3.amazonaws.com/logos/heartcare.png",
           "latitude": 19.0544,
           "longitude": 72.8402,
           "services": [
@@ -558,7 +558,7 @@ sequenceDiagram
       "id": "aa1a8848-bc6c-4f11-9a7b-eef41208a002",
       "name": "Dr. Ramesh Sharma",
       "gender": "Male",
-      "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
+      "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
       "qualification": "MBBS, MD",
       "yearsOfExperience": 12,
       "speciality": "Cardiology",
@@ -585,7 +585,7 @@ sequenceDiagram
           "state": "Maharashtra",
           "city": "Mumbai",
           "zipCode": "400050",
-          "clinicLogo": "https://medisetu-s3.s3.amazonaws.com/logos/heartcare.png",
+          "clinicLogo": "https://mediarogya-s3.s3.amazonaws.com/logos/heartcare.png",
           "latitude": 19.0544,
           "longitude": 72.8402,
           "services": [
@@ -673,7 +673,7 @@ sequenceDiagram
         "id": "aa1a8848-bc6c-4f11-9a7b-eef41208a002",
         "name": "Dr. Ramesh Sharma",
         "gender": "Male",
-        "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
+        "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
         "qualification": "MBBS, MD",
         "yearsOfExperience": 12,
         "speciality": "Cardiology",
@@ -893,7 +893,7 @@ sequenceDiagram
         "email": "doctor@example.com",
         "mobile": "9876543210",
         "speciality": "Cardiology",
-        "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
+        "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
         "averageRating": "4.80",
         "reviewCount": 24
       },
@@ -903,7 +903,7 @@ sequenceDiagram
         "clinicAddress": "123 Healthcare Ave, Block B",
         "clinicLocation": "Andheri West, Mumbai",
         "clinicPhone": "9876543210",
-        "clinicLogo": "https://medisetu-s3.s3.amazonaws.com/clinics/logo.jpg",
+        "clinicLogo": "https://mediarogya-s3.s3.amazonaws.com/clinics/logo.jpg",
         "latitude": 19.1197,
         "longitude": 72.8464,
         "onlineBookingEnabled": true,
@@ -926,7 +926,7 @@ sequenceDiagram
           "reportStatus": "Completed",
           "paymentStatus": "paid",
           "price": 1200,
-          "reportPdf": "https://s3.amazonaws.com/medisetu-reports/report-10045.pdf",
+          "reportPdf": "https://s3.amazonaws.com/mediarogya-reports/report-10045.pdf",
           "workflowStatus": "VERIFIED",
           "sampleStatus": "COLLECTED",
           "createdAt": "2026-06-20T11:15:00.000Z",
@@ -979,13 +979,13 @@ sequenceDiagram
         "name": "Dr. Ramesh Sharma",
         "speciality": "Cardiology",
         "qualification": "MBBS, MD",
-        "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
+        "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg",
         "clinic": {
           "id": "e2f7b884-bb24-4f01-8bf7-dfd4efc3522a",
           "clinicName": "HeartCare Clinic",
           "clinicAddress": "123 Main Road, Bandra West",
           "clinicPhone": "0222640001",
-          "clinicLogo": "https://medisetu-s3.s3.amazonaws.com/logos/heartcare.png"
+          "clinicLogo": "https://mediarogya-s3.s3.amazonaws.com/logos/heartcare.png"
         }
       }
     ]
@@ -1013,7 +1013,7 @@ sequenceDiagram
         "reportStatus": "Completed",
         "paymentStatus": "Paid",
         "price": "1200",
-        "reportPdf": "https://medisetu-s3.s3.amazonaws.com/reports/LAB-10042.pdf",
+        "reportPdf": "https://mediarogya-s3.s3.amazonaws.com/reports/LAB-10042.pdf",
         "workflowStatus": "ReportVerified",
         "sampleStatus": "SampleCollected",
         "createdAt": "2026-06-15T09:00:00.000Z",
@@ -1090,7 +1090,7 @@ sequenceDiagram
         "appointmentTime": "10:00 AM",
         "appointmentType": "Consultation",
         "appointmentStatus": "Completed",
-        "prescriptionPdf": "https://medisetu-s3.s3.amazonaws.com/prescriptions/RX-10024.pdf",
+        "prescriptionPdf": "https://mediarogya-s3.s3.amazonaws.com/prescriptions/RX-10024.pdf",
         "prescriptionType": "digital",
         "createdAt": "2026-06-15T10:30:00.000Z",
         "doctor": {
@@ -1098,7 +1098,7 @@ sequenceDiagram
           "name": "Dr. Ramesh Sharma",
           "speciality": "Cardiology",
           "qualification": "MBBS, MD",
-          "profileImage": "https://medisetu-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg"
+          "profileImage": "https://mediarogya-s3.s3.amazonaws.com/profiles/dr-ramesh.jpg"
         },
         "patient": {
           "id": "e22a4fc8-3694-46c5-8461-8152e008fb56",
@@ -1160,7 +1160,7 @@ sequenceDiagram
     "data": [
       {
         "id": "gal-1",
-        "fileUrl": "https://medisetu-s3.s3.amazonaws.com/gallery/img1.jpg",
+        "fileUrl": "https://mediarogya-s3.s3.amazonaws.com/gallery/img1.jpg",
         "description": "Previous MRI Scan",
         "createdAt": "2026-06-14T08:00:00.000Z",
         "appointmentId": "e3e8c8a1-678c-4f11-bc6a-fae12089b990",

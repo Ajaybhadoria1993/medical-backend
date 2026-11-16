@@ -499,7 +499,7 @@ export const approveDoctorUpdateController = asyncHandler(
             status: 'rejected',
             rejectionReason: rejectionReason,
             supportEmail:
-              process.env.SUPPORT_EMAIL || 'support@mediarogya.in',
+              process.env.SUPPORT_EMAIL || 'bhadoriaajay99@gmail.com',
           });
 
           await sendEmail(
@@ -666,7 +666,7 @@ export const approveDoctorUpdateController = asyncHandler(
           doctorName: doctorData.name || 'Doctor',
           status: 'approved',
           supportEmail:
-            process.env.SUPPORT_EMAIL || 'support@mediarogya.in',
+            process.env.SUPPORT_EMAIL || 'bhadoriaajay99@gmail.com',
         });
 
         await sendEmail(

@@ -118,7 +118,7 @@ The verified badge is separate: `is_official_business_account` reflects Meta's O
 The token shown on the API Setup page is a **24-hour user token**. It expires and breaks production sending with error `190` (subcode 467, "the user logged out"). Generate a system-user token instead:
 
 1. [business.facebook.com/settings](https://business.facebook.com/settings) → **Users** → **System Users**
-2. **Add** → role **Admin** → name it e.g. `medisetu-backend`
+2. **Add** → role **Admin** → name it e.g. `mediarogya-backend`
 3. **Add Assets** → select your WhatsApp app/WABA → **Full control** *(skipping this generates a token that fails on every call)*
 4. **Generate New Token** → select your app → tick **both**:
    - `whatsapp_business_messaging` — sending

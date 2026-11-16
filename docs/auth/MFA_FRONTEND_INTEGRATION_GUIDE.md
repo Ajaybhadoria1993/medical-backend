@@ -195,7 +195,7 @@ Authorization: Bearer <full_jwt>
   "success": true,
   "message": "MFA enrollment initiated. Scan the QR code with your authenticator app.",
   "data": {
-    "otpauthUri": "otpauth://totp/MediSetu:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=MediSetu",
+    "otpauthUri": "otpauth://totp/MediArogya:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=MediArogya",
     "base32Secret": "JBSWY3DPEHPK3PXP"
   }
 }

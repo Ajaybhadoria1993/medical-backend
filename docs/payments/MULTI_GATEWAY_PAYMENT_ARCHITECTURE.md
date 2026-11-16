@@ -1,6 +1,6 @@
 # Multi-Gateway Payment Architecture & Split Engine Specification
 
-**MediSetu Healthcare Management Platform**  
+**MediArogya Healthcare Management Platform**  
 _Document Version: 1.0.0_  
 _Last Updated: 2026-09-01_
 
@@ -8,7 +8,7 @@ _Last Updated: 2026-09-01_
 
 ## 1. Executive Overview
 
-The **MediSetu Multi-Gateway Payment System** provides a pluggable, highly resilient, and mathematically sound financial processing pipeline. It decouples the core appointment and subscription domains from underlying payment gateway vendors (**Razorpay**, **Cashfree**, **Stripe**).
+The **MediArogya Multi-Gateway Payment System** provides a pluggable, highly resilient, and mathematically sound financial processing pipeline. It decouples the core appointment and subscription domains from underlying payment gateway vendors (**Razorpay**, **Cashfree**, **Stripe**).
 
 ### Key Architectural Capabilities
 
@@ -277,8 +277,8 @@ ENABLE_RAZORPAY_ROUTE=true
 # -----------------------------------------------------------------------------
 RAZORPAY_KEY_ID=rzp_test_TK3WCPCQySg59v
 RAZORPAY_KEY_SECRET=nmXcz5t5qfa2ogcNnC8FakXX
-RAZORPAY_WEBHOOK_APP_SECRET=MediSetu@Webhook#2026!Rzp
-RAZORPAY_WEBHOOK_SECRET=MediSetu@Webhook#2026!Rzp
+RAZORPAY_WEBHOOK_APP_SECRET=MediArogya@Webhook#2026!Rzp
+RAZORPAY_WEBHOOK_SECRET=MediArogya@Webhook#2026!Rzp
 
 # -----------------------------------------------------------------------------
 # CASHFREE CONFIGURATION (Optional / Multi-Gateway)
@@ -302,7 +302,7 @@ When testing webhooks in Postman, add this **Pre-request Script** to compute the
 
 ```javascript
 // 1. Webhook secret from backend
-const secret = 'MediSetu@Webhook#2026!Rzp';
+const secret = 'MediArogya@Webhook#2026!Rzp';
 
 // 2. Resolve template variables before hashing
 const rawBody = pm.variables.replaceIn(pm.request.body.raw);

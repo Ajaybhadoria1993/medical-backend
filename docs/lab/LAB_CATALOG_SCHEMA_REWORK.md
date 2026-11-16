@@ -3,7 +3,7 @@
 Working notes for expanding the lab test catalog (`lab_updated_department`,
 `lab_updated_tests`, `lab_updated_test_result_parameters`) with clinical
 metadata, test groups, aliases and structured reference ranges. Source
-requirements: `medisetu_laboratory_database_schema_recommendations.md`,
+requirements: `mediarogya_laboratory_database_schema_recommendations.md`,
 reconciled against a UI dry run. Use this as the source of truth for what's
 shipped vs. what still needs a human step (migration) or further wiring
 (services/controllers/schemas/routes/caching) before it's live.

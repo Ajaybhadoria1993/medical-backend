@@ -1,6 +1,6 @@
 # Cancellation and Refund Policy System: Complete Flow & Architecture Guide
 
-This document provides a comprehensive technical overview of the complete **Cancellation and Refund Policy** system implemented across both the backend (`MediSetu_backend`) and frontend (`Medi_Arogya_FE`) codebases of the MediSetu platform.
+This document provides a comprehensive technical overview of the complete **Cancellation and Refund Policy** system implemented across both the backend (`MediArogya_backend`) and frontend (`Medi_Arogya_FE`) codebases of the MediArogya platform.
 
 ---
 

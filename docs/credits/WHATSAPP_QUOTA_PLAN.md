@@ -29,7 +29,7 @@ Checked 2026-10-05. India utility is **unchanged** in the 1 Oct 2026 rate card �
 
 - Meta charges only when the message is **delivered**, not when it's sent.
 - We connect to Meta **directly**, not through a reseller (WATI, Interakt, etc.), so there's **no extra markup** on top of Meta's rate. Resellers typically add ₹0.10–₹0.30 per message.
-- **GST:** 18% is added to the Meta invoice. If Medisetu claims GST input credit, the real cost is ₹0.115.
+- **GST:** 18% is added to the Meta invoice. If MediArogya claims GST input credit, the real cost is ₹0.115.
 
 ### How many messages are free by default?
 
@@ -162,7 +162,7 @@ Only the first number changes; every formula above stays the same.
 
 ### GST note
 
-These figures treat GST as a cost. If Medisetu is GST-registered and claims input credit on Meta's invoice, the real cost is **₹0.1150** per message (≈ 15% lower). Our own GST on plan and pack prices is separate and not included here.
+These figures treat GST as a cost. If MediArogya is GST-registered and claims input credit on Meta's invoice, the real cost is **₹0.1150** per message (≈ 15% lower). Our own GST on plan and pack prices is separate and not included here.
 
 ## 4. Cost at a glance
 

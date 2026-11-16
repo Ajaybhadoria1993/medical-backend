@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the design for a **customizable notification preference system** that allows users (Doctor, Admin, Receptionist, Patient, etc.) to control which in-app and push notifications they receive through the MediSetu app.
+This document outlines the design for a **customizable notification preference system** that allows users (Doctor, Admin, Receptionist, Patient, etc.) to control which in-app and push notifications they receive through the MediArogya app.
 
 ---
 
@@ -30,7 +30,7 @@ Currently, all users receive all notifications relevant to their role with no ab
 | **Caching**                        | Simple (one object per user)              | Complex (multiple rows to assemble)   |
 | **Performance at scale**           | Excellent                                 | Degrades with user count              |
 
-### Why Option A wins for MediSetu:
+### Why Option A wins for MediArogya:
 
 1. **Hot path optimization** — Notification sending happens hundreds of times per day. Every extra DB call adds latency. JSONB keeps preferences in the same row we already fetch.
 
@@ -301,7 +301,7 @@ Non-configurable types are silently ignored if included in the request.
 - Can't efficiently query "all users who disabled X" without scanning (acceptable trade-off)
 - If preference categories grow to 50+, JSONB object gets large (unlikely for this domain)
 
-### Why this is the right choice for MediSetu:
+### Why this is the right choice for MediArogya:
 
 1. **Clinic software is latency-sensitive** — doctors and receptionists use this in real-time during patient flow. Extra DB queries per notification = slower UX.
 2. **User base is bounded** — clinics have finite staff. You won't hit JSONB size limits.

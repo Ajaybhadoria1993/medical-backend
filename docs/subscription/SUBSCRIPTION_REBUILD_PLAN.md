@@ -822,7 +822,7 @@ Also in 6.2: cache `GET /plans` in Redis; FE loads billing history only when its
 
 | Step | What | Check | Commit message |
 |---|---|---|---|
-| 6.1 | Issue `subscription_invoices` on capture: number series, GST per D7, stored PDF; reuse the billing module's financial-year / number helper if it exists by then (`docs/billing/DEV_PLAN.md` step 1), never a second copy. Separate from the money module: `money_entries` is patient → clinic money, this is clinic → Medisetu | one invoice per payment, numbers in sequence | `feat(subscription): stored invoices with a number series` |
+| 6.1 | Issue `subscription_invoices` on capture: number series, GST per D7, stored PDF; reuse the billing module's financial-year / number helper if it exists by then (`docs/billing/DEV_PLAN.md` step 1), never a second copy. Separate from the money module: `money_entries` is patient → clinic money, this is clinic → MediArogya | one invoice per payment, numbers in sequence | `feat(subscription): stored invoices with a number series` |
 | 6.2 | `GET /billing-history`, invoice download read payments + invoices | contract fixtures match | `feat(subscription): billing history from payments` |
 
 ### Phase 7 — Add-ons
@@ -999,7 +999,7 @@ browser click-through, a keyboard pass and a dark-mode pass.
 
 ### Super Admin — where each part lands
 
-Before any Super Admin (or other) FE screen is changed, the **Medisetu Frontend Design Spec** is read
+Before any Super Admin (or other) FE screen is changed, the **MediArogya Frontend Design Spec** is read
 for that module and its Feature-tracker row is updated afterwards (`CLAUDE.md`). It is not shared
 with the account this plan was written from, so it is still to be read.
 

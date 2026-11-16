@@ -255,7 +255,7 @@ export const envConfig: EnvConfigType = {
   TURNSTILE_SECRET_KEY:
     process.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA', // Default testing key
   SUPER_ADMIN_NAME: process.env.SUPER_ADMIN_NAME || 'Super Admin',
-  SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL || 'admin@medisetu.com',
+  SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL || 'admin@mediarogya.in',
   SUPER_ADMIN_PASSWORD: process.env.SUPER_ADMIN_PASSWORD || 'Admin@123',
 
   ENABLE_NOTIFICATIONS: process.env.ENABLE_NOTIFICATIONS || 'true',

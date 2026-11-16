@@ -1,6 +1,6 @@
-# Medisetu Clinic Management Software (CMS) - Backend
+# MediArogya Clinic Management Software (CMS) - Backend
 
-The backend system for the Medisetu Clinic Management Software, built with Node.js, Express, and TypeScript. It handles core business logic for clinic operations, including appointments, pharmacy, laboratory services, and real-time notifications.
+The backend system for the MediArogya Clinic Management Software, built with Node.js, Express, and TypeScript. It handles core business logic for clinic operations, including appointments, pharmacy, laboratory services, and real-time notifications.
 
 ## 🚀 Tech Stack
 

@@ -6,7 +6,7 @@ describe('findReferenceImages', () => {
   it('builds the S3 link from the speciality slug and file', () => {
     const [first] = findReferenceImages('Dietitian / Nutritionist');
     expect(first.url).toBe(
-      'https://infninity-medisatu.s3.ap-south-1.amazonaws.com/assets/doctor-images/dietitian-nutritionist/balanced-healthy-plate-infographic.png'
+      'https://infninity-mediarogya.s3.ap-south-1.amazonaws.com/assets/doctor-images/dietitian-nutritionist/balanced-healthy-plate-infographic.png'
     );
     expect(first.description).toBe('Balanced Healthy Plate Infographic');
   });

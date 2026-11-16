@@ -1,6 +1,6 @@
 # Frontend Integration Guide: Razorpay Payment & Appointment Flow
 
-**MediSetu Healthcare Platform**  
+**MediArogya Healthcare Platform**  
 *Document Version: 3.0.0*  
 *Target Gateway: Razorpay (Split Route & Direct Payments)*  
 *Last Updated: 2026-09-02*
@@ -9,7 +9,7 @@
 
 ## 1. High-Level Flow Overview
 
-MediSetu provides a mathematically sound, paise-precision payment processing architecture for doctor consultation bookings and clinic payments. The frontend application interacts with a unified API layer that calculates dynamic platform fee splits, locks doctor consultation slots in Redis, issues Razorpay checkout orders, and cryptographically verifies payment signatures.
+MediArogya provides a mathematically sound, paise-precision payment processing architecture for doctor consultation bookings and clinic payments. The frontend application interacts with a unified API layer that calculates dynamic platform fee splits, locks doctor consultation slots in Redis, issues Razorpay checkout orders, and cryptographically verifies payment signatures.
 
 The end-to-end booking and payment flow follows a 4-phase lifecycle:
 
@@ -18,7 +18,7 @@ sequenceDiagram
     autonumber
     actor Patient as Patient (App / Web)
     participant FE as Frontend Client
-    participant BE as MediSetu Backend
+    participant BE as MediArogya Backend
     participant RZP as Razorpay Checkout SDK
     participant GW as Razorpay Gateway
 
@@ -460,7 +460,7 @@ export const useRazorpayCheckout = () => {
         key: paymentDetails.keyId,
         amount: paymentDetails.amount, // in paise
         currency: paymentDetails.currency || 'INR',
-        name: 'MediSetu Healthcare',
+        name: 'MediArogya Healthcare',
         description: 'Doctor Consultation Booking',
         order_id: paymentDetails.orderId,
         prefill: {
@@ -469,7 +469,7 @@ export const useRazorpayCheckout = () => {
           contact: patient.phone,
         },
         theme: {
-          color: '#0F766E', // MediSetu Primary Brand Color
+          color: '#0F766E', // MediArogya Primary Brand Color
         },
         handler: async (razorpayResponse: {
           razorpay_payment_id: string;
@@ -605,7 +605,7 @@ export const AppointmentBookingModal: React.FC<AppointmentModalProps> = ({
 
     const patientPrefill: PatientPrefill = {
       name: patient.fullName,
-      email: patient.email || 'patient@medisetu.com',
+      email: patient.email || 'patient@mediarogya.com',
       phone: patient.phone,
     };
 

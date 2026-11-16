@@ -84,7 +84,7 @@ Invoices** (we issue our own GST invoices). Details: plan §10.
 | D8 | **Razorpay support** | AutoPay limits for our business type (₹15,000 per charge? ₹99,999 per mandate?), yearly charges above ₹15,000, one-step "pay + turn on AutoPay", webhook event names | AutoPay (Release 2) |
 | W | **Client** | Allow email in the notifications module (lift "Standing Rule 11") for subscription emails | Emails (Phase 9) |
 | — | **Team** | Confirm production `AWS_REGION` is Mumbai (`ap-south-1`) so invoices and data stay in India | Go-live |
-| — | **You** | Share the **Medisetu Frontend Design Spec** (claude.ai doc) with the account doing the work — `CLAUDE.md` requires reading it before any screen changes | First frontend step (4.1) |
+| — | **You** | Share the **MediArogya Frontend Design Spec** (claude.ai doc) with the account doing the work — `CLAUDE.md` requires reading it before any screen changes | First frontend step (4.1) |
 | — | **Reviewers** | **Approve the plan** so work can start | Start |
 
 Note for reviewers: after Release 1, the Super Admin analytics (MRR, collected, plan mix) come from

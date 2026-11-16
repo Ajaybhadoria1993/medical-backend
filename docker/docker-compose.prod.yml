@@ -54,7 +54,7 @@ services:
       driver: awslogs
       options:
         awslogs-region: ap-south-1
-        awslogs-group: /infinity-medisetu/prod
+        awslogs-group: /mediarogya/prod
         tag: '{{.Name}}-{{.ID}}'
         mode: non-blocking
         max-buffer-size: 4m

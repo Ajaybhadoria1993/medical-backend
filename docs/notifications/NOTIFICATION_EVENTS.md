@@ -114,7 +114,7 @@ preferences are stored under the old names, so these keep resolving.
 - **Add-on receipt** (`subscription.addon_receipt`) — An add-on was paid; the GST invoice is attached.
 - **Add-on reduction scheduled** (`subscription.addon_reduction_scheduled`) — An add-on goes down at the period end.
 - **Add-on removal scheduled** (`subscription.addon_removal_scheduled`) — An add-on ends at the period end.
-- **AutoPay turned on or off** (`subscription.autopay_changed`) — AutoPay was approved, or turned off by the clinic, the Medisetu team or the bank.
+- **AutoPay turned on or off** (`subscription.autopay_changed`) — AutoPay was approved, or turned off by the clinic, the MediArogya team or the bank.
 - **Scheduled changes applied** (`subscription.change_applied`) — Scheduled add-on changes took effect at renewal.
 - **Plan change scheduled** (`subscription.change_scheduled`) — A downgrade or cycle change was scheduled for the period end.
 - **Scheduled change undone** (`subscription.change_undone`) — A scheduled plan change was withdrawn.
@@ -123,7 +123,7 @@ preferences are stored under the old names, so these keep resolving.
 - **Payment failed** (`subscription.payment_failed`) — A payment did not go through, or the payment window was closed.
 - **Payment receipt** (`subscription.payment_receipt`) — A plan purchase, renewal or change was paid; the GST invoice is attached.
 - **Plan ending** (`subscription.plan_ending`) — A Super Admin ended the plan; the clinic renews on the replacement after the end date.
-- **Plan extended** (`subscription.plan_extended`) — The Medisetu team added days to the plan at no charge.
+- **Plan extended** (`subscription.plan_extended`) — The MediArogya team added days to the plan at no charge.
 - **Price change at renewal** (`subscription.price_change`) — A new plan version raises the price at the next renewal.
 - **Refund issued** (`subscription.refund_issued`) — A payment was refunded; the credit note is attached.
 - **Renewal reminder** (`subscription.renewal_reminder`) — 7, 3 and 1 days before a plan renews, and on the first and last grace day if it is unpaid.

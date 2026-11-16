@@ -9,7 +9,7 @@
 
 Project subscription {
   database_type: 'PostgreSQL'
-  Note: 'Medisetu subscription rebuild — production model, 2026-11-03'
+  Note: 'MediArogya subscription rebuild — production model, 2026-11-03'
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────

@@ -43,14 +43,14 @@ and expiry on each line), WhatsApp/email sending, insurance claims.
 
 **Out of scope:** subscription invoices, pharmacy supplier bills, online fee split.
 
-**Known problems in subscription invoices** (Medisetu billing the clinic; not fixed here):
+**Known problems in subscription invoices** (MediArogya billing the clinic; not fixed here):
 
 | Problem | Today |
 |---|---|
 | Invalid number | Fragment of a database id, not a gapless financial-year series |
 | Wrong tax split | Always CGST + SGST; a clinic in another state should be charged IGST |
 | No clinic GSTIN | Registered clinics cannot claim input tax credit |
-| E-invoicing | Required once Medisetu's turnover passes ₹5 crore; not supported |
+| E-invoicing | Required once MediArogya's turnover passes ₹5 crore; not supported |
 
 ## 4. Invoice rules
 

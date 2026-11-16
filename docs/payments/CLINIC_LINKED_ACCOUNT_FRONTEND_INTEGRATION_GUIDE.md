@@ -1,6 +1,6 @@
 # Clinic Linked Account (Razorpay Route) & Document Upload: Frontend Integration Guide
 
-**MediSetu Healthcare Platform**  
+**MediArogya Healthcare Platform**  
 *Target Audience: Frontend Web & Mobile Developers*  
 *Integration Target: Razorpay Route Linked Accounts (Custom Native Sub-Merchant Onboarding)*  
 *Backend Version: 2.x / Production Real*  
@@ -10,7 +10,7 @@
 
 ## 1. Overview & Architecture
 
-MediSetu provides a **custom native sub-merchant onboarding experience** embedded directly inside the clinic settings panel. Instead of redirecting doctors/clinic administrators to a third-party hosted registration URL, the entire lifecycle—legal entity profiling, stakeholder declaration, settlement bank account configuration, KYC document upload, and status tracking—is managed seamlessly within the MediSetu UI.
+MediArogya provides a **custom native sub-merchant onboarding experience** embedded directly inside the clinic settings panel. Instead of redirecting doctors/clinic administrators to a third-party hosted registration URL, the entire lifecycle—legal entity profiling, stakeholder declaration, settlement bank account configuration, KYC document upload, and status tracking—is managed seamlessly within the MediArogya UI.
 
 ### 1.1. Core Architectural Principles
 1. **Multi-Tenancy & Context**:  
@@ -56,7 +56,7 @@ stateDiagram-v2
 | `PENDING` | Application and bank details submitted to Razorpay. Penny drop / KYC review underway. | Show non-blocking informational banner: *"Verification in Progress (typically 24–48 business hours)"*. Lock Step 1 & Step 2 form fields. |
 | `NEEDS_CLARIFICATION` | Razorpay rejected one or more documents or data fields. Detailed remarks available in `rejectionReason`. | Show prominent **Warning Banner** displaying `rejectionReason`. Highlight rejected documents and enable re-upload exclusively for requested files. |
 | `ACTIVE` | Account fully verified and activated for split settlements. Active bank snapshot recorded. | Display green **"Verified Settlement Account"** badge, masked active bank details (`GET /bank-details`), and an **"Update Bank Account"** button. |
-| `SUSPENDED` | Account suspended by Razorpay compliance. Online checkouts frozen. | Display critical red banner: *"Account Suspended by Payment Gateway. Online checkouts disabled. Please contact MediSetu Support."* |
+| `SUSPENDED` | Account suspended by Razorpay compliance. Online checkouts frozen. | Display critical red banner: *"Account Suspended by Payment Gateway. Online checkouts disabled. Please contact MediArogya Support."* |
 | `REJECTED` | Application permanently rejected by Razorpay. | Display red alert with `rejectionReason` and contact support CTA. |
 
 ---
@@ -68,7 +68,7 @@ sequenceDiagram
     autonumber
     actor Admin as Clinic Admin
     participant FE as Frontend Application
-    participant BE as MediSetu API Server
+    participant BE as MediArogya API Server
     participant S3 as AWS S3 Storage
     participant RZP as Razorpay API (v2)
 
@@ -442,7 +442,7 @@ Generates a time-limited (300 seconds / 5 minutes), cryptographically signed S3 
   "data": {
     "documentType": "personal_pan",
     "fileName": "pan_card_dr_sharma.jpg",
-    "previewUrl": "https://medisetu-secure-files.s3.ap-south-1.amazonaws.com/clinic_razorpay_kyc/...X-Amz-Signature=...",
+    "previewUrl": "https://mediarogya-secure-files.s3.ap-south-1.amazonaws.com/clinic_razorpay_kyc/...X-Amz-Signature=...",
     "expiresInSeconds": 300
   }
 }

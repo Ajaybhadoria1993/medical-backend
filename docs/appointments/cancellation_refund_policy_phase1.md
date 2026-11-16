@@ -1,7 +1,7 @@
 # Cancellation and Refund Policy Implementation (Phase-1)
 ## Single Source of Truth & Architecture Guide
 
-This document defines the complete technical specifications, flow architectures, database models, database seeding details, and API documentation for **Phase-1** of the Cancellation and Refund Policy implementation in the MediSetu platform.
+This document defines the complete technical specifications, flow architectures, database models, database seeding details, and API documentation for **Phase-1** of the Cancellation and Refund Policy implementation in the MediArogya platform.
 
 ---
 

@@ -26,7 +26,7 @@ export const doctorStatusChangeTemplate = ({
   loginUrl = process.env.FRONTEND_URL
     ? `${process.env.FRONTEND_URL}/login`
     : 'https://www.mediarogya.in/app/login',
-  supportEmail = 'support@mediarogya.in',
+  supportEmail = 'bhadoriaajay99@gmail.com',
 }: DoctorStatusChangeParams): string => {
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -61,7 +61,7 @@ export const doctorStatusChangeTemplate = ({
 
   const normalizedNewStatus = newStatus.toLowerCase();
   const formattedDoctorName = doctorName.replace(/^[Dd]r\.?\s*/i, '').trim();
-  const supportPhone = process.env.SUPPORT_PHONE || '+91 8770553894';
+  const supportPhone = process.env.SUPPORT_PHONE || '+91 8602911113';
   const statusPill = (label: string, color: string) =>
     `<span style="display:inline-block; background:${color}15; border:1px solid ${color}30; border-radius:999px; color:${color}; font-family:'Outfit', Arial, Helvetica, sans-serif; font-size:10px; font-weight:700; line-height:14px; padding:4px 10px;">${label}</span>`;
 

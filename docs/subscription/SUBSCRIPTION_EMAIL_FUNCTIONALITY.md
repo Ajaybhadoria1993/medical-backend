@@ -418,7 +418,7 @@ All email templates utilize a shared, responsive layout builder implemented in `
 6. **Key-Value Details Card (`renderDetailsCard`)**: Clean alternating rows presenting transaction IDs, dates, quantities, and pricing.
 7. **Action CTA (`renderActionButton`)**: Prominent bulletproof HTML button with hover state.
 8. **Plain Text URL Fallback (`renderLinkFallback`)**: Accessible raw URL for email clients that strip HTML buttons.
-9. **Footer Notes (`footerNotes.ts`)**: Support email (`support@medisetu.com`), support phone, copyright notice, and automated message disclaimer.
+9. **Footer Notes (`footerNotes.ts`)**: Support email (`support@mediarogya.com`), support phone, copyright notice, and automated message disclaimer.
 10. **XSS Protection**: All dynamic user and clinic names are sanitized through `escapeHtml()` entity replacement.
 
 ---
@@ -493,9 +493,9 @@ Ensure the following environment variables are properly defined in `.env`:
 # ==========================================
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=notifications@medisetu.com
+SMTP_USER=notifications@mediarogya.com
 SMTP_PASS=your-secure-app-password
-SMTP_FROM="MediArogya" <no-reply@medisetu.com>
+SMTP_FROM="MediArogya" <no-reply@mediarogya.com>
 
 # Retry tuning
 EMAIL_MAX_RETRIES=3
@@ -504,7 +504,7 @@ EMAIL_RETRY_BASE_MS=500
 # ==========================================
 # APPLICATION URLS
 # ==========================================
-FRONTEND_URL=https://app.medisetu.com
+FRONTEND_URL=https://app.mediarogya.com
 
 # ==========================================
 # REDIS (Used for Deduplication & Schedulers)

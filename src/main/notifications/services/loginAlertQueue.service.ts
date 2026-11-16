@@ -175,8 +175,8 @@ class LoginAlertQueue {
     }
 
     const supportEmail =
-      process.env.SUPPORT_EMAIL || 'support@mediarogya.in';
-    const supportPhone = process.env.SUPPORT_PHONE || '+91 8770553894';
+      process.env.SUPPORT_EMAIL || 'bhadoriaajay99@gmail.com';
+    const supportPhone = process.env.SUPPORT_PHONE || '+91 8602911113';
     return renderEmailLayout({
       title: 'Login Alert',
       preview: `New login detected for ${data.clinicName}.`,

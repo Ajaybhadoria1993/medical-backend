@@ -11,11 +11,11 @@ export const profileRequestStatusChangeTemplate = ({
   doctorName,
   status,
   rejectionReason,
-  supportEmail = 'support@mediarogya.in',
+  supportEmail = 'bhadoriaajay99@gmail.com',
 }: ProfileRequestStatusParams): string => {
   const isApproved = status === 'approved';
   const formattedDoctorName = doctorName.replace(/^[Dd]r\.?\s*/i, '').trim();
-  const supportPhone = process.env.SUPPORT_PHONE || '+91 8770553894';
+  const supportPhone = process.env.SUPPORT_PHONE || '+91 8602911113';
 
   return renderEmailLayout({
     title: 'Profile Update Request',

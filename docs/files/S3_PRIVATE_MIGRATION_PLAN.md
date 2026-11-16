@@ -19,7 +19,7 @@ its contents; only new uploads are protected. Steps 1, 4 and 5 are struck.
 
 **Taken 2026-09-24. Deliberate, not an oversight.**
 
-The ~1,600 objects already in `infninity-medisatu` — including prescriptions,
+The ~1,600 objects already in `infninity-mediarogya` — including prescriptions,
 lab reports and consent forms — **remain publicly readable**. They are not
 migrated, and the bucket is not closed. Everything uploaded from the cutover
 onward goes to a new private bucket and is protected.
@@ -88,7 +88,7 @@ lookup — which is exactly why the signer accepts a URL *or* a key.
 
 ## Current state
 
-One bucket, `infninity-medisatu` (`ap-south-1`), shared by all three
+One bucket, `infninity-mediarogya` (`ap-south-1`), shared by all three
 environments and separated only by a top-level folder — `withEnvPrefix`,
 `src/configurations/s3/client.ts:55`. Block Public Access **off**, versioning
 **off**.
@@ -169,7 +169,7 @@ production banners share a namespace today. The step 3 rewrite fixes it.
 | # | Step | Client changes | State |
 |---|---|---|---|
 | — | Delete the dead `aws.client.ts` | none | **built** |
-| 0 | Create `infinity-medisetu-private`, configured correctly | none | console |
+| 0 | Create `mediarogya-private`, configured correctly | none | console |
 | 0.5 | **Delete the two unauthenticated upload routes** | none | **built** |
 | ~~1~~ | ~~Brand assets → public assets bucket~~ | — | **struck** |
 | 2a | Signer; inline images signed in place, 12h | **none** | **built** |
@@ -193,7 +193,7 @@ during a transition.
 
 ### Step 0 — create the private bucket
 
-**`infinity-medisetu-private`** — everything users upload from the cutover on.
+**`mediarogya-private`** — everything users upload from the cutover on.
 
 **Required:**
 
@@ -222,7 +222,7 @@ during a transition.
 Revisit all four once the bucket carries real volume, or sooner if a clinical
 record is ever deleted by accident — that is the event versioning exists for.
 
-**No second bucket.** An earlier draft added `infinity-medisetu-public-assets`
+**No second bucket.** An earlier draft added `mediarogya-public-assets`
 for brand artwork. Unnecessary now: the old bucket stays public, so the logo
 keeps the URL the templates already hardcode.
 
@@ -281,7 +281,7 @@ both are live, and the stored value says which:
 
 | Stored value | Bucket |
 |---|---|
-| Full URL containing `infninity-medisatu` | old bucket |
+| Full URL containing `infninity-mediarogya` | old bucket |
 | Bare key | new private bucket |
 
 Both cases persist indefinitely — the old bucket is never emptied.

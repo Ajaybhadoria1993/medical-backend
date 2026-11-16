@@ -97,9 +97,8 @@ encoding a per-report link would put a document URL on paper the patient carries
 around; the store listing is public by nature and the patient signs in there to
 reach their own records.
 
-`appDownloadUrl` resolves as `PRESCRIPTION_QR_URL` → the Play Store listing
-(`com.infinity.medisetu`). The iOS listing is not published yet — the FE footer's
-App Store link is still a placeholder — so when it exists, point
+`appDownloadUrl` resolves as `PRESCRIPTION_QR_URL` → the MediArogya download page
+(`https://www.mediarogya.in/app/m/download`). The store listings are not published yet, so when they exist, point
 `PRESCRIPTION_QR_URL` at a "get the app" landing page offering both stores; **no
 template change is needed.**
 
@@ -235,7 +234,7 @@ Reg. No. is the appointment's `registrationNo` — the doctor's running number, 
    `width: 210mm; min-height: 297mm;`.
 3. Consultation hours sit in a **bottom** strip (or the sidebar for Template 1).
 4. Footer carries the "Powered by MediArogya" logo
-   (`https://infninity-medisatu.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png`).
+   (`https://infninity-mediarogya.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png`).
 5. Every template prints a signature area only when `showDoctorSignature` is on:
    blank signing space above a rule, then `Dr.&nbsp;{{doctor.name}}` and a
    "Signature" caption, at the right end of a bottom sign-off row (QR on the left).

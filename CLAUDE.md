@@ -1,6 +1,6 @@
 # CLAUDE.md — Backend (`Medi_Arogya_BE`)
 
-Node.js/Express/TypeScript backend API for Medisetu Clinic Management Software.
+Node.js/Express/TypeScript backend API for MediArogya Clinic Management Software.
 Stack: Drizzle ORM + PostgreSQL, Redis, Socket.io, Zod, JWT.
 
 > This is one of two repos under `imsCore/`. The FE (`../Medi_Arogya_FE`)

@@ -91,7 +91,7 @@ Checked live 2026-09-30: every endpoint returns 401 with no token or a fake one.
 
 Date-range endpoints take `from`/`to` (IST days) and return the matching previous period for trends.
 
-- **Revenue booking fees** come from `money_entries` (convenience fee + commission = Medisetu's earning; GST and gateway fee shown as passed on), the same ledger clinic Finance reads. Not from `appointment_payments.platform_commission`.
+- **Revenue booking fees** come from `money_entries` (convenience fee + commission = MediArogya's earning; GST and gateway fee shown as passed on), the same ledger clinic Finance reads. Not from `appointment_payments.platform_commission`.
 - **Payout accounts** list every live clinic with a plain state (`utils/payoutState.utils.ts`) and the masked bank only; never PAN or full account numbers.
 
 ---

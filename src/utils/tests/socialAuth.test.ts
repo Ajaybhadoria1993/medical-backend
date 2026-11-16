@@ -157,7 +157,7 @@ describe('socialAuth unit tests', () => {
       const token = jwt.sign(
         {
           sub: '001490.15518c200f0f416f8efed4e7599e7ca1.0614',
-          email: 'igtechso30@icloud.com',
+          email: 'test.user@example.com',
           email_verified: true,
           auth_time: Math.floor(Date.now() / 1000),
         },
@@ -180,7 +180,7 @@ describe('socialAuth unit tests', () => {
       expect(result).toEqual({
         provider: 'apple',
         providerId: '001490.15518c200f0f416f8efed4e7599e7ca1.0614',
-        email: 'igtechso30@icloud.com',
+        email: 'test.user@example.com',
         name: 'Dr. Apple Practitioner',
       });
     });

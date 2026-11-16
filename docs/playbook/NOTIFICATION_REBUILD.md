@@ -653,7 +653,7 @@ of them) — on dev that is harmless, but it is no longer a no-op.
 > first one reframes the rest:
 >
 > - **The FE notification state is entirely localStorage-backed, and no API slice exists.**
->   `redux/slices/notificationSlice.ts` persists to `medisetu_notifications` and is fed *only*
+>   `redux/slices/notificationSlice.ts` persists to `mediarogya_notifications` and is fed *only*
 >   by socket events; `GET /api/v1/notifications` is never called by the web FE. So a
 >   notification that arrives while the tab is closed is never seen, the badge counts whatever
 >   localStorage holds rather than what the server has, and "dismissed" ids are per-device.

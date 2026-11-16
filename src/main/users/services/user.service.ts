@@ -3282,7 +3282,7 @@ export class UserService {
           loginUrl:
             process.env.LOGIN_URL || 'https://www.mediarogya.in/app/login',
           supportEmail:
-            process.env.SUPPORT_EMAIL || 'support@mediarogya.in',
+            process.env.SUPPORT_EMAIL || 'bhadoriaajay99@gmail.com',
         });
 
         await sendEmail(

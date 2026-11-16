@@ -1,5 +1,5 @@
 const REFERENCE_IMAGES_BASE_URL =
-  'https://infninity-medisatu.s3.ap-south-1.amazonaws.com/assets/doctor-images';
+  'https://infninity-mediarogya.s3.ap-south-1.amazonaws.com/assets/doctor-images';
 
 // Uploaded teaching images per main speciality, as [file, title]; the folder
 // is the speciality slug. Add a row here when an image is added to S3.

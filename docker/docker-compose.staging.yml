@@ -47,7 +47,7 @@ services:
       driver: awslogs
       options:
         awslogs-region: ap-south-1
-        awslogs-group: /infinity-medisetu/staging
+        awslogs-group: /mediarogya/staging
         tag: '{{.Name}}-{{.ID}}'
         mode: non-blocking
         max-buffer-size: 4m

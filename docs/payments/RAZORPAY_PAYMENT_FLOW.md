@@ -1,12 +1,12 @@
 # End-to-End Razorpay Gateway & Commission Split Engine Architecture
 
-This document provides a comprehensive technical reference for the Razorpay Payment Gateway integration, dynamic split payment engine, configuration versioning system, and financial ledgers implemented in the MediSetu backend application.
+This document provides a comprehensive technical reference for the Razorpay Payment Gateway integration, dynamic split payment engine, configuration versioning system, and financial ledgers implemented in the MediArogya backend application.
 
 ---
 
 ## 1. System Overview
 
-The MediSetu system implements a multi-tenant payment routing system supporting two distinct modes, toggled via the environment variable `ENABLE_RAZORPAY_ROUTE` (configured in [envConfig.ts](file:///d:/MediSetu_backend/src/utils/envConfig.ts)):
+The MediArogya system implements a multi-tenant payment routing system supporting two distinct modes, toggled via the environment variable `ENABLE_RAZORPAY_ROUTE` (configured in [envConfig.ts](file:///d:/MediArogya_backend/src/utils/envConfig.ts)):
 
 | Mode                      | `ENABLE_RAZORPAY_ROUTE` | Checkout Price                                            | Route Split Target                 | Payout Mechanics                                                                  |
 | :------------------------ | :---------------------- | :-------------------------------------------------------- | :--------------------------------- | :-------------------------------------------------------------------------------- |
@@ -14,7 +14,7 @@ The MediSetu system implements a multi-tenant payment routing system supporting 
 | **Phase 2 (Split Route)** | `true`                  | Price + Patient Convenience markup (if bearer is patient) | Direct split to clinic sub-account | Dynamic split transfer to clinic sub-account, platform fee retained centrally.    |
 
 > [!IMPORTANT]
-> When `ENABLE_RAZORPAY_ROUTE=true`, the clinic **must** have completed Razorpay onboarding and have `routeStatus` as `'ACTIVE'` inside [ClinicRazorpayAccountModel](file:///d:/MediSetu_backend/src/main/clinic/models/clinicRazorpayAccount.model.ts). If they are not active on Route, the checkout initialization fails.
+> When `ENABLE_RAZORPAY_ROUTE=true`, the clinic **must** have completed Razorpay onboarding and have `routeStatus` as `'ACTIVE'` inside [ClinicRazorpayAccountModel](file:///d:/MediArogya_backend/src/main/clinic/models/clinicRazorpayAccount.model.ts). If they are not active on Route, the checkout initialization fails.
 > When `ENABLE_RAZORPAY_ROUTE=false`, bookings can proceed for any clinic without requiring Route setup.
 
 ### Core Objectives
@@ -67,7 +67,7 @@ $$\text{Checkout Price} = \frac{\text{Base Price}}{1 - (\text{PG Fee Percentage}
 
 ### Code Example (Split Calculations Engine)
 
-Below is the calculation routine implemented in [calculateSplitDetails](file:///d:/MediSetu_backend/src/main/patient/services/patient.service.ts#L101):
+Below is the calculation routine implemented in [calculateSplitDetails](file:///d:/MediArogya_backend/src/main/patient/services/patient.service.ts#L101):
 
 ```typescript
 function calculateSplitDetails(price: number, config: IFinancialSnapshot) {
@@ -132,7 +132,7 @@ sequenceDiagram
     actor Patient
     actor Doctor/Staff
     participant Client as Patient Client
-    participant Backend as MediSetu Backend
+    participant Backend as MediArogya Backend
     participant Redis as Redis Cache
     participant DB as Postgres DB
     participant Razorpay as Razorpay API
@@ -224,7 +224,7 @@ When an appointment is cancelled, the system handles the refund to the patient a
 sequenceDiagram
     autonumber
     actor User as Patient/Admin
-    participant Backend as MediSetu Backend
+    participant Backend as MediArogya Backend
     participant Razorpay as Razorpay API
 
     User->>Backend: Cancel Booking Request
@@ -252,10 +252,10 @@ sequenceDiagram
 > [!IMPORTANT]
 > Payment success must always be finalized through Razorpay Webhooks (`payment.captured`, `order.paid`, `refund.processed`). Client-side signature verification should only improve UX and never be treated as the final financial source of truth. Healthcare systems should never rely only on frontend callbacks.
 
-1. **Webhook Handler Endpoint:** The system exposes a raw payload-validated endpoint at `/api/v1/patient/appointments/webhook` mapped to [razorpayAppointmentWebhookController](file:///d:/MediSetu_backend/src/main/patient/controllers/patient.controller.ts#L950).
+1. **Webhook Handler Endpoint:** The system exposes a raw payload-validated endpoint at `/api/v1/patient/appointments/webhook` mapped to [razorpayAppointmentWebhookController](file:///d:/MediArogya_backend/src/main/patient/controllers/patient.controller.ts#L950).
 2. **Signature Verification:** The endpoint verifies webhook payloads out-of-band using signature verification with the configured webhook secret.
 3. **Status Syncing:**
-   - On `payment.captured`, calls [confirmPaymentAndAppoint](file:///d:/MediSetu_backend/src/main/patient/services/patient.service.ts#L2048) to verify the payment and atomically transition the status, log ledger entries, and clear Redis locks.
+   - On `payment.captured`, calls [confirmPaymentAndAppoint](file:///d:/MediArogya_backend/src/main/patient/services/patient.service.ts#L2048) to verify the payment and atomically transition the status, log ledger entries, and clear Redis locks.
    - On `payment.failed`, calls `handlePaymentFailure` to update local databases and release reservation locks.
 
 ### E. Clinic/Doctor Confirmation
@@ -334,9 +334,9 @@ This ensures absolute data independence and verification records matching every 
 
 To retrieve the clinic's currently active, verified bank account configuration snapshot (used for verification during onboarding/update checks), client applications can call the following endpoint:
 
-- **Endpoint:** `GET /api/v1/clinic/bank-details` (defined in [clinic.route.ts](file:///D:/MediSetu_backend/src/main/clinic/routes/v1/clinic.route.ts))
-- **Controller:** [getClinicBankDetailsController](file:///D:/MediSetu_backend/src/main/clinic/controllers/clinic.controller.ts)
-- **Service Method:** [ClinicService.getActiveBankDetails](file:///D:/MediSetu_backend/src/main/clinic/services/clinic.service.ts)
+- **Endpoint:** `GET /api/v1/clinic/bank-details` (defined in [clinic.route.ts](file:///D:/MediArogya_backend/src/main/clinic/routes/v1/clinic.route.ts))
+- **Controller:** [getClinicBankDetailsController](file:///D:/MediArogya_backend/src/main/clinic/controllers/clinic.controller.ts)
+- **Service Method:** [ClinicService.getActiveBankDetails](file:///D:/MediArogya_backend/src/main/clinic/services/clinic.service.ts)
 - **Access Control:** Requires `requireAuth`, `requireClinic`, and `enforceClinicAutoLogout`.
 - **Behavior:** Returns the active database snapshot matching the clinic ID. Returns `null` if no active bank history version is currently found.
 
@@ -360,7 +360,7 @@ To retrieve the clinic's currently active, verified bank account configuration s
 
 ## 7. Custom Native Onboarding & Webhook Synchronization Flow
 
-Rather than emailing sub-merchants a hosted registration link, MediSetu exposes a custom native onboarding workflow embedded directly inside the clinic settings panel.
+Rather than emailing sub-merchants a hosted registration link, MediArogya exposes a custom native onboarding workflow embedded directly inside the clinic settings panel.
 
 ### Database Segregation
 
@@ -373,7 +373,7 @@ sequenceDiagram
     autonumber
     actor Clinic as Clinic Owner
     participant FE as Frontend Wizard
-    participant BE as MediSetu Backend
+    participant BE as MediArogya Backend
     participant RP as Razorpay API (v2)
 
     Clinic->>FE: Enter legal business details & bank settlements info
@@ -413,4 +413,4 @@ KYC compliance checks and payout configurations are verified asynchronously by R
 3. **`product.activated`**:
    - If the product name is `'route'`, transitions `routeStatus` to `'ACTIVE'` and triggers active bank history sync. Only this event enables split transfers.
 
-The server validates uploaded document type values and records uploaded document metadata. The submission guard checks stakeholder PAN and paired address proof for all supported forms; proprietorships also need two distinct proofs from GST, MSME/Udyam, and Shop & Establishment; partnerships need business PAN, deed, and signatory authority; LLPs need business PAN, incorporation/LLP agreement, and authority; companies need business PAN, incorporation certificate, MOA, AOA, and board resolution or power of attorney. Razorpay may still request additional evidence. Account creation sends optional entity PAN and GSTIN as `legal_info.pan` and `legal_info.gst`. Stakeholders send supported `relationship` values; DOB is collected for MediSetu records but is not part of Razorpay's documented stakeholder create schema. `product.rejected` and `product.needs_clarification` move the clinic out of active Route state and surface provider requirements. Supported legal forms in the current API are individual, proprietorship (sent to Razorpay as `individual`), partnership, LLP, and private/public limited company.
+The server validates uploaded document type values and records uploaded document metadata. The submission guard checks stakeholder PAN and paired address proof for all supported forms; proprietorships also need two distinct proofs from GST, MSME/Udyam, and Shop & Establishment; partnerships need business PAN, deed, and signatory authority; LLPs need business PAN, incorporation/LLP agreement, and authority; companies need business PAN, incorporation certificate, MOA, AOA, and board resolution or power of attorney. Razorpay may still request additional evidence. Account creation sends optional entity PAN and GSTIN as `legal_info.pan` and `legal_info.gst`. Stakeholders send supported `relationship` values; DOB is collected for MediArogya records but is not part of Razorpay's documented stakeholder create schema. `product.rejected` and `product.needs_clarification` move the clinic out of active Route state and surface provider requirements. Supported legal forms in the current API are individual, proprietorship (sent to Razorpay as `individual`), partnership, LLP, and private/public limited company.

@@ -63,7 +63,7 @@ Response:
   "success": true,
   "message": "Signed URL generated",
   "data": {
-    "url": "https://infinity-medisetu-private.s3.ap-south-1.amazonaws.com/...&X-Amz-Signature=...",
+    "url": "https://mediarogya-private.s3.ap-south-1.amazonaws.com/...&X-Amz-Signature=...",
     "expiresIn": 300
   }
 }
