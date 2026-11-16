@@ -175,7 +175,7 @@ class LoginAlertQueue {
     }
 
     const supportEmail =
-      process.env.SUPPORT_EMAIL || 'support@infinitymedisetu.com';
+      process.env.SUPPORT_EMAIL || 'support@mediarogya.in';
     const supportPhone = process.env.SUPPORT_PHONE || '+91 8770553894';
     return renderEmailLayout({
       title: 'Login Alert',

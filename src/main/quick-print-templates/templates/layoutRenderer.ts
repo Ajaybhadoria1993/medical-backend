@@ -199,7 +199,7 @@ const MAX_TEXT_SCALE = 1.3;
 
 /** Printed right after the content rather than pinned to the page bottom, so no gap opens above it. */
 const poweredBy = (style: string) =>
-  `<div class="qp-footer" style="${style}">${FOOTER_NOTES_HTML}Powered by MediArogya | www.infinitymedisetu.com</div>`;
+  `<div class="qp-footer" style="${style}">${FOOTER_NOTES_HTML}Powered by MediArogya | www.mediarogya.in</div>`;
 
 // Row-height estimates in mm, used only by exact mode to push blocks below an overflowing table.
 const TABLE_HEADER_MM = 6;

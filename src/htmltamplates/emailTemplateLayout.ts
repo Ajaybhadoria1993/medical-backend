@@ -89,7 +89,7 @@ export const getSupportInfo = (support?: SupportInfo) => ({
   email:
     support?.email ||
     process.env.SUPPORT_EMAIL ||
-    'support@infinitymedisetu.com',
+    'support@mediarogya.in',
   phone: support?.phone || process.env.SUPPORT_PHONE || '+91 8770553894',
 });
 

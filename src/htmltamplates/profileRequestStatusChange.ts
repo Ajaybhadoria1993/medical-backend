@@ -11,7 +11,7 @@ export const profileRequestStatusChangeTemplate = ({
   doctorName,
   status,
   rejectionReason,
-  supportEmail = 'support@infinitymedisetu.com',
+  supportEmail = 'support@mediarogya.in',
 }: ProfileRequestStatusParams): string => {
   const isApproved = status === 'approved';
   const formattedDoctorName = doctorName.replace(/^[Dd]r\.?\s*/i, '').trim();

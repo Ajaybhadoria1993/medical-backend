@@ -136,7 +136,7 @@ export const LOOP_REQUIREMENTS: LoopRequirement[] = [
 ] as const;
 
 export const HARD_CODED_REMOTE_IMAGE_PATTERN =
-  /<img\b[^>]*\bsrc=["']https?:\/\/(?!\{\{clinic\.logo\}\}|res\.cloudinary\.com\/ddzkedas8\/image\/upload\/v1772172278\/download_zafkmm\.png|infinitymedisetu\.com\/app\/assets\/images\/new-logo\.svg|infinitymedisetu\.com\/app\/assets\/images\/mediarogya-logo\.png)[^"']+["'][^>]*>/i;
+  /<img\b[^>]*\bsrc=["']https?:\/\/(?!\{\{clinic\.logo\}\}|res\.cloudinary\.com\/ddzkedas8\/image\/upload\/v1772172278\/download_zafkmm\.png|infinitymedisetu\.com\/app\/assets\/images\/new-logo\.svg|infinitymedisetu\.com\/app\/assets\/images\/mediarogya-logo\.png|www\.mediarogya\.in\/app\/assets\/images\/mediarogya-logo\.png)[^"']+["'][^>]*>/i;
 
 export const FORBIDDEN_TEMPLATE_PATTERNS = [
   {

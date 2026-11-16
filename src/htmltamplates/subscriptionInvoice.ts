@@ -289,7 +289,7 @@ export const subscriptionInvoiceTemplate = `
   </div>
   <div class="footer">
     This is a computer-generated invoice.<br>
-    For queries: support@infinitymedisetu.com
+    For queries: support@mediarogya.in
 </div>
 </body>
 </html>

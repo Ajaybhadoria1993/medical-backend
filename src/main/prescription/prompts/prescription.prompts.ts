@@ -57,7 +57,7 @@ ${sampleTemplate().html}
 - Allowed image source usage: 
     a. <img src="{{clinic.logo}}"> (optionally wrapped in {{#if clinic.logo}}).
     b. https://res.cloudinary.com/ddzkedas8/image/upload/v1772172278/download_zafkmm.png (Rx symbol).
-    c. https://infinitymedisetu.com/app/assets/images/mediarogya-logo.png (MediArogya logo).
+    c. https://www.mediarogya.in/app/assets/images/mediarogya-logo.png (MediArogya logo).
 - Use the following placeholders exactly as listed. Maintain exact names, capitalization, and nesting syntax. Do not rename, omit, flatten, or alter any placeholder or loop:
 ${buildDynamicPlaceholderContract()}
 - Crucial: If the provided image lacks space for any of the required dynamic placeholders, you MUST integrate them into reasonable locations within the layout instead of omitting them.

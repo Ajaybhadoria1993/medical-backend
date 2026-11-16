@@ -171,7 +171,7 @@ export class UserService {
         },
       });
 
-    const signUpLink = `${process.env.FRONTEND_URL || 'https://infinitymedisetu.com'}/signup?tk=${tokenHash}&email=${encodeURIComponent(email)}`;
+    const signUpLink = `${process.env.FRONTEND_URL || 'https://www.mediarogya.in/app'}/signup?tk=${tokenHash}&email=${encodeURIComponent(email)}`;
 
     sendEmail(
       email,
@@ -3280,9 +3280,9 @@ export class UserService {
           changedBy: changedBy,
           changedAt: new Date(),
           loginUrl:
-            process.env.LOGIN_URL || 'https://infinitymedisetu.com/app/login',
+            process.env.LOGIN_URL || 'https://www.mediarogya.in/app/login',
           supportEmail:
-            process.env.SUPPORT_EMAIL || 'support@infinitymedisetu.com',
+            process.env.SUPPORT_EMAIL || 'support@mediarogya.in',
         });
 
         await sendEmail(

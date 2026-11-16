@@ -25,8 +25,8 @@ export const doctorStatusChangeTemplate = ({
   changedAt,
   loginUrl = process.env.FRONTEND_URL
     ? `${process.env.FRONTEND_URL}/login`
-    : 'https://infinitymedisetu.com/app/login',
-  supportEmail = 'support@infinitymedisetu.com',
+    : 'https://www.mediarogya.in/app/login',
+  supportEmail = 'support@mediarogya.in',
 }: DoctorStatusChangeParams): string => {
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {

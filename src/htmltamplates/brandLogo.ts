@@ -1,6 +1,6 @@
 /** The logo as hosted with the web app; PDF templates are static strings, so the URL cannot depend on the environment. */
 export const BRAND_LOGO_URL =
-  'https://infinitymedisetu.com/app/assets/images/mediarogya-logo.png';
+  'https://www.mediarogya.in/app/assets/images/mediarogya-logo.png';
 
 /** Logo and name as inline HTML for PDFs and printed pages; the icon is square, `heightPx` tall. */
 export const brandLogoHtml = (
