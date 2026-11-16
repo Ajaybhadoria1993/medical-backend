@@ -1,7 +1,7 @@
 # Doctor Dashboard (v2) — Architecture & Data Flow
 
 Reference doc for `GET /api/v2/dashboard/doctor` and `GET /api/v2/dashboard/doctor/profile`,
-which back the Doctor Dashboard page (`InfinityMedisetuWeb_FE/src/pages/dashboard/doctorDash/DoctorDash.tsx`).
+which back the Doctor Dashboard page (`Medi_Arogya_FE/src/pages/dashboard/doctorDash/DoctorDash.tsx`).
 
 Implementation: `src/main/dashboard/services/dashboard.service.ts`
 (`DashboardService.getDoctorDashboardDataV2`, `DashboardService.getDoctorDashboardProfile`).

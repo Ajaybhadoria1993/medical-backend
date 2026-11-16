@@ -178,7 +178,7 @@ Reviews and timings are **not** cached, so no review or availability write needs
     "clinics": [
       {
         "id": "…uuid…",
-        "clinicName": "Infinity Medisetu",
+        "clinicName": "MediArogya",
         "tagline": "…",
         "clinicAddress": "115, Ward 35, Ratna Lok Colony",
         "clinicPhone": "9966553322",
@@ -408,7 +408,7 @@ The Public Profile + Booking Page is gated by the clinic's active subscription p
 - Frontend: `tsc -b` and ESLint were clean as of the pre-redesign revision; the richer
   layout (sections 2, 4, 7, sidebar, header/footer, SEO hook) was added afterwards and its
   typecheck/lint run has **not** been completed. Run `npm run build` and `npm run lint`
-  in `InfinityMedisetuWeb_FE` before shipping.
+  in `Medi_Arogya_FE` before shipping.
 - The existing `patient.service.test.ts` suite covering `getDoctorPublicProfile` was **not**
   successfully run against the `audience` change. Run
   `npx jest src/main/patient/tests/patient.service.test.ts -t "getDoctorPublicProfile"`.

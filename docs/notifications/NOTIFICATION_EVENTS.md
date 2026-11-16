@@ -102,7 +102,7 @@ preferences are stored under the old names, so these keep resolving.
 - **Payment Received** (`payment.received`) — When an invoice is paid.
 - **Payout Failed** (`payment.transfer_failed`) — When money from an online payment does not reach the clinic bank.
 - **Billing needs a look** (`platform.billing_alert`) — When the daily check finds Razorpay differences, a quiet webhook or many failed AutoPay charges.
-- **Message from Infinity Medisetu** (`platform.message`) — When the Infinity Medisetu team sends you a message.
+- **Message from MediArogya** (`platform.message`) — When the MediArogya team sends you a message.
 - **Razorpay event stuck** (`platform.webhook_stuck`) — When a Razorpay event could not be applied after every retry.
 - **Prescription Ready** (`prescription.ready`) — When your prescription PDF is available.
 - **Discount Applied** (`staff.discount_applied`) — When a staff member applies a custom discount.

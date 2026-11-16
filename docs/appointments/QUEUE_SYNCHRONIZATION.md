@@ -509,7 +509,7 @@ branch on them.
 
 | Screen | File | Reads |
 |---|---|---|
-| Reception board | `InfinityMedisetuWeb_FE/src/pages/dashboard/receptionistDash/components/LiveDoctorQueueCard.tsx` | `/reception/live-queue` (composed) |
+| Reception board | `Medi_Arogya_FE/src/pages/dashboard/receptionistDash/components/LiveDoctorQueueCard.tsx` | `/reception/live-queue` (composed) |
 | Doctor's day + queue | `.../doctorDash/components/StartYourDayCard.tsx` | `/queue/board?doctorId=` |
 | Appointment timeline | `.../pages/appointment/components/timeline/AppointmentTimelineContainer.tsx` | `/queue/board?doctorId=` + `/queue/state` |
 | API slices | `.../src/redux/api/queueApi.ts`, `appointmentApi.ts` | |

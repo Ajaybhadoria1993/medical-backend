@@ -60,12 +60,12 @@ describe('smsClient AWS SNS routing and WhatsApp placeholder tests', () => {
   it('should format and route +91 numbers to SnsNotificationService with matched patient template ID', async () => {
     await sendSMS(
       '+919876543210',
-      'Your Infinity MediSetu verification code is 123456. It is valid for 10 minutes. Do not share this code with anyone.'
+      'Your MediArogya verification code is 123456. It is valid for 10 minutes. Do not share this code with anyone.'
     );
 
     expect(SnsNotificationService.sendTransactionalSms).toHaveBeenCalledWith(
       '+919876543210',
-      'Your Infinity MediSetu verification code is 123456. It is valid for 10 minutes. Do not share this code with anyone.',
+      'Your MediArogya verification code is 123456. It is valid for 10 minutes. Do not share this code with anyone.',
       'PATIENT_VERIFY_TPL_ID'
     );
   });
@@ -73,12 +73,12 @@ describe('smsClient AWS SNS routing and WhatsApp placeholder tests', () => {
   it('should format and route +91 numbers to SnsNotificationService with matched admin template ID', async () => {
     await sendSMS(
       '+919876543210',
-      'Your Infinity MediSetu admin verification code is 654321. It is valid for 5 minutes. Do not share this code with anyone.'
+      'Your MediArogya admin verification code is 654321. It is valid for 5 minutes. Do not share this code with anyone.'
     );
 
     expect(SnsNotificationService.sendTransactionalSms).toHaveBeenCalledWith(
       '+919876543210',
-      'Your Infinity MediSetu admin verification code is 654321. It is valid for 5 minutes. Do not share this code with anyone.',
+      'Your MediArogya admin verification code is 654321. It is valid for 5 minutes. Do not share this code with anyone.',
       'ADMIN_VERIFY_TPL_ID'
     );
   });

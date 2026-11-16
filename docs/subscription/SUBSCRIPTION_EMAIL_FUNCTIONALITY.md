@@ -1,6 +1,6 @@
 # Subscription & Add-On Email Functionality Documentation
 
-This document provides comprehensive technical documentation for all email notifications, templates, delivery mechanisms, background jobs, and error handling related to the **Subscription and Add-on** modules in Infinity Medisetu.
+This document provides comprehensive technical documentation for all email notifications, templates, delivery mechanisms, background jobs, and error handling related to the **Subscription and Add-on** modules in MediArogya.
 
 ---
 
@@ -45,7 +45,7 @@ This document provides comprehensive technical documentation for all email notif
 
 ## 1. Architecture Overview
 
-Email notifications in the Infinity Medisetu subscription and add-on ecosystem are triggered by three primary entry points:
+Email notifications in the MediArogya subscription and add-on ecosystem are triggered by three primary entry points:
 
 1. **Synchronous HTTP Operations**: Immediate user actions such as plan purchases, add-on additions, manual plan changes, and cancellations.
 2. **Asynchronous Razorpay Webhooks**: Automatic recurring payments (`subscription.charged`), recurring failures (`payment.failed`), mandate setup events (`subscription.authenticated`), and halted subscriptions (`subscription.halted`).
@@ -183,9 +183,9 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `subscriptionPurchaseSuccessTemplate`
 - **Subjects**:
-  - *Free Trial*: `Infinity Medisetu Free Trial Activated — <Plan Name>`
-  - *Free Plan*: `Infinity Medisetu Subscription Activated — <Plan Name>`
-  - *Paid Plan*: `Infinity Medisetu Subscription Purchase Successful — <Plan Name>`
+  - *Free Trial*: `MediArogya Free Trial Activated — <Plan Name>`
+  - *Free Plan*: `MediArogya Subscription Activated — <Plan Name>`
+  - *Paid Plan*: `MediArogya Subscription Purchase Successful — <Plan Name>`
 - **Key Information Displayed**:
   - Greeting with Admin Name.
   - Plan name and clinic name.
@@ -199,8 +199,8 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `subscriptionPlanChangeTemplate`
 - **Subjects**:
-  - *Immediate (Upgrade)*: `Infinity Medisetu Subscription Plan Change — <Plan Name>`
-  - *Scheduled (Downgrade)*: `Infinity Medisetu Subscription Plan Change Scheduled — <Plan Name>`
+  - *Immediate (Upgrade)*: `MediArogya Subscription Plan Change — <Plan Name>`
+  - *Scheduled (Downgrade)*: `MediArogya Subscription Plan Change Scheduled — <Plan Name>`
 - **Key Information Displayed**:
   - Upgrade vs Downgrade alert tone (`success` for immediate upgrade, `warning` for scheduled downgrade).
   - Effective date formatted in IST (`DD MMMM YYYY`).
@@ -213,7 +213,7 @@ When seat reductions or downgrades occur:
 ### 5.3 Scheduled Plan Change Reversal
 
 - **Template Function**: `subscriptionPlanChangeReversedTemplate`
-- **Subject**: `Infinity Medisetu Scheduled Plan Change Cancelled — <Cancelled Plan Name>`
+- **Subject**: `MediArogya Scheduled Plan Change Cancelled — <Cancelled Plan Name>`
 - **Key Information Displayed**:
   - Notice confirming that the scheduled downgrade was revoked.
   - Confirmation that current plan (`currentPlanName`) continues uninterrupted.
@@ -231,8 +231,8 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `subscriptionRenewalTemplate`
 - **Subjects**:
-  - *With active add-ons*: `Infinity Medisetu Subscription Expiry Reminder — <Plan Name> Plan & Add-ons Expire in <X> Day(s) at <Clinic Name>`
-  - *Without add-ons*: `Infinity Medisetu Subscription Expiry Reminder — <Plan Name> Plan Expires in <X> Day(s) at <Clinic Name>`
+  - *With active add-ons*: `MediArogya Subscription Expiry Reminder — <Plan Name> Plan & Add-ons Expire in <X> Day(s) at <Clinic Name>`
+  - *Without add-ons*: `MediArogya Subscription Expiry Reminder — <Plan Name> Plan Expires in <X> Day(s) at <Clinic Name>`
 - **Key Information Displayed**:
   - Days remaining and exact expiration date in IST.
   - Renewal price for the base plan's standard cycle.
@@ -250,10 +250,10 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `autoRenewStatusTemplate`
 - **Subjects**:
-  - `enabled`: `Infinity Medisetu AutoPay Enabled — <Plan Name>`
-  - `payment_method_updated`: `Infinity Medisetu AutoPay Payment Method Updated — <Plan Name>`
-  - `disabled`: `Infinity Medisetu AutoPay Turned Off — <Plan Name>`
-  - `setup_cancelled`: `Infinity Medisetu Pending AutoPay Setup Cancelled — <Plan Name>`
+  - `enabled`: `MediArogya AutoPay Enabled — <Plan Name>`
+  - `payment_method_updated`: `MediArogya AutoPay Payment Method Updated — <Plan Name>`
+  - `disabled`: `MediArogya AutoPay Turned Off — <Plan Name>`
+  - `setup_cancelled`: `MediArogya Pending AutoPay Setup Cancelled — <Plan Name>`
 - **When each is sent**:
   - No email is sent when a mandate is created: it is not active until the bank authorizes it, and it may never be.
   - `enabled` is sent once, when AutoPay actually switches on. The `subscription.authenticated` webhook, the client verify call and the status refresh can all switch it on; only the one that performs the off → on transition sends the email (`AutoRenewService.notifyAutoPayEnabled`).
@@ -269,7 +269,7 @@ When seat reductions or downgrades occur:
 ### 5.7 AutoPay Recurring Payment Succeeded
 
 - **Template Function**: `subscriptionRenewalPaymentSuccessTemplate`
-- **Subject**: `Infinity Medisetu Subscription AutoPay Renewal Successful — <Plan Name>`
+- **Subject**: `MediArogya Subscription AutoPay Renewal Successful — <Plan Name>`
 - **Key Information Displayed**:
   - Auto-renewal payment confirmation.
   - New subscription validity extension (`renewedUntil`).
@@ -280,8 +280,8 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `subscriptionRenewalPaymentFailureTemplate`
 - **Subjects**:
-  - *Failure*: `Infinity Medisetu Recurring Payment Failed — <Plan Name>`
-  - *Halted*: `Infinity Medisetu AutoPay Halted — <Plan Name>`
+  - *Failure*: `MediArogya Recurring Payment Failed — <Plan Name>`
+  - *Halted*: `MediArogya AutoPay Halted — <Plan Name>`
 - **Key Information Displayed**:
   - Detailed error reason returned by Razorpay / issuing bank.
   - Grace period information (`accessThrough` date).
@@ -292,8 +292,8 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `subscriptionPurchaseFailureTemplate`
 - **Subjects**:
-  - *Dropped*: `Infinity Medisetu <Subscription/Add-on> Checkout Incomplete — <Item Name>`
-  - *Failed*: `Infinity Medisetu <Subscription/Add-on> Payment Failed — <Item Name>`
+  - *Dropped*: `MediArogya <Subscription/Add-on> Checkout Incomplete — <Item Name>`
+  - *Failed*: `MediArogya <Subscription/Add-on> Payment Failed — <Item Name>`
 - **Key Information Displayed**:
   - Explanatory message indicating whether the session was abandoned or rejected by the gateway.
   - Item name and intended purchase amount.
@@ -308,8 +308,8 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `addOnPurchaseSuccessTemplate`
 - **Subjects**:
-  - *Single Item*: `Infinity Medisetu Add-on Activated — <Add-on Name>`
-  - *Multiple Items*: `Infinity Medisetu Add-ons Activated — <Count> Add-ons`
+  - *Single Item*: `MediArogya Add-on Activated — <Add-on Name>`
+  - *Multiple Items*: `MediArogya Add-ons Activated — <Count> Add-ons`
 - **Key Information Displayed**:
   - Itemized table of purchased add-ons with quantities, cycle (monthly/yearly), and amounts.
   - Total amount paid and transaction ID.
@@ -320,8 +320,8 @@ When seat reductions or downgrades occur:
 
 - **Template Function**: `addOnCancellationTemplate`
 - **Subjects**:
-  - *Scheduled*: `Infinity Medisetu Add-on Renewal Cancellation Scheduled — <Add-on Name>`
-  - *Immediate*: `Infinity Medisetu Add-on Cancellation Confirmed — <Add-on Name>`
+  - *Scheduled*: `MediArogya Add-on Renewal Cancellation Scheduled — <Add-on Name>`
+  - *Immediate*: `MediArogya Add-on Cancellation Confirmed — <Add-on Name>`
 - **Key Information Displayed**:
   - Add-on name and quantity being cancelled.
   - End of service date (`effectiveAt`).
@@ -330,7 +330,7 @@ When seat reductions or downgrades occur:
 ### 6.3 Add-On Quantity Reduction
 
 - **Template Function**: `addOnQuantityReductionTemplate`
-- **Subject**: `Infinity Medisetu Add-on Quantity Reduction Scheduled — <Add-on Name>`
+- **Subject**: `MediArogya Add-on Quantity Reduction Scheduled — <Add-on Name>`
 - **Key Information Displayed**:
   - Previous quantity vs new quantity for the next cycle.
   - Date when the quantity reduction takes effect.
@@ -339,7 +339,7 @@ When seat reductions or downgrades occur:
 ### 6.4 Add-On Expiry Reminders (7d, 3d, 1d, 0d)
 
 - **Template Function**: `addOnExpiryReminderTemplate`
-- **Subject**: `Infinity Medisetu Add-on <expires today / expires in X days> — <Add-on Name>`
+- **Subject**: `MediArogya Add-on <expires today / expires in X days> — <Add-on Name>`
 - **Key Information Displayed**:
   - Add-on name, licensed quantity, and expiration date.
   - Days remaining with color-coded urgency box.
@@ -348,7 +348,7 @@ When seat reductions or downgrades occur:
 ### 6.5 Add-On Expired & Deactivated
 
 - **Template Function**: `addOnExpiredTemplate`
-- **Subject**: `Infinity Medisetu Add-on Expired — <Add-on Name>`
+- **Subject**: `MediArogya Add-on Expired — <Add-on Name>`
 - **Key Information Displayed**:
   - Notice that the add-on validity period has concluded.
   - Summary of deactivated extra capacity.
@@ -407,7 +407,7 @@ All email templates utilize a shared, responsive layout builder implemented in `
 
 ### Layout Anatomy
 1. **Container**: Centered 600px email container with soft outer background (`#f8fafc`).
-2. **Brand Header**: Infinity Medisetu brand banner and logo mark.
+2. **Brand Header**: MediArogya brand banner and logo mark.
 3. **Personalized Greeting**: Friendly salutation (`Hi Dr. Sharma 👋`).
 4. **Headline & Lead Text**: High-contrast summary of the event.
 5. **Alert Boxes (`renderAlertBox`)**:
@@ -495,7 +495,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=notifications@medisetu.com
 SMTP_PASS=your-secure-app-password
-SMTP_FROM="Infinity Medisetu" <no-reply@medisetu.com>
+SMTP_FROM="MediArogya" <no-reply@medisetu.com>
 
 # Retry tuning
 EMAIL_MAX_RETRIES=3

@@ -1,6 +1,6 @@
 # Cancellation and Refund Policy System: Complete Flow & Architecture Guide
 
-This document provides a comprehensive technical overview of the complete **Cancellation and Refund Policy** system implemented across both the backend (`MediSetu_backend`) and frontend (`InfinityMedisetuWeb_FE`) codebases of the MediSetu platform.
+This document provides a comprehensive technical overview of the complete **Cancellation and Refund Policy** system implemented across both the backend (`MediSetu_backend`) and frontend (`Medi_Arogya_FE`) codebases of the MediSetu platform.
 
 ---
 
@@ -223,15 +223,15 @@ The cancellation module leverages a high-performance **Redis Cache-Aside Layer**
 
 ## 6. Frontend Configuration & Execution UI
 
-The UI resides in the frontend project (`InfinityMedisetuWeb_FE`) and connects the clinic administrator and staff users to the backend cancellation settings and process flow.
+The UI resides in the frontend project (`Medi_Arogya_FE`) and connects the clinic administrator and staff users to the backend cancellation settings and process flow.
 
 ### 6.1 Tab Accessibility & Role-Based Navigation Access
-Access to view and edit clinic cancellation rules is restricted on the client side inside [Profile.tsx](file:///d:/InfinityMedisetuWeb_FE/src/pages/profile/Profile.tsx):
+Access to view and edit clinic cancellation rules is restricted on the client side inside [Profile.tsx](file:///d:/Medi_Arogya_FE/src/pages/profile/Profile.tsx):
 *   **Restricted Roles**: The navigation tab is completely hidden from the user interface for roles like `Patient`, `Receptionist`, `Doctor`, and `Pharmacist`.
 *   **Authorized Roles**: Only users normalized to the `Admin` role (which represents clinic admins or doctors granted full `isAdminDoctorAccess` rights) are permitted to see and navigate to the `/profile/cancellation-policy` tab route.
 
 ### 6.2 Settings Dashboard Implementation Details
-*   **Configuration Page**: Implemented in [CancellationPolicySettings.tsx](file:///d:/InfinityMedisetuWeb_FE/src/pages/profile/CancellationPolicySettings.tsx).
+*   **Configuration Page**: Implemented in [CancellationPolicySettings.tsx](file:///d:/Medi_Arogya_FE/src/pages/profile/CancellationPolicySettings.tsx).
 *   **State Variables Management**: Tracks all policy fields (e.g. `allowPatientCancel`, `windowOnlineHours`, `cooldownSecondsBetweenCancellations`, etc.) using React states initialized from the API response payload.
 *   **Conditional Sub-Sections Rendering**:
     *   **Patient Cancellations**: If `allowPatientCancel` is toggled off, the entire **Cancellation Windows** and **Patient Limitations** sections are disabled visually and functionally using CSS (`opacity-60 pointer-events-none`).
@@ -249,14 +249,14 @@ Access to view and edit clinic cancellation rules is restricted on the client si
     *   The "Save Configuration" button remains disabled until changes are made and successfully validated.
 
 ### 6.3 RTK Query API Integration Layer
-The data integration uses Redux Toolkit (RTK) Query defined in [cancellationPolicyApi.ts](file:///d:/InfinityMedisetuWeb_FE/src/redux/api/cancellationPolicyApi.ts):
+The data integration uses Redux Toolkit (RTK) Query defined in [cancellationPolicyApi.ts](file:///d:/Medi_Arogya_FE/src/redux/api/cancellationPolicyApi.ts):
 *   **Query Hook `useGetClinicCancellationPolicyQuery`**: Retrieves the active configuration values from `/api/v1/cancellation-policy/clinic`. Subscribes to the `"CancellationPolicy"` state tag.
 *   **Mutation Hook `useUpdateClinicCancellationPolicyMutation`**: Triggers a `PUT` update request to `/api/v1/cancellation-policy/clinic`. It automatically invalidates the `"CancellationPolicy"` tag on success, forcing RTK Query to automatically refetch and synchronize the active state values.
 *   **Lazy Hook `useLazyGetDefaultCancellationPolicyQuery`**: Fetches the default configuration defaults template. When triggered (by clicking "Reset Defaults"), it overwrites current form states, triggering the unsaved changes state until saved.
 
 ### 6.4 Staff-Initiated Cancellation Dialog Flow
 When clinic staff initiates a cancellation, the modal handles the flow dynamically:
-*   **Modal Component**: Implemented in [CancelAppointmentModal.tsx](file:///d:/InfinityMedisetuWeb_FE/src/pages/appointment/CancelAppointmentModal.tsx), triggered from [AppointmentDetailsModals.tsx](file:///d:/InfinityMedisetuWeb_FE/src/pages/appointment/components/AppointmentDetailsModals.tsx).
+*   **Modal Component**: Implemented in [CancelAppointmentModal.tsx](file:///d:/Medi_Arogya_FE/src/pages/appointment/CancelAppointmentModal.tsx), triggered from [AppointmentDetailsModals.tsx](file:///d:/Medi_Arogya_FE/src/pages/appointment/components/AppointmentDetailsModals.tsx).
 *   **Staff Override Banner**: Displays a distinct warning banner reminding the user that as clinic staff, they bypass all patient-facing restrictions (limits, notice windows, and cooldown buffers).
 *   **Policy-Driven Validation Forms**:
     *   Fetches valid cancellation reasons from `/api/v1/cancellation-policy/reasons` using `useGetCancellationReasonsQuery` to fill the selector dropdown.

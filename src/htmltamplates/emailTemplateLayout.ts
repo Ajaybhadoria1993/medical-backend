@@ -372,7 +372,7 @@ export const renderEmailLayout = ({
               </p>
 
               <p style="color:#243033; font-family:${emailFont}; font-size:13px; line-height:14px; margin:0; font-weight:700;">
-                Infinity Genesis Techso Pvt. Ltd.
+                AlphaTechnoIT
               </p>
 
               <p style="color:#8a969c; font-family:${emailFont}; font-size:11px; line-height:16px; margin:5px 0 0;">

@@ -134,7 +134,7 @@ The 6-year MCh (post-MBBS) needs no PG, so W4 to W6 skip it.
 
 ## 8. Where the code lives
 
-| Area | Backend (`InfinityMedisetu_BE`) | Frontend (`InfinityMedisetuWeb_FE`) |
+| Area | Backend (`Medi_Arogya_BE`) | Frontend (`Medi_Arogya_FE`) |
 |---|---|---|
 | Categories, degrees, old names (S1–S4) | `src/utils/qualificationCatalog.ts`, `GET /api/v1/doctor/qualifications` | `src/hooks/useQualificationCatalog.ts` |
 | Warnings (W1–W16) | — | `src/utils/qualificationWarnings.ts`, `src/hooks/useQualificationWarnings.ts`, `src/components/shared/QualificationRuleWarnings.tsx` |

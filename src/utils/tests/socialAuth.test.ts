@@ -133,9 +133,9 @@ describe('socialAuth unit tests', () => {
 
   describe('verifyAppleIdToken', () => {
     beforeEach(() => {
-      process.env.APPLE_CLIENT_ID_IOS = 'com.infinity.medisetu';
-      process.env.APPLE_CLIENT_ID_WEB = 'com.infinity.medisetu.web';
-      process.env.APPLE_CLIENT_ID_ANDROID = 'com.infinity.medisetu.android';
+      process.env.APPLE_CLIENT_ID_IOS = 'com.mediarogya';
+      process.env.APPLE_CLIENT_ID_WEB = 'com.mediarogya.web';
+      process.env.APPLE_CLIENT_ID_ANDROID = 'com.mediarogya.android';
     });
 
     it('should successfully verify a valid Apple token on iOS', async () => {
@@ -166,7 +166,7 @@ describe('socialAuth unit tests', () => {
           algorithm: 'RS256',
           keyid: kid,
           issuer: 'https://appleid.apple.com',
-          audience: 'com.infinity.medisetu',
+          audience: 'com.mediarogya',
           expiresIn: '1h',
         }
       );
@@ -212,7 +212,7 @@ describe('socialAuth unit tests', () => {
           algorithm: 'RS256',
           keyid: kid,
           issuer: 'https://appleid.apple.com',
-          audience: 'com.infinity.medisetu.web',
+          audience: 'com.mediarogya.web',
           expiresIn: '1h',
         }
       );
@@ -267,7 +267,7 @@ describe('socialAuth unit tests', () => {
         algorithm: 'RS256',
         keyid: 'missing-key-id',
         issuer: 'https://appleid.apple.com',
-        audience: 'com.infinity.medisetu',
+        audience: 'com.mediarogya',
       });
 
       await expect(verifyAppleIdToken(token, 'ios')).rejects.toThrow(
@@ -299,7 +299,7 @@ describe('socialAuth unit tests', () => {
           algorithm: 'RS256',
           keyid: kid,
           issuer: 'https://invalid-issuer.com',
-          audience: 'com.infinity.medisetu',
+          audience: 'com.mediarogya',
         }
       );
 
@@ -335,7 +335,7 @@ describe('socialAuth unit tests', () => {
           algorithm: 'RS256',
           keyid: kid,
           issuer: 'https://appleid.apple.com',
-          audience: 'com.infinity.medisetu',
+          audience: 'com.mediarogya',
         }
       );
 
@@ -371,7 +371,7 @@ describe('socialAuth unit tests', () => {
           algorithm: 'RS256',
           keyid: kid,
           issuer: 'https://appleid.apple.com',
-          audience: 'com.infinity.medisetu',
+          audience: 'com.mediarogya',
         }
       );
 

@@ -4,7 +4,7 @@ Reference for the Users & Roles list and how a staff member's access is configur
 Written 2026-08-23, covering the work on `feat/users-roles-filters`.
 
 Frontend counterparts are logged as entries #66–#68 in
-`InfinityMedisetuWeb_FE/docs/playbook/UI_REMEDIATION_LOG.md`.
+`Medi_Arogya_FE/docs/playbook/UI_REMEDIATION_LOG.md`.
 
 ---
 

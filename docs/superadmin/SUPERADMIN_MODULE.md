@@ -7,7 +7,7 @@ Endpoint-by-endpoint request/response reference: [SUPERADMIN_ANALYTICS_API.md](.
 
 ## 1. What it is
 
-The backend for the Infinity Medisetu Super Admin: business figures across **all** clinics
+The backend for the MediArogya Super Admin: business figures across **all** clinics
 (MRR, growth, usage, patient app), the clinic list and Clinic 360°, follow-up tasks, and
 security views (audit log, login sessions).
 

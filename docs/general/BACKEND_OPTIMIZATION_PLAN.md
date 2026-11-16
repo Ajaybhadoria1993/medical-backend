@@ -1,6 +1,6 @@
 # Backend Optimization & Cleanup Plan
 
-Findings from a full-repo audit (2026-07-13) of `InfinityMedisetu_BE`, ordered as sequential steps.
+Findings from a full-repo audit (2026-07-13) of `Medi_Arogya_BE`, ordered as sequential steps.
 Each step is independent and can be picked up, PR'd, and checked off separately.
 
 ## Status legend
@@ -66,7 +66,7 @@ Worst offenders:
 
 **Suggested order:** appointments → doctor → dashboard → banners → remaining modules.
 
-**Blocker found (2026-07-13):** `sendOk`/`sendCreated` in `src/utils/response.utils.ts` nest the payload under a `data` key (`{ success, message, data }`), but the existing hand-rolled controllers return `{ success, result }`. The FE consumes `result` directly and has it baked into RTK Query response types — e.g. `InfinityMedisetuWeb_FE/src/redux/api/appointmentApi.ts`'s `CreateAppointmentResponse` is typed as `{ result: {...} }`. Switching controllers to the helpers as-is would silently break every FE consumer of that field. **This is not a safe mechanical refactor** — it's a breaking cross-repo API contract change.
+**Blocker found (2026-07-13):** `sendOk`/`sendCreated` in `src/utils/response.utils.ts` nest the payload under a `data` key (`{ success, message, data }`), but the existing hand-rolled controllers return `{ success, result }`. The FE consumes `result` directly and has it baked into RTK Query response types — e.g. `Medi_Arogya_FE/src/redux/api/appointmentApi.ts`'s `CreateAppointmentResponse` is typed as `{ result: {...} }`. Switching controllers to the helpers as-is would silently break every FE consumer of that field. **This is not a safe mechanical refactor** — it's a breaking cross-repo API contract change.
 
 **Decision:** paused. User chose to skip this step for now rather than risk breaking FE consumers. Before resuming, pick one of:
 1. Change `response.utils.ts` to use `result` instead of `data` (keeps wire format identical, only centralizes response-building) — lowest risk, but the field name diverges from the more conventional `data` naming.

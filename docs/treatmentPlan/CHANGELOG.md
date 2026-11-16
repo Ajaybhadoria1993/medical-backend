@@ -1,7 +1,7 @@
 # Treatment Plan — change log per phase
 
 What each phase changed, in both repos, in plain words. One section per phase, added at its review gate.
-Plan: `DEV_PLAN.md` (backend) · `InfinityMedisetuWeb_FE/docs/treatmentPlan/FE_PLAN.md` (frontend).
+Plan: `DEV_PLAN.md` (backend) · `Medi_Arogya_FE/docs/treatmentPlan/FE_PLAN.md` (frontend).
 
 ---
 

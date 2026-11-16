@@ -7,9 +7,9 @@ Tick as you go. An unticked box means "not done", never "unknown".
 
 | Flag | File | Effect if off |
 |---|---|---|
-| `NOTIFICATIONS_INAPP_ENABLED=true` | `InfinityMedisetu_BE/.env` | Nothing is written or emitted |
-| `NOTIFICATIONS_REGISTRY_ENABLED=true` | `InfinityMedisetu_BE/.env` | Legacy helpers run — old recipients, no `event_key` |
-| `VITE_NOTIFICATIONS_ENABLED=true` | `InfinityMedisetuWeb_FE/.env` | Bell dropped from the bundle. **Restart Vite**, a reload is not enough |
+| `NOTIFICATIONS_INAPP_ENABLED=true` | `Medi_Arogya_BE/.env` | Nothing is written or emitted |
+| `NOTIFICATIONS_REGISTRY_ENABLED=true` | `Medi_Arogya_BE/.env` | Legacy helpers run — old recipients, no `event_key` |
+| `VITE_NOTIFICATIONS_ENABLED=true` | `Medi_Arogya_FE/.env` | Bell dropped from the bundle. **Restart Vite**, a reload is not enough |
 
 ---
 

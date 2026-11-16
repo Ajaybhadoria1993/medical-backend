@@ -1,6 +1,6 @@
 # Super Admin Analytics API
 
-Platform-wide business figures for the Infinity Medisetu Super Admin. Replaces the old
+Platform-wide business figures for the MediArogya Super Admin. Replaces the old
 `/api/v1/dashboard/super-admin/*` endpoints (removed 2026-09-29).
 
 - **Auth:** Bearer token, `Super_Admin` only (`requireAuth` + `requireSuperAdmin` on every route).

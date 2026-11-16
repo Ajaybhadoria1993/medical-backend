@@ -785,7 +785,7 @@ and slots in after the core step it extends.
 
 Branches are not a D item; they are a separate feature with their own spec (§9).
 
-Frontend detail (screens, routes, files touched, slice, status wording): `InfinityMedisetuWeb_FE/docs/treatmentPlan/FE_PLAN.md`.
+Frontend detail (screens, routes, files touched, slice, status wording): `Medi_Arogya_FE/docs/treatmentPlan/FE_PLAN.md`.
 Test checklist (every decision and rule, with expected results): `docs/treatmentPlan/TEST_CHECKLIST.md`.
 
 Tests per standards §12: `__tests__/` in the module, one file at a time, never the full suite.

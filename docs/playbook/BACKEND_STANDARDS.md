@@ -1,6 +1,6 @@
 # Backend Standards
 
-The single rule set for `InfinityMedisetu_BE`. Every BE change is checked against this file.
+The single rule set for `Medi_Arogya_BE`. Every BE change is checked against this file.
 
 **This is the only playbook.** It replaces `BACKEND_CONVENTIONS.md`. The other files in
 `docs/playbook/` (`NOTIFICATION_REBUILD.md`, `NOTIFICATION_TEST_PLAN.md`) are migration plans for

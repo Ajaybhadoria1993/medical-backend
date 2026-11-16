@@ -612,9 +612,9 @@ deliberately, on dev, with the client's knowledge. Requested by the client 2026-
 
 | | Value | Where |
 |---|---|---|
-| `NOTIFICATIONS_INAPP_ENABLED` | `true` | `InfinityMedisetu_BE/.env` — off by default, so the bell is silent until set |
+| `NOTIFICATIONS_INAPP_ENABLED` | `true` | `Medi_Arogya_BE/.env` — off by default, so the bell is silent until set |
 | `NOTIFICATIONS_REGISTRY_ENABLED` | `true` | same file — off means the legacy helpers run instead of the registry |
-| `VITE_NOTIFICATIONS_ENABLED` | `true` | `InfinityMedisetuWeb_FE/.env` — Vite inlines it, so the FE must be restarted, not just reloaded |
+| `VITE_NOTIFICATIONS_ENABLED` | `true` | `Medi_Arogya_FE/.env` — Vite inlines it, so the FE must be restarted, not just reloaded |
 | Migration 0008 | applied to dev | already done; `tenant_type`, `category`, `kind`, `event_key`, `click_route`, `collapse_key` |
 | Redis | running | the BullMQ worker is where dispatch happens; without it `notify()` enqueues into nothing |
 

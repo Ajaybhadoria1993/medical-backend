@@ -1,7 +1,7 @@
 # Subscription rebuild — decisions and pending items
 
 Short summary for review. Full detail: `SUBSCRIPTION_REBUILD_PLAN.md` (same folder); data model:
-`SUBSCRIPTION_MODEL.dbml`; user stories: `InfinityMedisetuWeb_FE/docs/SUBSCRIPTION_USER_STORIES.md`.
+`SUBSCRIPTION_MODEL.dbml`; user stories: `Medi_Arogya_FE/docs/SUBSCRIPTION_USER_STORIES.md`.
 
 Last updated: 2026-11-03. Status: **plan ready, waiting for approval** — no code changed yet.
 

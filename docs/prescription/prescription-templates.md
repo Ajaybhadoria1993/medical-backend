@@ -234,7 +234,7 @@ Reg. No. is the appointment's `registrationNo` — the doctor's running number, 
 2. Page is A4: `@page { size: A4; margin: 0; }` and the root wrapper is
    `width: 210mm; min-height: 297mm;`.
 3. Consultation hours sit in a **bottom** strip (or the sidebar for Template 1).
-4. Footer carries the "Powered by Infinity MediSetu" logo
+4. Footer carries the "Powered by MediArogya" logo
    (`https://infninity-medisatu.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png`).
 5. Every template prints a signature area only when `showDoctorSignature` is on:
    blank signing space above a rule, then `Dr.&nbsp;{{doctor.name}}` and a

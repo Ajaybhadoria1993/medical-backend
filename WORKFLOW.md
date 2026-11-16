@@ -5,7 +5,7 @@ the two standards playbooks say how code is **written**; this file says how work
 **run** — read order, when to ask, what "done" means, and what never happens without
 being asked.
 
-Applies to every task in `InfinityMedisetu_BE/` and `InfinityMedisetuWeb_FE/`.
+Applies to every task in `Medi_Arogya_BE/` and `Medi_Arogya_FE/`.
 
 **This file is maintained continuously, not written once** — §7 is the standing
 obligation to capture each new rule as it earns its place, and to delete the ones

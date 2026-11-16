@@ -92,7 +92,7 @@ Check it with `npx tsx src/scripts/testWhatsApp.ts`:
 ```
 Phone number  +91 XXXXX XXXXX
   ✅ registration: CLOUD_API / CONNECTED
-  ❌ display name: "Infinity medisetu" — DECLINED — recipients see the number, not this name
+  ❌ display name: "MediArogya" — DECLINED — recipients see the number, not this name
 ```
 
 If `DECLINED`, work through these in order:
@@ -105,7 +105,7 @@ If `DECLINED`, work through these in order:
 | Requirement | What trips people up |
 |---|---|
 | Matches your real branding | Must match website/app/materials, not an internal shorthand |
-| Consistent capitalisation | `Infinity medisetu` reads as a typo; `Infinity Medisetu` reads as a brand — a frequent sole cause of rejection |
+| Consistent capitalisation | `MediArogya` reads as a typo; `MediArogya` reads as a brand — a frequent sole cause of rejection |
 | Relates to the verified entity | Should match the business verified above |
 | No URLs, generic words or claims | "Best Clinic", "clinic.com" are refused |
 
@@ -139,7 +139,7 @@ Copy each body **verbatim** — placeholder order and count must match `WHATSAPP
 In the template editor, click **Add footer** and enter exactly:
 
 ```
-Infinity Medisetu
+MediArogya
 ```
 
 Footers are a separate component from the body and **cannot contain variables**, which is precisely why static branding belongs there rather than in the body text. Because it has no variables, the footer needs **no code change** — `sendTemplateMessage` keeps sending body params only, and Meta renders the footer automatically in smaller grey text beneath the message.
@@ -161,18 +161,18 @@ Your appointment with Dr. {{2}} has been confirmed.
 📅 Date: {{4}}
 🎟 Token No.: {{5}}
 
-Check Infinity MediSetu for your live token status and updated expected consultation time.
+Check MediArogya for your live token status and updated expected consultation time.
 ```
 `{{1}}` patient · `{{2}}` doctor (code strips our "Dr." prefix) · `{{3}}` clinic · `{{4}}` date · `{{5}}` token number (time-slot bookings send `Time: 10:00 AM`)
 Sample: `Asha Nair` · `Rajesh Kumar` · `Apollo Clinic` · `Thu, 23 Jul 2026` · `18`
 
 **Buttons** (order matters):
-1. **Track Token Status**: dynamic URL `https://infinitymedisetu.com/app/patient/appointment/{{1}}`; code sends `<appointmentId>?type=livequeue`.
-2. **Download App**: static URL `https://infinitymedisetu.com/app/m/download`; nothing sent.
+1. **Track Token Status**: dynamic URL `https://www.mediarogya.in/app/patient/appointment/{{1}}`; code sends `<appointmentId>?type=livequeue`.
+2. **Download App**: static URL `https://www.mediarogya.in/app/m/download`; nothing sent.
 
 ### The other `*_utility_v1` templates
 
-Approved 2026-10-28. Same shape as `appointment_booked_utility_v1`: Utility, IMAGE header (each needs its own `*_HEADER_IMAGE_URL`, see `.env.example`), "Infinity MediSetu" footer, bodies that already say `Dr.` and `Token No.:`. The exact bodies live on the WABA; `npx tsx src/scripts/testWhatsApp.ts` shows them.
+Approved 2026-10-28. Same shape as `appointment_booked_utility_v1`: Utility, IMAGE header (each needs its own `*_HEADER_IMAGE_URL`, see `.env.example`), "MediArogya" footer, bodies that already say `Dr.` and `Token No.:`. The exact bodies live on the WABA; `npx tsx src/scripts/testWhatsApp.ts` shows them.
 
 | Template | Body params | Dynamic button → suffix sent | Sent when |
 |---|---|---|---|

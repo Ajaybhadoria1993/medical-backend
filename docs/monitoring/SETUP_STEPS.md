@@ -33,7 +33,7 @@ AWS Mumbai (`ap-south-1`). Production cost ≈ $1.70/month, capped near $4; stag
 | | Staging | Production |
 | --- | --- | --- |
 | EC2 instance ID | `i-0b564b576922a65c1` | `i-09785dcccfc709cdf` |
-| Server folder | `/home/ubuntu/infinity_medisetu/MediSetu_backend` | `/home/ubuntu/medisetu/InfinityMedisetu_BE` |
+| Server folder | `/home/ubuntu/infinity_medisetu/MediSetu_backend` | `/home/ubuntu/medisetu/Medi_Arogya_BE` |
 | Containers | `cms-backend-app-stg`, `redis-stg` | `cms-backend-app`, `redis-prd` |
 | App host port | 5002 | 5000 |
 | Deploy | push to `staging`, recreates all services | push to `main`, recreates `app` only |
@@ -159,7 +159,7 @@ Same steps with production values from the table above. Start only after S10.
 - [ ] Merge to `main` (the pipeline deploys it)
 - [ ] Recreate Redis once on the server, at a quiet time (prod deploy recreates `app` only):
   ```bash
-  cd /home/ubuntu/medisetu/InfinityMedisetu_BE
+  cd /home/ubuntu/medisetu/Medi_Arogya_BE
   docker compose -f docker/docker-compose.prod.yml up -d redis
   docker port redis-prd               # prints nothing = port closed
   curl -s localhost:5000/api/health   # {"status":"OK"}

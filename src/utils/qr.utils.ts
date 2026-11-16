@@ -10,14 +10,14 @@ import logger from './logger';
  * listing is public by nature and the same for every prescription, and the
  * patient signs in there to reach their own records.
  *
- * Currently the Play Store listing (the iOS listing is not published yet — the
+ * Defaults to the MediArogya download page (www.mediarogya.in/app/m/download; the
  * FE footer's App Store link is still a placeholder). When both stores exist,
  * point `PRESCRIPTION_QR_URL` at a "get the app" landing page that offers both;
  * no template change is needed.
  */
 const appDownloadUrl = () =>
   process.env.PRESCRIPTION_QR_URL ||
-  'https://play.google.com/store/apps/details?id=com.infinity.medisetu';
+  'https://www.mediarogya.in/app/m/download';
 
 export const buildAppDownloadUrl = (): string => appDownloadUrl();
 

@@ -134,7 +134,7 @@ Ref = the test ID in `TEST_CHECKLIST.md` where one exists.
 
 ## Unit tests (owner runs; no Jest on the dev machine)
 
-| ✓ | # | Command (in `InfinityMedisetu_BE`) | Result | Date | Notes |
+| ✓ | # | Command (in `Medi_Arogya_BE`) | Result | Date | Notes |
 |---|---|---|---|---|---|
 | [ ] | J.1 | `npx jest src/main/treatmentPlan/__tests__/timing.utils.test.ts` | | | |
 | [ ] | J.2 | `npx jest src/main/treatmentPlan/__tests__/templatePreview.utils.test.ts` | | | |

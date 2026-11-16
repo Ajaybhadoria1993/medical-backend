@@ -34,7 +34,7 @@ Files: `src/main/test/models/appointmentTest.model.ts`,
   `res.status(...).json(...)`. Every endpoint now returns a consistent
   `{ success, message, data }` shape (paginated endpoints also include
   `pagination`), matching the CLAUDE.md-documented convention.
-- FE (`InfinityMedisetuWeb_FE/src/redux/api/labApi.ts`) response pickers
+- FE (`Medi_Arogya_FE/src/redux/api/labApi.ts`) response pickers
   (`pickLabArray`, `pickLabOne`, etc.) already probed `res.data` first, so no FE
   change was required — the defensive multi-shape fallback branches are now dead
   weight but harmless; left in place.

@@ -959,7 +959,7 @@ proof before the step is committed.
 
 FE changes are allowed wherever the rebuild needs them (§1). Each one ships in the same step as the
 BE change it depends on, follows `CLAUDE.md`'s UX rules and the FE playbook, and is checked against
-the user stories (`InfinityMedisetuWeb_FE/docs/SUBSCRIPTION_USER_STORIES.md`, US-x.x below) with a
+the user stories (`Medi_Arogya_FE/docs/SUBSCRIPTION_USER_STORIES.md`, US-x.x below) with a
 browser click-through, a keyboard pass and a dark-mode pass.
 
 ### Remove (no screen needs them)
@@ -1067,7 +1067,7 @@ names both commit messages when it touches both repos.
 | FT1–FT6 | Free plan and trial logic (§5 "Free plan and free trial") | steps 4.2 (first plan + trial) and 4.3 (guards from plan features) |
 
 ---
-User stories for UI design and testing: `InfinityMedisetuWeb_FE/docs/SUBSCRIPTION_USER_STORIES.md`.
+User stories for UI design and testing: `Medi_Arogya_FE/docs/SUBSCRIPTION_USER_STORIES.md`.
 
 
 ## 10. Razorpay — what we use and the docs

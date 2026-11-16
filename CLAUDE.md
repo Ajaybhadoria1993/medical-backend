@@ -1,9 +1,9 @@
-# CLAUDE.md — Backend (`InfinityMedisetu_BE`)
+# CLAUDE.md — Backend (`Medi_Arogya_BE`)
 
 Node.js/Express/TypeScript backend API for Medisetu Clinic Management Software.
 Stack: Drizzle ORM + PostgreSQL, Redis, Socket.io, Zod, JWT.
 
-> This is one of two repos under `imsCore/`. The FE (`../InfinityMedisetuWeb_FE`)
+> This is one of two repos under `imsCore/`. The FE (`../Medi_Arogya_FE`)
 > proxies `/api` and `/socket.io` to this server on `localhost:5000` in dev.
 > The repo-root `../CLAUDE.md` has the cross-repo / deploy overview, and
 > `../WORKFLOW.md` defines how a task is run (scope, gates, definition of done).

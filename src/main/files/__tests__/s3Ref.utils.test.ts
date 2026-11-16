@@ -16,17 +16,17 @@ import {
   SIGNING_WINDOW_SECONDS,
 } from '../utils/s3Ref.utils';
 
-const DEFAULT_BUCKET = 'infinity-medisetu-private';
+const DEFAULT_BUCKET = 'mediarogya-private';
 
 describe('parseS3Ref', () => {
   it('reads bucket and key from a virtual-hosted URL', () => {
     expect(
       parseS3Ref(
-        'https://infninity-medisatu.s3.ap-south-1.amazonaws.com/production/clinic_logos/logo-1.png',
+        'https://mediarogya-public.s3.ap-south-1.amazonaws.com/production/clinic_logos/logo-1.png',
         DEFAULT_BUCKET
       )
     ).toEqual({
-      bucket: 'infninity-medisatu',
+      bucket: 'mediarogya-public',
       key: 'production/clinic_logos/logo-1.png',
     });
   });
