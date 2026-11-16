@@ -7,10 +7,9 @@ import {
 
 const MAX_PARAM_LENGTH = 1024;
 
-// The *_utility_v1 bodies already say "Dr. {{n}}" and "Token No.: {{n}}".
+// The *_utility_v1 bodies already say "Dr. {{n}}". The token/time line is sent whole
+// ("Token No: 18" or "Time: 10:00 AM"), so the body holds only the placeholder.
 const bareDoctor = (name: string) => name.replace(/^dr\.?\s+/i, '');
-const bareToken = (timeOrToken: string) =>
-  timeOrToken.replace(/^Token No:\s*/, '');
 
 export const WHATSAPP_TEMPLATES: {
   [K in WhatsAppTemplateKey]: WhatsAppTemplateDefinition<K>;
@@ -24,7 +23,7 @@ export const WHATSAPP_TEMPLATES: {
       bareDoctor(p.doctorName),
       p.clinicName,
       p.date,
-      bareToken(p.timeOrToken),
+      p.timeOrToken,
     ],
     // Button 0 "Track Token Status"; button 1 "Download App" is a static URL.
     toUrlButtonParams: (p) => [`${p.appointmentId}?type=livequeue`],
@@ -38,7 +37,7 @@ export const WHATSAPP_TEMPLATES: {
       bareDoctor(p.doctorName),
       p.clinicName,
       p.date,
-      bareToken(p.timeOrToken),
+      p.timeOrToken,
     ],
     // Button 0 "Track Token Status".
     toUrlButtonParams: (p) => [`${p.appointmentId}?type=livequeue`],
@@ -52,7 +51,7 @@ export const WHATSAPP_TEMPLATES: {
       bareDoctor(p.doctorName),
       p.clinicName,
       p.date,
-      bareToken(p.timeOrToken),
+      p.timeOrToken,
     ],
     // Button 0 "Reschedule Appointment"; button 1 "Open MediArogya" is static.
     toUrlButtonParams: (p) => [p.appointmentId],
@@ -76,7 +75,7 @@ export const WHATSAPP_TEMPLATES: {
       p.patientName,
       bareDoctor(p.doctorName),
       p.clinicName,
-      bareToken(p.timeOrToken),
+      p.timeOrToken,
     ],
     // Button 0 "Track Token Status".
     toUrlButtonParams: (p) => [`${p.appointmentId}?type=livequeue`],

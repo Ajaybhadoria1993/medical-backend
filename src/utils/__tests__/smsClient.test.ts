@@ -92,7 +92,7 @@ describe('smsClient AWS SNS routing and WhatsApp placeholder tests', () => {
     );
   });
 
-  it('strips only a real "Dr." prefix and the token label from booked params', async () => {
+  it('strips only a real "Dr." prefix and keeps the token label in booked params', async () => {
     await sendWhatsAppTemplate('9876543210', 'appointmentBooked', {
       patientName: 'Asha',
       doctorName: 'Dr. Drishti Rao',
@@ -104,7 +104,7 @@ describe('smsClient AWS SNS routing and WhatsApp placeholder tests', () => {
     const body = (WhatsAppService.sendTemplateMessage as jest.Mock).mock
       .lastCall[3];
     expect(body[1]).toBe('Drishti Rao');
-    expect(body[4]).toBe('7');
+    expect(body[4]).toBe('Token No: 7');
   });
 
   it('should send WhatsApp as an approved template with per-field params', async () => {
@@ -244,12 +244,12 @@ describe('WhatsApp template parameters', () => {
     const cases = [
       [
         'appointmentReminder',
-        ['Asha', 'Rajesh Kumar', 'Apollo', 'Thu, 23 Jul 2026', '12'],
+        ['Asha', 'Rajesh Kumar', 'Apollo', 'Thu, 23 Jul 2026', 'Token No: 12'],
         ['appt-1?type=livequeue'],
       ],
       [
         'appointmentCancelled',
-        ['Asha', 'Rajesh Kumar', 'Apollo', 'Thu, 23 Jul 2026', '12'],
+        ['Asha', 'Rajesh Kumar', 'Apollo', 'Thu, 23 Jul 2026', 'Token No: 12'],
         ['appt-1'],
       ],
       [
@@ -260,7 +260,7 @@ describe('WhatsApp template parameters', () => {
       ['consultationStarted', ['Asha', 'Rajesh Kumar', 'Apollo'], []],
       [
         'doctorRunningLate',
-        ['Asha', 'Rajesh Kumar', 'Apollo', '12'],
+        ['Asha', 'Rajesh Kumar', 'Apollo', 'Token No: 12'],
         ['appt-1?type=livequeue'],
       ],
     ] as const;
