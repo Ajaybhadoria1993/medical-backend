@@ -1,6 +1,6 @@
 import { PatientAuthService } from '../services/patientAuth.service';
 import { database } from '../../../configurations/dbConnection';
-import { UniversalNotificationService } from '../../notifications/services/universalNotification.service';
+import { sendWhatsAppOtp } from '../../../utils/smsClient';
 
 jest.mock('../../../configurations/dbConnection');
 jest.mock('../../../configurations/redisConfig', () => ({
@@ -19,10 +19,8 @@ jest.mock('../../users/services/token.service', () => ({
     }),
   },
 }));
-jest.mock('../../notifications/services/universalNotification.service', () => ({
-  UniversalNotificationService: {
-    send: jest.fn().mockResolvedValue(undefined),
-  },
+jest.mock('../../../utils/smsClient', () => ({
+  sendWhatsAppOtp: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../../notifications/services/loginAlertQueue.service', () => ({
   loginAlertQueue: {
@@ -46,7 +44,7 @@ describe('PatientAuthService - Bypass Tests for 9999999999', () => {
   };
 
   describe('sendOtp', () => {
-    it('should bypass SMS sending and store fixed OTP 000000 for 9999999999', async () => {
+    it('should bypass WhatsApp OTP sending and store fixed OTP 000000 for 9999999999', async () => {
       (database.select as jest.Mock).mockReturnValue(createSelectChain([]));
       (database.delete as jest.Mock).mockReturnValue({
         where: jest.fn().mockResolvedValue(undefined),
@@ -59,8 +57,8 @@ describe('PatientAuthService - Bypass Tests for 9999999999', () => {
 
       expect(result.message).toContain('bypass mode');
       expect(database.insert).toHaveBeenCalled();
-      // Should NOT send SMS via UniversalNotificationService
-      expect(UniversalNotificationService.send).not.toHaveBeenCalled();
+      // Should NOT send the OTP on WhatsApp
+      expect(sendWhatsAppOtp).not.toHaveBeenCalled();
     });
   });
 
@@ -150,7 +148,7 @@ describe('PatientAuthService - Bypass Tests for 9999999999', () => {
   });
 
   describe('resendOtp', () => {
-    it('should succeed and bypass SMS sending for 9999999999', async () => {
+    it('should succeed and bypass WhatsApp OTP sending for 9999999999', async () => {
       (database.select as jest.Mock).mockReturnValue(createSelectChain([]));
       (database.insert as jest.Mock).mockReturnValue({
         values: jest.fn().mockResolvedValue(undefined),
@@ -159,7 +157,7 @@ describe('PatientAuthService - Bypass Tests for 9999999999', () => {
       const result = await PatientAuthService.resendOtp('9999999999');
 
       expect(result.message).toContain('bypass mode');
-      expect(UniversalNotificationService.send).not.toHaveBeenCalled();
+      expect(sendWhatsAppOtp).not.toHaveBeenCalled();
     });
   });
 });

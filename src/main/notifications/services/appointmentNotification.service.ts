@@ -1,7 +1,6 @@
 import logger from '../../../utils/logger';
 import { envConfig } from '../../../utils/envConfig';
 import { enqueueWhatsAppTemplate } from '../queues/whatsappOutbox.queue';
-import { UniversalNotificationService } from './universalNotification.service';
 import {
   formatAppointmentDate,
   formatTimeOrToken,
@@ -22,8 +21,7 @@ export class AppointmentNotificationService {
       const context = await getNotificationContext(appointmentId);
       if (!context) return;
 
-      const { patientName, doctorName, patientMobile, clinicName, smsEnabled } =
-        context;
+      const { patientName, doctorName, patientMobile, clinicName } = context;
 
       // This path enqueues directly rather than going through
       // sendAppointmentNotification, so the WHATSAPP_FORCE_ENABLED override
@@ -32,7 +30,8 @@ export class AppointmentNotificationService {
         envConfig.WHATSAPP_FORCE_ENABLED || context.whatsappEnabled;
 
       if (!patientMobile || !clinicName) return;
-      if (!smsEnabled && !whatsappEnabled) return;
+      // WhatsApp only: the booking SMS was replaced by the WhatsApp template.
+      if (!whatsappEnabled) return;
 
       const appointmentDateTime = appointmentInstantIST(
         appointmentDate,
@@ -43,22 +42,7 @@ export class AppointmentNotificationService {
       const timeOrTokenInfo = formatTimeOrToken(appointmentDateTime, tokenNo);
       const formattedMobile = normalizeWhatsAppNumber(patientMobile);
 
-      const message = `Appointment Booked:\n\nClinic: ${clinicName}\nDate: ${formattedDate}\n${timeOrTokenInfo}\n\nPlease arrive 10 minutes early.`;
-
       const promises = [];
-
-      if (smsEnabled) {
-        promises.push(
-          UniversalNotificationService.send({
-            recipient: { mobile: formattedMobile },
-            // Event key kept for the frontend notification-preference contract.
-            event: 'appointment_confirmed',
-            channels: ['sms'],
-            title: 'Appointment Booked',
-            body: message,
-          })
-        );
-      }
 
       if (whatsappEnabled) {
         promises.push(

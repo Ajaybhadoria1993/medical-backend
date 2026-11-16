@@ -24,14 +24,13 @@ function checkProfileComplete(
 ): boolean {
   return Boolean(name?.trim()) && Boolean(gender) && Boolean(dob?.trim());
 }
-import { UniversalNotificationService } from '../../notifications/services/universalNotification.service';
+import { sendWhatsAppOtp } from '../../../utils/smsClient';
 import logger from '../../../utils/logger';
 import { loginAlertQueue } from '../../notifications/services/loginAlertQueue.service';
 import { envConfig } from '../../../utils/envConfig';
 
 // ─── Constants & Configuration ────────────────────────────────────────────────
 const OTP_EXPIRY_MS = envConfig.OTP_EXPIRY_MS;
-const OTP_EXPIRY_MINUTES = Math.floor(OTP_EXPIRY_MS / 60000);
 const OTP_RESEND_COOLDOWN_SECS = envConfig.OTP_RESEND_COOLDOWN_SECS;
 const MAX_RESEND_COUNT = envConfig.OTP_MAX_RESEND_COUNT;
 const OTP_RATE_REDIS_PREFIX = envConfig.OTP_RATE_REDIS_PREFIX;
@@ -167,23 +166,15 @@ export class PatientAuthService {
       resendCount: 0,
     });
 
-    // 5️⃣ Send SMS via AWS SNS (skipped in development or test bypass).
+    // 5️⃣ Send the OTP on WhatsApp (skipped in development or test bypass).
     //    Awaited so that a delivery failure surfaces as a 502 rather than
     //    silently returning "OTP sent" while the patient receives nothing.
     if (!bypassMode) {
-      const smsBody = `INFINITYGENESIS TECHSO PRIVATE LIMITED: Your Infinity MediSetu verification code is ${otp}. It is valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share this code with anyone.`;
       try {
-        await UniversalNotificationService.send({
-          recipient: { mobile: toE164(normalised) },
-          event: 'patient_mobile_verification',
-          channels: ['sms'],
-          title: 'MediArogya OTP',
-          body: smsBody,
-          throwOnError: true,
-        });
+        await sendWhatsAppOtp(toE164(normalised), otp);
       } catch (err) {
         logger.error(
-          `[PatientAuth] Failed to send OTP SMS to ${normalised}:`,
+          `[PatientAuth] Failed to send OTP on WhatsApp to ${normalised}:`,
           err
         );
         // Clean up the stored OTP — it is useless if the patient never received it
@@ -519,23 +510,15 @@ export class PatientAuthService {
       });
     }
 
-    // 6️⃣ Send SMS via AWS SNS (skipped in bypass mode).
+    // 6️⃣ Send the OTP on WhatsApp (skipped in bypass mode).
     //    Awaited so delivery failures surface as a 502 rather than
     //    silently returning "OTP resent" while the patient receives nothing.
     if (!bypassMode) {
-      const smsBody = `INFINITYGENESIS TECHSO PRIVATE LIMITED: Your Infinity MediSetu verification code is ${newOtp}. It is valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share this code with anyone.`;
       try {
-        await UniversalNotificationService.send({
-          recipient: { mobile: toE164(normalised) },
-          event: 'patient_mobile_verification_resend',
-          channels: ['sms'],
-          title: 'MediArogya OTP',
-          body: smsBody,
-          throwOnError: true,
-        });
+        await sendWhatsAppOtp(toE164(normalised), newOtp);
       } catch (err) {
         logger.error(
-          `[PatientAuth] Failed to resend OTP SMS to ${normalised}:`,
+          `[PatientAuth] Failed to resend OTP on WhatsApp to ${normalised}:`,
           err
         );
         // Roll back the resend count increment so the patient can try again

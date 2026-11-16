@@ -1,5 +1,5 @@
 // src/utils/__tests__/smsClient.test.ts
-import { sendSMS, sendWhatsAppTemplate } from '../smsClient';
+import { sendSMS, sendWhatsAppOtp, sendWhatsAppTemplate } from '../smsClient';
 import { SnsNotificationService } from '../../main/notifications/services/sns.service';
 import { envConfig } from '../envConfig';
 import { WhatsAppService } from '../../main/notifications/services/whatsapp.service';
@@ -126,6 +126,49 @@ describe('smsClient AWS SNS routing and WhatsApp placeholder tests', () => {
       ['Asha', 'Rajesh Kumar', 'Apollo', 'Fri, 10 Jul 2026', 'Time: 10:00 AM'],
       ['appt-1?type=livequeue'],
       undefined
+    );
+  });
+
+  it('should send an OTP through the authentication template, code in body and copy button', async () => {
+    delete process.env.WHATSAPP_TEMPLATE_OTP; // a local .env may pin a name
+    const sendingEnabled = envConfig.WHATSAPP_SENDING_ENABLED;
+    // The staging switch does not apply: an OTP only goes to the number that asked.
+    envConfig.WHATSAPP_SENDING_ENABLED = false;
+    try {
+      await sendWhatsAppOtp('+919876543210', '482913');
+    } finally {
+      envConfig.WHATSAPP_SENDING_ENABLED = sendingEnabled;
+    }
+
+    expect(WhatsAppService.sendTemplateMessage).toHaveBeenCalledWith(
+      '+919876543210',
+      'otp_verification',
+      'en',
+      ['482913'],
+      ['482913']
+    );
+  });
+
+  it('should use the env-configured OTP template name', async () => {
+    process.env.WHATSAPP_TEMPLATE_OTP = 'homoheal_login_otp';
+    await sendWhatsAppOtp('9876543210', '111222');
+
+    expect(WhatsAppService.sendTemplateMessage).toHaveBeenCalledWith(
+      '+919876543210',
+      'homoheal_login_otp',
+      'en',
+      ['111222'],
+      ['111222']
+    );
+  });
+
+  it('should reject when WhatsApp fails, so the caller can answer 502', async () => {
+    (WhatsAppService.sendTemplateMessage as jest.Mock).mockRejectedValueOnce(
+      new Error('Meta rejected the template')
+    );
+
+    await expect(sendWhatsAppOtp('9876543210', '123456')).rejects.toThrow(
+      'Meta rejected the template'
     );
   });
 

@@ -77,6 +77,27 @@ export async function sendWhatsAppTemplate<K extends WhatsAppTemplateKey>(
 }
 
 /**
+ * One-time verification codes (patient login and clinic phone verification)
+ * go out on WhatsApp instead of DLT SMS, through a Meta AUTHENTICATION
+ * template with a "Copy code" button. Meta's API takes the code twice: as the
+ * body's {{1}} and as the parameter of button 0.
+ *
+ * Not gated by WHATSAPP_SENDING_ENABLED: that switch stops staging from
+ * messaging real patients, while an OTP only goes to the number that asked
+ * for it, and OTP_BYPASS_ENABLED already decides whether one is sent at all.
+ * Throws on failure, so callers can return 502 and discard the unsent code.
+ */
+export async function sendWhatsAppOtp(to: string, code: string): Promise<void> {
+  await WhatsAppService.sendTemplateMessage(
+    normalizeWhatsAppNumber(to),
+    process.env.WHATSAPP_TEMPLATE_OTP || 'otp_verification',
+    WHATSAPP_LANGUAGE_CODE,
+    [code],
+    [code]
+  );
+}
+
+/**
  * Patient-facing appointment messaging. WhatsApp only.
  *
  * SMS was removed from this path deliberately. Only four DLT template ids exist

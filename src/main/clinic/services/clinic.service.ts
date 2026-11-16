@@ -75,7 +75,7 @@ import {
   hashToken,
 } from '../../../utils/authUtils';
 import { realtimeBus } from '../../realtime/services/realtimeBus.service';
-import { sendSMS } from '../../../utils/smsClient';
+import { sendWhatsAppOtp } from '../../../utils/smsClient';
 import { envConfig } from '../../../utils/envConfig';
 import { getReferrerNames } from '../../referral';
 
@@ -2185,18 +2185,12 @@ export class ClinicService {
       600 // 10 minutes
     );
 
-    // Must match the DLT-registered "admin verification code" template
-    // exactly — smsClient.sendSMS() routes on this substring to pick
-    // DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION, and carriers reject content
-    // that doesn't match the template ID's registered text.
-    const messageBody = `INFINITYGENESIS TECHSO PRIVATE LIMITED: Your Infinity MediSetu verification code is ${otp}. It is valid for 10 minutes. Do not share this code with anyone.`;
-
     try {
-      await sendSMS(`+91${phone}`, messageBody);
+      await sendWhatsAppOtp(`+91${phone}`, otp);
     } catch (error) {
       await redisClient.del(redisKey);
       logger.error(
-        `Failed to send clinic phone verification SMS to ${phone}: ${(error as Error).message}`
+        `Failed to send clinic phone verification OTP on WhatsApp to ${phone}: ${(error as Error).message}`
       );
       throw new HttpError(
         502,
@@ -2284,15 +2278,13 @@ export class ClinicService {
       600
     );
 
-    const messageBody = `INFINITYGENESIS TECHSO PRIVATE LIMITED: Your Infinity MediSetu verification code is ${otp}. It is valid for 10 minutes. Do not share this code with anyone.`;
-
     try {
-      await sendSMS(`+91${phone}`, messageBody);
+      await sendWhatsAppOtp(`+91${phone}`, otp);
     } catch (error) {
       // Roll back to the prior session so the clinic isn't locked out by a failed send.
       await redisClient.set(redisKey, storedData, 'EX', 600);
       logger.error(
-        `Failed to resend clinic phone verification SMS to ${phone}: ${(error as Error).message}`
+        `Failed to resend clinic phone verification OTP on WhatsApp to ${phone}: ${(error as Error).message}`
       );
       throw new HttpError(
         502,

@@ -1,7 +1,7 @@
 import { ClinicService } from '../services/clinic.service';
 import { database } from '../../../configurations/dbConnection';
 import redisClient from '../../../configurations/redisConfig';
-import { sendSMS } from '../../../utils/smsClient';
+import { sendWhatsAppOtp } from '../../../utils/smsClient';
 import { hashToken } from '../../../utils/authUtils';
 import { indianMobileSchema } from '../schemas/clinic.schemas';
 
@@ -62,7 +62,7 @@ describe('ClinicService.requestClinicPhoneUpdate', () => {
     jest.clearAllMocks();
   });
 
-  it('sends OTP via SMS and stores in Redis when clinic exists', async () => {
+  it('sends OTP via WhatsApp and stores in Redis when clinic exists', async () => {
     // Mock clinic exists check
     (database.select as jest.Mock).mockReturnValueOnce(
       createChain([
@@ -74,7 +74,7 @@ describe('ClinicService.requestClinicPhoneUpdate', () => {
       ])
     );
     (redisClient.set as jest.Mock).mockResolvedValueOnce('OK');
-    (sendSMS as jest.Mock).mockResolvedValueOnce(undefined);
+    (sendWhatsAppOtp as jest.Mock).mockResolvedValueOnce(undefined);
 
     const result = await ClinicService.requestClinicPhoneUpdate(
       'clinic-123',
@@ -88,9 +88,9 @@ describe('ClinicService.requestClinicPhoneUpdate', () => {
       'EX',
       600
     );
-    expect(sendSMS).toHaveBeenCalledWith(
+    expect(sendWhatsAppOtp).toHaveBeenCalledWith(
       '+919876543210',
-      expect.stringContaining('verification code')
+      expect.stringMatching(/^\d{6}$/)
     );
   });
 
@@ -118,7 +118,7 @@ describe('ClinicService.requestClinicPhoneUpdate', () => {
     ).rejects.toThrow('This phone number is already verified');
   });
 
-  it('deletes the OTP from Redis and throws 502 if SMS sending fails', async () => {
+  it('deletes the OTP from Redis and throws 502 if WhatsApp sending fails', async () => {
     (database.select as jest.Mock).mockReturnValueOnce(
       createChain([
         {
@@ -129,7 +129,9 @@ describe('ClinicService.requestClinicPhoneUpdate', () => {
       ])
     );
     (redisClient.set as jest.Mock).mockResolvedValueOnce('OK');
-    (sendSMS as jest.Mock).mockRejectedValueOnce(new Error('SNS unavailable'));
+    (sendWhatsAppOtp as jest.Mock).mockRejectedValueOnce(
+      new Error('WhatsApp unavailable')
+    );
 
     await expect(
       ClinicService.requestClinicPhoneUpdate('clinic-123', '9876543210')
@@ -225,7 +227,7 @@ describe('ClinicService.resendClinicPhoneOtp', () => {
     });
     (redisClient.get as jest.Mock).mockResolvedValueOnce(redisMockValue);
     (redisClient.set as jest.Mock).mockResolvedValueOnce('OK');
-    (sendSMS as jest.Mock).mockResolvedValueOnce(undefined);
+    (sendWhatsAppOtp as jest.Mock).mockResolvedValueOnce(undefined);
 
     const result = await ClinicService.resendClinicPhoneOtp(
       'clinic-123',
@@ -240,9 +242,9 @@ describe('ClinicService.resendClinicPhoneOtp', () => {
       'EX',
       600
     );
-    expect(sendSMS).toHaveBeenCalledWith(
+    expect(sendWhatsAppOtp).toHaveBeenCalledWith(
       '+919876543210',
-      expect.stringContaining('verification code')
+      expect.stringMatching(/^\d{6}$/)
     );
   });
 
@@ -305,7 +307,7 @@ describe('ClinicService.resendClinicPhoneOtp', () => {
     expect(redisClient.get).not.toHaveBeenCalled();
   });
 
-  it('rolls back to the prior session and throws 502 if SMS sending fails', async () => {
+  it('rolls back to the prior session and throws 502 if WhatsApp sending fails', async () => {
     const redisMockValue = JSON.stringify({
       phone: '9876543210',
       otpHash: hashToken('123456'),
@@ -314,7 +316,9 @@ describe('ClinicService.resendClinicPhoneOtp', () => {
     });
     (redisClient.get as jest.Mock).mockResolvedValueOnce(redisMockValue);
     (redisClient.set as jest.Mock).mockResolvedValue('OK');
-    (sendSMS as jest.Mock).mockRejectedValueOnce(new Error('SNS unavailable'));
+    (sendWhatsAppOtp as jest.Mock).mockRejectedValueOnce(
+      new Error('WhatsApp unavailable')
+    );
 
     await expect(
       ClinicService.resendClinicPhoneOtp('clinic-123', '9876543210')
