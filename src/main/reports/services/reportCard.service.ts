@@ -510,7 +510,7 @@ export class ReportCardService {
           clinicName,
           (payload.reportCard as any)?.followUpInDays
         ).catch((error) => {
-          logger.error('Failed to send SMS notification:', error);
+          logger.error('Failed to send prescription notification:', error);
         });
       }
 

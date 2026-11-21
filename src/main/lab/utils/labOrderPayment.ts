@@ -8,11 +8,7 @@ import {
 } from '../../money';
 import type { DbTransaction } from '../services/labCatalog.service';
 
-/**
- * Payment fields used to be columns on lab_orders, then rows in
- * lab_updated_payments; they now live in money_entries (source lab_test).
- * These correlated projections keep the old flat API shape.
- */
+// Payment fields now live in lab_money_entries (source lab_test); these projections keep the old flat API shape.
 const ledgerColumns = LabMoneyService.columns(
   'lab_test',
   sql.raw('"lab_orders"."id"')

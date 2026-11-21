@@ -1,7 +1,6 @@
 import { UniversalNotificationService } from '../services/universalNotification.service';
 import { PushProvider } from '../providers/push.provider';
 import { EmailProvider } from '../providers/email.provider';
-import { SmsProvider } from '../providers/sms.provider';
 import { SocketProvider } from '../providers/socket.provider';
 import * as dbService from '../services/notifications.service';
 
@@ -9,7 +8,6 @@ import { getUserNotificationPreference } from '../preferences/notificationPrefer
 
 jest.mock('../providers/push.provider');
 jest.mock('../providers/email.provider');
-jest.mock('../providers/sms.provider');
 jest.mock('../providers/socket.provider');
 jest.mock('../services/notifications.service');
 jest.mock('../../../app', () => ({
@@ -40,7 +38,7 @@ describe('UniversalNotificationService', () => {
         mobile: '1234567890',
       },
       event: 'test_event',
-      channels: ['email', 'sms'] as any[],
+      channels: ['email', 'socket'] as any[],
       title: 'Hello',
       body: 'World',
     };
@@ -57,13 +55,12 @@ describe('UniversalNotificationService', () => {
       metadata: null,
     });
 
-    // Should dispatch to email and SMS providers
+    // Should dispatch to the email and socket providers
     expect(EmailProvider.prototype.send).toHaveBeenCalledWith(options);
-    expect(SmsProvider.prototype.send).toHaveBeenCalledWith(options);
+    expect(SocketProvider.prototype.send).toHaveBeenCalled();
 
-    // Should NOT dispatch to push and socket providers
+    // Should NOT dispatch to push
     expect(PushProvider.prototype.send).not.toHaveBeenCalled();
-    expect(SocketProvider.prototype.send).not.toHaveBeenCalled();
   });
 
   it('should NOT create database entry when userId is absent', async () => {
@@ -94,7 +91,7 @@ describe('UniversalNotificationService', () => {
         mobile: '1234567890',
       },
       event: 'test_event',
-      channels: ['email', 'sms'] as any[],
+      channels: ['email', 'push'] as any[],
       title: 'Hello',
       body: 'World',
     };
@@ -105,7 +102,7 @@ describe('UniversalNotificationService', () => {
     ).resolves.not.toThrow();
 
     expect(EmailProvider.prototype.send).toHaveBeenCalled();
-    expect(SmsProvider.prototype.send).toHaveBeenCalled();
+    expect(PushProvider.prototype.send).toHaveBeenCalled();
   });
 
   it('should skip push notification when push is disabled in preferences', async () => {

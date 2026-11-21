@@ -52,10 +52,10 @@ describe('parseS3Ref', () => {
   it('decodes percent-escaped keys', () => {
     expect(
       parseS3Ref(
-        'https://b.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png',
+        'https://b.s3.ap-south-1.amazonaws.com/assets/Logo%20V1.png',
         DEFAULT_BUCKET
       )
-    ).toEqual({ bucket: 'b', key: 'ims/Logo V1.png' });
+    ).toEqual({ bucket: 'b', key: 'assets/Logo V1.png' });
   });
 
   it('treats a bare key as living in the default bucket', () => {

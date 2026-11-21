@@ -27,7 +27,7 @@ const sampleCtx = {
   patientName: 'sunil',
   doctorName: 'anita mehta',
   clinicName: 'Sunrise Clinic',
-  performerName: 'Harshit Sharma',
+  performerName: 'Amit Verma',
   performerRole: 'Receptionist',
   userRole: 'Receptionist',
   testName: 'Blood count',

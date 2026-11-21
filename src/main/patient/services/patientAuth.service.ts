@@ -38,7 +38,7 @@ const OTP_RATE_WINDOW_SECS = envConfig.OTP_RATE_WINDOW_SECS;
 const MAX_OTP_ATTEMPTS_PER_WINDOW = envConfig.OTP_MAX_ATTEMPTS_PER_WINDOW;
 const SESSION_CACHE_TTL_SECS = envConfig.SESSION_CACHE_TTL_SECS;
 
-// Controlled by environment variables (if true, always use fixed OTP and skip SMS sending)
+// Controlled by environment variables (if true, always use fixed OTP and skip sending the code)
 const IS_BYPASS_ENABLED = envConfig.OTP_BYPASS_ENABLED;
 const FIXED_OTP = envConfig.OTP_FIXED;
 const BYPASS_TEST_MOBILE = envConfig.BYPASS_TEST_MOBILE;
@@ -87,7 +87,7 @@ export class PatientAuthService {
    * Stores the OTP in `tokens` table with type='patient_otp'.
    * The `email` column of the tokens row holds the patient's mobile number.
    * If the patient account already exists, it is checked for blocked/archived
-   * status before an OTP is generated — avoids wasting SMS credits.
+   * status before an OTP is generated — avoids wasting WhatsApp messages.
    */
   static async sendOtp(mobile: string) {
     const normalised = normaliseMobile(mobile);

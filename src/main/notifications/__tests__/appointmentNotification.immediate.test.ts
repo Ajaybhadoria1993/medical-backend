@@ -1,5 +1,4 @@
-// Booking message: WhatsApp only. The old "Appointment Booked" SMS is gone, so
-// a clinic's SMS switch no longer sends anything on its own.
+// Booking message: WhatsApp only, and only when the clinic has WhatsApp on.
 const getNotificationContext = jest.fn();
 jest.mock('../models/appointmentParticipants.model', () => ({
   getNotificationContext: (...args: unknown[]) =>
@@ -12,13 +11,6 @@ jest.mock('../queues/whatsappOutbox.queue', () => ({
     enqueueWhatsAppTemplate(...args),
 }));
 
-const sendTransactionalSms = jest.fn();
-jest.mock('../services/sns.service', () => ({
-  SnsNotificationService: {
-    sendTransactionalSms: (...args: unknown[]) => sendTransactionalSms(...args),
-  },
-}));
-
 jest.mock('../../../utils/logger', () => ({
   __esModule: true,
   default: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
@@ -27,13 +19,13 @@ jest.mock('../../../utils/logger', () => ({
 import { AppointmentNotificationService } from '../services/appointmentNotification.service';
 import { envConfig } from '../../../utils/envConfig';
 
-const context = (smsEnabled: boolean, whatsappEnabled: boolean) => ({
+const context = (whatsappEnabled: boolean) => ({
   patientName: 'Asha',
   doctorName: 'Dr. Rajesh Kumar',
   clinicId: 'clinic-1',
   patientMobile: '9876543210',
   clinicName: 'Apollo',
-  smsEnabled,
+  smsEnabled: false,
   whatsappEnabled,
   appointmentDate: new Date('2026-07-10T00:00:00Z'),
   appointmentTime: '10:00',
@@ -61,8 +53,8 @@ describe('AppointmentNotificationService.sendImmediateNotification', () => {
     envConfig.WHATSAPP_FORCE_ENABLED = forceEnabled;
   });
 
-  it('queues one appointmentBooked WhatsApp and never sends an SMS', async () => {
-    getNotificationContext.mockResolvedValue(context(true, true));
+  it('queues one appointmentBooked WhatsApp', async () => {
+    getNotificationContext.mockResolvedValue(context(true));
 
     await send();
 
@@ -72,15 +64,13 @@ describe('AppointmentNotificationService.sendImmediateNotification', () => {
       expect.objectContaining({ key: 'appointmentBooked' }),
       { clinicId: 'clinic-1', appointmentId: 'appt-1' }
     );
-    expect(sendTransactionalSms).not.toHaveBeenCalled();
   });
 
-  it('sends nothing when the clinic has WhatsApp off, even with SMS on', async () => {
-    getNotificationContext.mockResolvedValue(context(true, false));
+  it('sends nothing when the clinic has WhatsApp off', async () => {
+    getNotificationContext.mockResolvedValue(context(false));
 
     await send();
 
     expect(enqueueWhatsAppTemplate).not.toHaveBeenCalled();
-    expect(sendTransactionalSms).not.toHaveBeenCalled();
   });
 });

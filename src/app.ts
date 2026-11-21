@@ -76,8 +76,6 @@ async function serverStarter() {
   app.use(cors(corsOptions));
   app.use(compression());
   app.use('/api/v1/prescription/scan/upload', express.json({ limit: '12mb' }));
-  app.use('/api/v1/prescription/scan', express.json({ limit: '12mb' }));
-  app.use('/api/v1/prescription/auto-align', express.json({ limit: '12mb' }));
   // Capture the raw request body so webhook HMAC signatures (e.g. Razorpay)
   // can be verified against the exact bytes the provider signed. The global
   // JSON parser otherwise consumes the stream, breaking signature checks.

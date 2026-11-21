@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { database } from '../../../configurations/dbConnection';
 import { getISTDateString } from '../../../utils/istDateTime';
-import { MoneyEntryModel as Entry } from '../models/moneyEntry.model';
+import { LabMoneyEntryModel as Entry } from '../models/labMoneyEntry.model';
 import { LabReceiptSequenceModel as LabSeq } from '../models/receiptSequence.model';
 import { formatLabReceiptNo, toPaise } from '../utils/money.utils';
 
@@ -116,7 +116,7 @@ const STATUS_SQL = sql.raw(`CASE
   WHEN lab_money.reason = '${FAILED_REASON}' THEN 'failed'
   ELSE 'pending' END`);
 
-/** Lab money in money_entries: one row per lab payment record, kept in step in place (unlike clinic rows). */
+/** Lab money in lab_money_entries: one row per lab payment record, kept in step in place (unlike clinic rows). */
 export class LabMoneyService {
   /** Correlated columns for a query over the source's own table (`outerId` is its id column). */
   static columns(sourceType: LabMoneySource, outerId: SQL) {
@@ -125,19 +125,19 @@ export class LabMoneyService {
     const where = sql`lab_money.source_type = ${source} AND lab_money.source_id = ${outerId}`;
     // Refunds are their own rows; the payment record they leave alone is what reads as "latest".
     const latest = (field: SQL) => sql`(
-      SELECT ${field} FROM money_entries lab_money
+      SELECT ${field} FROM lab_money_entries lab_money
       WHERE ${where} AND lab_money.entry_type <> 'refund'
       ORDER BY lab_money.created_at DESC, lab_money.id DESC
       LIMIT 1
     )`;
     const sumOf = (types: string) => sql`(
-      SELECT COALESCE(SUM(lab_money.amount_paise), 0) FROM money_entries lab_money
+      SELECT COALESCE(SUM(lab_money.amount_paise), 0) FROM lab_money_entries lab_money
       WHERE ${where} AND lab_money.entry_type::text IN (${sql.raw(types)})
     )`;
     const refunded = sumOf(`'refund'`);
     return {
       price: sql<number | null>`(
-        SELECT (SUM(lab_money.amount_paise) / 100)::int FROM money_entries lab_money
+        SELECT (SUM(lab_money.amount_paise) / 100)::int FROM lab_money_entries lab_money
         WHERE ${where} AND lab_money.entry_type <> 'refund'
       )`,
       paymentStatus: sql<string>`CASE
@@ -159,7 +159,7 @@ export class LabMoneyService {
     const [row] = await tx
       .insert(Entry)
       .values({
-        clinicId: null,
+        labId: input.labId,
         patientId: input.patientId,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
@@ -173,8 +173,6 @@ export class LabMoneyService {
           entryType === 'payment'
             ? await this.nextReceiptNo(tx, input.labId, createdAt)
             : null,
-        requestId: null,
-        gatewayRef: null,
         createdBy: input.createdBy,
         createdAt,
       })
@@ -329,7 +327,7 @@ export class LabMoneyService {
     const [row] = await tx
       .insert(Entry)
       .values({
-        clinicId: null,
+        labId: input.labId,
         patientId: input.patientId,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
@@ -340,8 +338,6 @@ export class LabMoneyService {
         paymentNotes: input.paymentNotes ?? null,
         channel: 'desk',
         receiptNo: await this.nextReceiptNo(tx, input.labId, createdAt),
-        requestId: null,
-        gatewayRef: null,
         createdBy: input.createdBy,
         createdAt,
       })

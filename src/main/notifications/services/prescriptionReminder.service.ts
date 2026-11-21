@@ -46,19 +46,11 @@ class PrescriptionReminderQueue {
   private async sendFollowUpReminder(data: FollowUpJobData) {
     // 1. Get clinic settings
     const [clinicSettings] = await database
-      .select({
-        smsEnabled: ClinicSettingsModel.smsEnabled,
-        whatsappEnabled: ClinicSettingsModel.whatsappEnabled,
-      })
+      .select({ whatsappEnabled: ClinicSettingsModel.whatsappEnabled })
       .from(ClinicSettingsModel)
       .where(eq(ClinicSettingsModel.clinicId, data.clinicId));
 
-    if (
-      !clinicSettings ||
-      (!clinicSettings.smsEnabled && !clinicSettings.whatsappEnabled)
-    ) {
-      return;
-    }
+    if (!clinicSettings?.whatsappEnabled) return;
 
     // 2. Create message
     const message = `You have an appointment tomorrow at ${data.clinicName}. \n\nThank You.`;

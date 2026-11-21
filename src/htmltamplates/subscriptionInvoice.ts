@@ -165,18 +165,6 @@ export const subscriptionInvoiceTemplate = `
     text-transform: uppercase;
     letter-spacing: 1px;
   }
-  .signature-section {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 20px;
-  }
-  .signature-box {
-    text-align: center;
-    position: relative;
-  }
-  .seal img {
-    max-width: 120px;
-  }
   .footer {
     margin-top: 30px;
     font-size: 12px;
@@ -280,13 +268,6 @@ export const subscriptionInvoiceTemplate = `
       </tr>
     </tbody>
   </table>
-  <div class="signature-section">
-    <div class="signature-box">
-      <div class="seal" style="opacity: 0.8">
-        <img src="https://i.ibb.co/YTKDDQbY/IMS-Seal.png" alt="Seal">
-      </div>
-    </div>
-  </div>
   <div class="footer">
     This is a computer-generated invoice.<br>
     For queries: bhadoriaajay99@gmail.com

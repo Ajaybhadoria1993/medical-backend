@@ -1672,7 +1672,7 @@ export class PrescriptionPrintService {
   static async regeneratePdf(
     reportCardId: string,
     pickedLanguage?: PrescriptionLanguage,
-    // Passed by the save path, which has already loaded it for the SMS.
+    // Passed by the save path, which has already loaded it for the patient message.
     preloaded?: Awaited<
       ReturnType<typeof PrescriptionPrintService.buildPrescriptionPdfInput>
     >

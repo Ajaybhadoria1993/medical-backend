@@ -95,7 +95,7 @@ export function gstSplit(
   return { taxablePaise, cgstPaise, sgstPaise, igstPaise, totalPaise };
 }
 
-/** e.g. IMS/26-27/0001; restarts every financial year. Grows past 9999 and stays within GST's 16 characters up to 999,999. */
+/** e.g. MA/26-27/0001; restarts every financial year. Grows past 9999 and stays within GST's 16 characters up to 999,999. */
 export const invoiceNumber = (
   prefix: string,
   financialYear: string,

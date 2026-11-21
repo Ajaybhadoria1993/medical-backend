@@ -298,7 +298,7 @@ export async function notifyAppointmentRescheduled(
       newSchedule
     ).catch((err) => {
       logger.error(
-        `Failed to send reschedule SMS/WhatsApp for appointment ${appointmentId}: ${(err as Error).message}`
+        `Failed to send reschedule WhatsApp for appointment ${appointmentId}: ${(err as Error).message}`
       );
     });
   }
@@ -334,14 +334,9 @@ async function sendRescheduleToPatient(
   if (!settings) return;
   const mobile = await resolvePatientMobile(patientId, patient?.mobile);
   if (!mobile) return;
-  // WHATSAPP_FORCE_ENABLED must be checked here too: with both clinic flags
+  // WHATSAPP_FORCE_ENABLED must be checked here too: with the clinic flag
   // off this returns before reaching the send, where the override lives.
-  if (
-    !settings.smsEnabled &&
-    !settings.whatsappEnabled &&
-    !envConfig.WHATSAPP_FORCE_ENABLED
-  )
-    return;
+  if (!settings.whatsappEnabled && !envConfig.WHATSAPP_FORCE_ENABLED) return;
 
   const scheduledAt = appointmentInstantIST(newSchedule.date, newSchedule.time);
 
@@ -350,11 +345,11 @@ async function sendRescheduleToPatient(
   const { patientName, doctorName } =
     await getAppointmentParticipants(appointmentId);
 
-  const smsBody = `Appointment Rescheduled:\n\nClinic: ${clinicName}\nDate: ${formattedDate}\n${timeOrToken}\n\nPlease arrive 10 minutes early.`;
+  const messageBody = `Appointment Rescheduled:\n\nClinic: ${clinicName}\nDate: ${formattedDate}\n${timeOrToken}\n\nPlease arrive 10 minutes early.`;
 
   await sendAppointmentNotification(
     mobile,
-    smsBody,
+    messageBody,
     settings.whatsappEnabled ?? false,
     {
       key: 'appointmentRescheduled',
@@ -820,7 +815,7 @@ export async function notifyNewUserCreated(
 
 /**
  * Notify about No Show
- * Notified: Patient (SMS/WhatsApp), Doctor, Receptionist (App Notification)
+ * Notified: Patient (WhatsApp), Doctor, Receptionist (App Notification)
  */
 export async function notifyAppointmentNoShow(
   appointmentId: string,
@@ -853,7 +848,7 @@ export async function notifyAppointmentNoShow(
   const title = 'Marked as no show';
   const body = `The appointment for ${patient.name || 'the patient'} at ${clinic.clinicName} was marked as a no show (${reason}). What happens next: ${actionTaken}.`;
 
-  // 1. Send SMS/WhatsApp to Patient if enabled
+  // 1. Send WhatsApp to Patient if enabled
   const patientMobile = await resolvePatientMobile(patientId, patient.mobile);
   if (patientMobile && settings) {
     await sendAppointmentNotification(

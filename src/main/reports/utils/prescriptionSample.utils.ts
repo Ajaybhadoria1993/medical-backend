@@ -53,7 +53,7 @@ export const buildPrescriptionSample = () => ({
   },
   doctor: {
     name: 'Udit Chouhan',
-    email: 'udit.chouhan@ims.com',
+    email: 'udit.chouhan@example.com',
     qualification: 'MBBS, MD',
     speciality: 'General Physician',
     registrationNumber: 'DVGCS456123612',

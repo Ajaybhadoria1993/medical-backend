@@ -1,6 +1,6 @@
 /**
  * Legacy in-app kill switch. Suppresses the bell row, socket emit and push —
- * never SMS/WhatsApp/email. Rollback is `NOTIFICATIONS_INAPP_ENABLED=true`.
+ * never WhatsApp/email. Rollback is `NOTIFICATIONS_INAPP_ENABLED=true`.
  * Reasoning: docs/playbook/NOTIFICATION_REBUILD.md, Phase 0 Step 0.
  */
 
