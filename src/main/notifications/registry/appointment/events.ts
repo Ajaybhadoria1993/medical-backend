@@ -199,7 +199,7 @@ export const appointmentEvents = defineEvents({
     enrich: withParticipantNames,
     collapseKey: oneRowPerAppointment,
     clickAction: openAppointment,
-    // Staff only. The patient is told over SMS/WhatsApp by the no-show flow,
+    // Staff only. The patient is told over WhatsApp by the no-show flow,
     // and telling them in-app that they failed to attend serves no purpose.
     audiences: [staffAudience(appointmentMessages.staff.noShow)],
   },

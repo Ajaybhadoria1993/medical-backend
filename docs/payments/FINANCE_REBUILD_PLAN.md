@@ -436,7 +436,7 @@ One webhook, **24 events** (staging matches):
    `docker exec cms-backend-app-stg node dist/scripts/clearPayoutDrafts.js --apply`
 4. Run step 2 again; both counts should be 0. Safe to rerun.
 
-Prod: the same commands with `cms-backend-app` in place of `cms-backend-app-stg`. Locally: `NODE_ENV=development npx tsx src/scripts/clearPayoutDrafts.ts [--apply]`.
+Prod: the same commands inside the prod app container. Locally: `NODE_ENV=development npx tsx src/scripts/clearPayoutDrafts.ts [--apply]`.
 
 ## Payout account: one owner email per Razorpay account
 

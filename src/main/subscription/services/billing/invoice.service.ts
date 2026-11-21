@@ -93,7 +93,7 @@ const METHOD_LABELS: Record<string, string> = {
   emi: 'EMI',
 };
 const methodLabel = (m: string | null) => (m ? (METHOD_LABELS[m] ?? m) : null);
-// Slashes in "IMS/26-27/0001" would split the S3 key and the download name.
+// Slashes in "MA/26-27/0001" would split the S3 key and the download name.
 const pdfName = (number: string) => `${number.replace(/\//g, '-')}.pdf`;
 
 const seller = (): InvoiceParty => ({

@@ -20,8 +20,7 @@ export type NotificationPriority =
   (typeof notificationPriorityEnum.enumValues)[number];
 export type NotificationKind = (typeof notificationKindEnum.enumValues)[number];
 
-export type NotificationChannel =
-  'inApp' | 'push' | 'email' | 'sms' | 'whatsapp';
+export type NotificationChannel = 'inApp' | 'push' | 'email' | 'whatsapp';
 
 /** Only these two are user-configurable today; the settings screen renders them. */
 export type ConfigurableChannel = Extract<
@@ -48,12 +47,6 @@ export interface EmailMessage {
   attachments?: EmailAttachmentRef[];
 }
 
-export interface SmsMessage {
-  text: string;
-  /** DLT template id — SMS copy is registered with operators, not free text. */
-  dltTemplateId?: string;
-}
-
 /**
  * A registered template plus its parameters. Reuses the outbox's discriminated
  * union rather than a loose {key, params}, so an entry whose params do not match
@@ -66,7 +59,6 @@ export interface NotificationMessages<Ctx> {
   inApp?: (ctx: Ctx) => InAppMessage;
   push?: (ctx: Ctx) => InAppMessage;
   email?: (ctx: Ctx) => EmailMessage;
-  sms?: (ctx: Ctx) => SmsMessage;
 }
 
 /** Patient WhatsApp, outside the audiences: bell prefs, the cross-audience

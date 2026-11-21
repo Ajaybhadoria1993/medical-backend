@@ -7,11 +7,10 @@
  * patient ends up reading staff-facing copy about themselves, and the wording
  * below preserves the distinction the previous helpers already made.
  *
- * In-app and push text is authored here and can be edited freely. SMS and
- * WhatsApp are not: SMS content is registered with Indian telecom operators
- * under DLT and WhatsApp templates are approved by Meta, so those resolve to a
- * reference plus parameters rather than a finished string. Editing their
- * wording is a re-registration, not a code change.
+ * In-app and push text is authored here and can be edited freely. WhatsApp is
+ * not: its templates are approved by Meta, so it resolves to a reference plus
+ * parameters rather than a finished string. Editing its wording is a
+ * re-registration, not a code change.
  *
  * Copy is kept out of events.ts on purpose: wording changes for different
  * reasons, by different people, at a different review bar than "who receives

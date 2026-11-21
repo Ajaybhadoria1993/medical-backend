@@ -18,19 +18,16 @@ export class PrescriptionNotificationService {
     try {
       // Get clinic settings
       const [clinicSettings] = await database
-        .select({
-          smsEnabled: ClinicSettingsModel.smsEnabled,
-          whatsappEnabled: ClinicSettingsModel.whatsappEnabled,
-        })
+        .select({ whatsappEnabled: ClinicSettingsModel.whatsappEnabled })
         .from(ClinicSettingsModel)
         .where(eq(ClinicSettingsModel.clinicId, clinicId));
 
       if (!clinicSettings) return;
 
-      const { smsEnabled, whatsappEnabled } = clinicSettings;
+      const { whatsappEnabled } = clinicSettings;
 
-      // If both disabled, don't send
-      if (!smsEnabled && !whatsappEnabled) return;
+      // WhatsApp is the only patient channel
+      if (!whatsappEnabled) return;
 
       // Message for prescription completion
       const message = `Thank you! Your appointment is completed. \n\nVisit again.`;

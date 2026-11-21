@@ -4,7 +4,8 @@ import { eq, and } from 'drizzle-orm';
 
 /** Global fee configs are versioned (SCD2): the seed only creates a missing one, never edits a live version. */
 export async function seedRazorpayConfig() {
-  const globalFeeConfigs = [
+  // Typed as full rows so a new NOT NULL column fails the build, not a fresh-DB seed.
+  const globalFeeConfigs: (typeof FeeConfigVersionModel.$inferInsert)[] = [
     {
       scope: 'GLOBAL',
       clinicId: null,
@@ -16,6 +17,7 @@ export async function seedRazorpayConfig() {
       rateOrAmount: '2.0000', // 2.0%
       taxRate: '18.00',
       taxTreatment: 'TAX_EXCLUSIVE',
+      deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
       isActive: true,
     },
     {
@@ -29,6 +31,7 @@ export async function seedRazorpayConfig() {
       rateOrAmount: '10.0000', // 10.0%
       taxRate: '18.00',
       taxTreatment: 'TAX_EXCLUSIVE',
+      deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
       isActive: true,
     },
     {
@@ -42,6 +45,8 @@ export async function seedRazorpayConfig() {
       rateOrAmount: '2.0000', // 2.0%
       taxRate: '18.00',
       taxTreatment: 'TAX_EXCLUSIVE',
+      feeRecipient: 'PAYMENT_GATEWAY',
+      deductionStrategy: 'ADD_TO_PATIENT_TOTAL',
       isActive: true,
     },
   ];
@@ -57,7 +62,7 @@ export async function seedRazorpayConfig() {
         eq(FeeConfigVersionModel.isActive, true)
       ),
       values: {} as typeof FeeConfigVersionModel.$inferInsert,
-      createOnly: config as typeof FeeConfigVersionModel.$inferInsert,
+      createOnly: config,
     });
     tally(counts, changed, config.feeType, result);
   }

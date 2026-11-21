@@ -129,12 +129,6 @@ interface EnvConfigType {
   NOTIFICATIONS_REGISTRY_ENABLED: boolean;
   NOTIFY_STRICT_RECIPIENTS_APPOINTMENT: boolean;
   SUPER_ADMIN_NOTIFY_EMAILS: string[] | null;
-  DLT_ENTITY_ID?: string;
-  DLT_SENDER_ID: string;
-  DLT_TEMPLATE_PATIENT_MOBILE_VERIFICATION?: string;
-  DLT_TEMPLATE_PATIENT_MOBILE_VERIFICATION_RESEND?: string;
-  DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION?: string;
-  DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION_RESEND?: string;
 }
 
 // Create the environment configuration object
@@ -270,7 +264,7 @@ export const envConfig: EnvConfigType = {
     process.env.ENABLE_SUBSCRIPTION_PAYMENTS === 'true',
 
   // Placeholders until the accountant confirms; set the real values per environment.
-  INVOICE_PREFIX: process.env.INVOICE_PREFIX || 'IMS',
+  INVOICE_PREFIX: process.env.INVOICE_PREFIX || 'MA',
   CREDIT_NOTE_PREFIX: process.env.CREDIT_NOTE_PREFIX || 'CN',
   INVOICE_SAC_CODE: process.env.INVOICE_SAC_CODE || '998314',
   INVOICE_SELLER_NAME: process.env.INVOICE_SELLER_NAME || 'MediArogya',
@@ -376,16 +370,6 @@ export const envConfig: EnvConfigType = {
         .split(',')
         .map((e) => e.trim())
         .filter(Boolean),
-  DLT_ENTITY_ID: process.env.DLT_ENTITY_ID,
-  DLT_SENDER_ID: process.env.DLT_SENDER_ID || 'INFMSU',
-  DLT_TEMPLATE_PATIENT_MOBILE_VERIFICATION:
-    process.env.DLT_TEMPLATE_PATIENT_MOBILE_VERIFICATION,
-  DLT_TEMPLATE_PATIENT_MOBILE_VERIFICATION_RESEND:
-    process.env.DLT_TEMPLATE_PATIENT_MOBILE_VERIFICATION_RESEND,
-  DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION:
-    process.env.DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION,
-  DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION_RESEND:
-    process.env.DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION_RESEND,
 };
 
 /**
@@ -395,8 +379,8 @@ export const envConfig: EnvConfigType = {
  * Read through this helper rather than comparing `ENABLE_NOTIFICATIONS`
  * inline: the flag used to be checked at some call sites and not others, so
  * booking notifications were silently off while reschedule and lab messages
- * still sent. Per-clinic `clinic_settings.sms_enabled` / `whatsapp_enabled`
- * remain the finer-grained control — this is the environment-wide switch.
+ * still sent. Per-clinic `clinic_settings.whatsapp_enabled` remains the
+ * finer-grained control — this is the environment-wide switch.
  */
 export function notificationsEnabled(): boolean {
   return envConfig.ENABLE_NOTIFICATIONS !== 'false';

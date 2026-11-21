@@ -30,7 +30,7 @@ export class AppointmentNotificationService {
         envConfig.WHATSAPP_FORCE_ENABLED || context.whatsappEnabled;
 
       if (!patientMobile || !clinicName) return;
-      // WhatsApp only: the booking SMS was replaced by the WhatsApp template.
+      // WhatsApp is the only patient channel.
       if (!whatsappEnabled) return;
 
       const appointmentDateTime = appointmentInstantIST(

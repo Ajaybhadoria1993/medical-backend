@@ -59,7 +59,7 @@ const entryWrite = (inserted: Record<string, unknown>[]) =>
   inserted[inserted.length - 1];
 
 describe('LabMoneyService.insert', () => {
-  it('writes a paid lab payment as a payment with a lab receipt and no clinic', async () => {
+  it('writes a paid lab payment as a payment with a lab receipt, keyed by its lab', async () => {
     const { tx, inserted } = fakeTx();
     const row = await LabMoneyService.insert(tx, {
       ...base,
@@ -70,9 +70,7 @@ describe('LabMoneyService.insert', () => {
     });
 
     expect(entryWrite(inserted)).toMatchObject({
-      clinicId: null,
-      requestId: null,
-      gatewayRef: null,
+      labId: 'lab-1',
       channel: 'desk',
       entryType: 'payment',
       reason: null,
@@ -185,7 +183,7 @@ describe('LabMoneyService.refund', () => {
     });
 
     expect(entryWrite(inserted)).toMatchObject({
-      clinicId: null,
+      labId: 'lab-1',
       sourceType: 'lab_home_collection',
       sourceId: 'home-1',
       entryType: 'refund',

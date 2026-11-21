@@ -76,8 +76,8 @@ describe('Clinic Route Onboarding Error Handling', () => {
       postalCode: 452010,
     },
     stakeholder: {
-      name: 'Harshit Sharma',
-      email: 'harshitsharma@example.com',
+      name: 'Amit Verma',
+      email: 'amitverma@example.com',
       phone: '9966553322',
       pan: 'ABCPD1234P',
       relationship: {

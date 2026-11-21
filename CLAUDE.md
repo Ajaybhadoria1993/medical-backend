@@ -3,10 +3,9 @@
 Node.js/Express/TypeScript backend API for MediArogya Clinic Management Software.
 Stack: Drizzle ORM + PostgreSQL, Redis, Socket.io, Zod, JWT.
 
-> This is one of two repos under `imsCore/`. The FE (`../Medi_Arogya_FE`)
-> proxies `/api` and `/socket.io` to this server on `localhost:5000` in dev.
-> The repo-root `../CLAUDE.md` has the cross-repo / deploy overview, and
-> `../WORKFLOW.md` defines how a task is run (scope, gates, definition of done).
+> This repo sits in `Medi_Arogya_Final/` beside the FE (`../medical-frontend`) and the
+> two mobile apps. The FE proxies `/api` and `/socket.io` to this server on `localhost:5000`
+> in dev. `WORKFLOW.md` defines how a task is run (scope, gates, definition of done).
 
 ## Commands
 
@@ -28,7 +27,7 @@ Stack: Drizzle ORM + PostgreSQL, Redis, Socket.io, Zod, JWT.
 
 ## Deploy (dev / staging / prod)
 
-Three fully isolated environments — separate compose files, container names/volumes, host ports, DB creds, and migration folders (`docker/docker-compose.{dev,staging,prod}.yml`; all Docker files live under `docker/`, but `.env`/`.dockerignore` stay at repo root since the build context is the repo root). Env resolution: `src/utils/envConfig.ts` (`DEV_DB_*` / `STAGING_DB_*` / `PROD_DB_*`, selected by `NODE_ENV`).
+Three fully isolated environments — separate compose files, container names/volumes, host ports, DB creds, and migration folders (`docker/docker-compose.{dev,staging}.yml`; prod has no compose file until its server is set up; all Docker files live under `docker/`, but `.env`/`.dockerignore` stay at repo root since the build context is the repo root). Env resolution: `src/utils/envConfig.ts` (`DEV_DB_*` / `STAGING_DB_*` / `PROD_DB_*`, selected by `NODE_ENV`).
 
 | | dev | staging | prod |
 |---|---|---|---|
@@ -42,7 +41,7 @@ Three fully isolated environments — separate compose files, container names/vo
 
 CI/CD: `.github/workflows/main.yml` — `build-and-test` on every push to `main`/`staging` + PRs into `main`; `deploy-staging` on push to `staging`; prod `deploy` only on `vX.Y.Z` tags reachable from `main`. Healthchecks use `wget --spider`, **not** `curl` (the runtime image never installs `curl`).
 
-Test a compose file locally: `docker/docker-compose.{staging,prod}.yml` only have `image:`, so they pull the published image. To build local code as staging (from repo root): `docker compose -f docker/docker-compose.staging.yml -f docker/docker-compose.staging.override.yml up -d --build app`.
+Test a compose file locally: `docker/docker-compose.staging.yml` only has `image:`, so it pulls the published image. To build local code as staging (from repo root): `docker compose -f docker/docker-compose.staging.yml -f docker/docker-compose.staging.override.yml up -d --build app`.
 
 ## Architecture
 

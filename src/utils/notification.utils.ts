@@ -67,7 +67,7 @@ export async function sendNotificationToUser(opts: NotifyOpts) {
 
   // Phase 0, Step 0 — legacy in-app kill switch. Suppresses the bell, the socket
   // emit and the push for informational events while the Notification Center is
-  // rebuilt. SMS/WhatsApp/email are untouched; functional events bypass it.
+  // rebuilt. WhatsApp/email are untouched; functional events bypass it.
   if (!isLegacyInAppAllowed(action, opts.metadata?.source, opts.type)) {
     inAppEnabled = false;
     pushEnabled = false;

@@ -77,12 +77,12 @@ describe('maskSensitive', () => {
   it("keeps a doctor's name inside a patient row", () => {
     const out = maskSensitive({
       patientAppointments: [
-        { name: 'Ravi Sharma', doctor: { name: 'Harshit Sharma' } },
+        { name: 'Ravi Sharma', doctor: { name: 'Amit Verma' } },
       ],
     });
     expect(out).toEqual({
       patientAppointments: [
-        { name: 'R*** S***', doctor: { name: 'Harshit Sharma' } },
+        { name: 'R*** S***', doctor: { name: 'Amit Verma' } },
       ],
     });
   });
@@ -90,11 +90,11 @@ describe('maskSensitive', () => {
   it('keeps pharmacy report figures, masks a bank account holder', () => {
     const out = maskSensitive({
       topSellingMedicines: [{ medicineName: 'Paracetamol 500', quantity: 40 }],
-      payoutAccount: { accountHolderName: 'Harshit Sharma', bankName: 'HDFC' },
+      payoutAccount: { accountHolderName: 'Amit Verma', bankName: 'HDFC' },
     });
     expect(out).toEqual({
       topSellingMedicines: [{ medicineName: 'Paracetamol 500', quantity: 40 }],
-      payoutAccount: { accountHolderName: 'H*** S***', bankName: 'HDFC' },
+      payoutAccount: { accountHolderName: 'A*** V***', bankName: 'HDFC' },
     });
   });
 

@@ -1452,7 +1452,7 @@ export class AppointmentService {
     return created;
   }
 
-  /** Runs after the update commits: SMS/WhatsApp calls must not run while rows are locked. */
+  /** Runs after the update commits: WhatsApp calls must not run while rows are locked. */
   private static async dispatchUpdateNotifications(
     updated: typeof AppointmentModel.$inferSelect,
     payload: UpdateAppointmentDto,
@@ -1477,7 +1477,7 @@ export class AppointmentService {
         updated.patientId
       );
     } else if (updated.appointmentStatus === 'Confirmed' && !isReschedule) {
-      // In-app only: one SMS/WhatsApp per appointment, already sent at booking.
+      // In-app only: one WhatsApp per appointment, already sent at booking.
       await notifyAppointmentConfirmed(
         updated.id,
         performer.id,

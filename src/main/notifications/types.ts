@@ -1,4 +1,4 @@
-export type NotificationChannel = 'push' | 'email' | 'sms' | 'socket';
+export type NotificationChannel = 'push' | 'email' | 'socket';
 
 export interface NotificationRecipient {
   userId?: string;
@@ -17,5 +17,4 @@ export interface UniversalNotificationOptions {
   metadata?: Record<string, any> | null;
   emailHtml?: string; // custom HTML content if needed
   throwOnError?: boolean;
-
 }

@@ -12,7 +12,6 @@ import { database } from '../../../configurations/dbConnection';
 import { UserDevicesModel } from '../../users/models/userDevices.model';
 import { eq } from 'drizzle-orm';
 import logger from '../../../utils/logger';
-import { envConfig } from '../../../utils/envConfig';
 
 export class SnsNotificationService {
   /**
@@ -151,52 +150,5 @@ export class SnsNotificationService {
     });
 
     await Promise.allSettled(promises);
-  }
-
-  /**
-   * Sends a transactional SMS directly to the patient's phone
-   */
-  static async sendTransactionalSms(
-    phoneNumber: string,
-    message: string,
-    templateId?: string
-  ) {
-    try {
-      const dltEntityId = envConfig.DLT_ENTITY_ID;
-      const dltSenderId = envConfig.DLT_SENDER_ID;
-
-      const command = new PublishCommand({
-        PhoneNumber: phoneNumber,
-        Message: message,
-        MessageAttributes: {
-          'AWS.SNS.SMS.SMSType': {
-            DataType: 'String',
-            StringValue: 'Transactional',
-          },
-          'AWS.SNS.SMS.SenderID': {
-            DataType: 'String',
-            StringValue: dltSenderId,
-          },
-          ...(dltEntityId && {
-            'AWS.MM.SMS.EntityId': {
-              DataType: 'String',
-              StringValue: dltEntityId,
-            },
-          }),
-          ...(templateId && {
-            'AWS.MM.SMS.TemplateId': {
-              DataType: 'String',
-              StringValue: templateId,
-            },
-          }),
-        },
-      });
-
-      await snsClient.send(command);
-      logger.info(`SMS sent successfully to ${phoneNumber}`);
-    } catch (err) {
-      logger.error(`Failed to send SMS to ${phoneNumber} via AWS SNS`, err);
-      throw err;
-    }
   }
 }

@@ -234,7 +234,7 @@ Reg. No. is the appointment's `registrationNo` — the doctor's running number, 
    `width: 210mm; min-height: 297mm;`.
 3. Consultation hours sit in a **bottom** strip (or the sidebar for Template 1).
 4. Footer carries the "Powered by MediArogya" logo
-   (`https://infninity-mediarogya.s3.ap-south-1.amazonaws.com/ims/Logo%20V1.png`).
+   (`https://www.mediarogya.in/app/assets/images/mediarogya-logo.png`, see `src/htmltamplates/brandLogo.ts`).
 5. Every template prints a signature area only when `showDoctorSignature` is on:
    blank signing space above a rule, then `Dr.&nbsp;{{doctor.name}}` and a
    "Signature" caption, at the right end of a bottom sign-off row (QR on the left).
@@ -303,7 +303,7 @@ Order:
                  Surgery, Next Visit (only with a date), Visiting Days, Extra details.
   - .push      : flex: 1 spacer, then .sign-off = QR left, signature right.
   - .timings   : small bottom line "Consultation Hours: {{this.days}}: {{{this.display}}}".
-  - .footer    : patient-safety note | IMS logo.
+  - .footer    : patient-safety note | MediArogya logo.
 Use ONLY the shared data contract. Single font ('{{templateConfig.primaryFont}}');
 do NOT load Playfair or Caveat. Keep it visually minimal — this is the plain option.
 ```
@@ -342,7 +342,7 @@ Order:
   - .push + .sign-off : QR left, signature right, at the page bottom.
   - .timings    : BOTTOM strip (border-top), label "Consultation Hours" + each
                   available {{this.days}}: {{{this.display}}}.
-  - .footer     : patient-safety note | IMS logo (no clinic name — the letterhead has it).
+  - .footer     : patient-safety note | MediArogya logo (no clinic name — the letterhead has it).
 Use ONLY the shared data contract. Fonts: '{{templateConfig.primaryFont}}' + Playfair Display.
 ```
 
@@ -382,7 +382,7 @@ Order:
                   Then Next Visit (only with a date) and Visiting Days info-rows.
   - .push + .sign-off : QR left, signature right, at the page bottom.
   - .timings    : BOTTOM strip on #faf6ed, "Consultation Hours".
-  - .footer     : dashed top border, patient-safety note | IMS logo.
+  - .footer     : dashed top border, patient-safety note | MediArogya logo.
 Use ONLY the shared data contract. Do NOT use Playfair here (Caveat is the signature font).
 ```
 
@@ -420,7 +420,7 @@ Order:
                 sections with a 2px color10 left rule (no fill) -> Next Visit (only
                 with a date) -> Visiting Days -> .push -> sign-off (QR left, signature right).
   - .timings  : BOTTOM strip (color7, border-top), "Consultation Hours".
-  - .footer   : color1 band, patient-safety note | IMS logo.
+  - .footer   : color1 band, patient-safety note | MediArogya logo.
 Use ONLY the shared data contract. Fonts: '{{templateConfig.fontFamily}}' + Playfair Display.
 Do NOT use a colored sidebar — the band header is what makes this distinct.
 ```
@@ -442,7 +442,7 @@ the `color1` footer. Next Visit lives only in the sign-off row.
 **plain sections split by hairlines, never boxed/filled cards** — the boxed
 version read as an app screen, not a prescription (user feedback, 2026-09-10).
 Icons are inline stroked SVG (`currentColor`) — no external images beyond the
-IMS footer logo.
+MediArogya footer logo.
 
 **Regeneration instructions**
 ```
@@ -484,7 +484,7 @@ Order:
                  showDoctorSignature: 40px blank space, rule, Dr. name, "Signature".
                  NO clinic phone/name (the band has them).
   - .timings   : BOTTOM strip (color7), "Consultation Hours".
-  - .footer    : color1 band, clinic name | patient-safety note | IMS logo.
+  - .footer    : color1 band, clinic name | patient-safety note | MediArogya logo.
 Use ONLY the shared data contract. Fonts: '{{templateConfig.primaryFont}}' + Playfair Display.
 Keep the rail — it is what separates this from Template 4.
 ```
@@ -571,7 +571,7 @@ Order:
                    Emergency Contact (phone only), Consultation Hours (day/hours lines),
                    QR (56px <img src="{{{qrCode}}}">). Right = signature when
                    showDoctorSignature: 38px blank space, rule, Dr. name, "Signature".
-  - .footer      : color1 band, shield + safety note | "Powered by" IMS logo.
+  - .footer      : color1 band, shield + safety note | "Powered by" MediArogya logo.
                    NO clinic name (the band already carries it).
 Use ONLY the shared data contract. Fonts: '{{templateConfig.primaryFont}}' + Playfair Display.
 Keep it to one A4 page with six medicines.

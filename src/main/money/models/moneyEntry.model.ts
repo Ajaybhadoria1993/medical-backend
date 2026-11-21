@@ -21,7 +21,7 @@ export const moneySourceEnum = pgEnum('money_source', [
   'lab_home_collection',
 ]);
 
-/** Lab rows carry no clinic, so the clinic ledger readers (all scoped by clinic_id) never see them. */
+/** Lab money sources; lab rows live in lab_money_entries, never in this clinic ledger. */
 export const LAB_MONEY_SOURCES = ['lab_test', 'lab_home_collection'] as const;
 
 /** Amount is always positive; the type gives the direction. An adjustment undoes its target entry.

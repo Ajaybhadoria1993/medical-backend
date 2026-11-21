@@ -95,9 +95,9 @@ describe('gstSplit', () => {
 
 describe('invoice numbering', () => {
   it('formats the number', () => {
-    expect(invoiceNumber('IMS', '2026-27', 1)).toBe('IMS/26-27/0001');
-    expect(invoiceNumber('IMS', '2026-27', 10000)).toBe('IMS/26-27/10000');
-    expect(invoiceNumber('IMS', '2026-27', 999999).length).toBeLessThanOrEqual(
+    expect(invoiceNumber('MA', '2026-27', 1)).toBe('MA/26-27/0001');
+    expect(invoiceNumber('MA', '2026-27', 10000)).toBe('MA/26-27/10000');
+    expect(invoiceNumber('MA', '2026-27', 999999).length).toBeLessThanOrEqual(
       16
     );
   });

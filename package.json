@@ -29,8 +29,6 @@
     "db:seed:prod": "cross-env NODE_ENV=production tsx src/drizzle/seed.ts",
     "docker:up:dev": "docker compose -f docker/docker-compose.dev.yml up --build",
     "docker:down:dev": "docker compose -f docker/docker-compose.dev.yml down",
-    "docker:up:prod": "docker compose -f docker/docker-compose.prod.yml up --build -d",
-    "docker:down:prod": "docker compose -f docker/docker-compose.prod.yml down",
     "format": "prettier --write .",
     "prepare": "husky || echo \"Husky not installed, skipping\"",
     "test": "jest --forceExit",

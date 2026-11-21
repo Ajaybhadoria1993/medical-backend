@@ -1,5 +1,4 @@
 // src/utils/smsClient.ts
-import { SnsNotificationService } from '../main/notifications/services/sns.service';
 import { WhatsAppService } from '../main/notifications/services/whatsapp.service';
 import {
   WhatsAppTemplateKey,
@@ -17,30 +16,6 @@ import { envConfig } from './envConfig';
 import logger from './logger';
 
 const WHATSAPP_LANGUAGE_CODE = process.env.WHATSAPP_LANGUAGE_CODE || 'en';
-
-export async function sendSMS(to: string, body: string): Promise<void> {
-  const formattedTo = to.startsWith('+') ? to : `+${to}`;
-
-  // Apply DLT compliance routing only for Indian numbers (+91)
-  if (formattedTo.startsWith('+91')) {
-    let templateId: string | undefined;
-    if (body.includes('admin verification code')) {
-      templateId = envConfig.DLT_TEMPLATE_ADMIN_MOBILE_VERIFICATION;
-    } else if (body.includes('verification code')) {
-      templateId = envConfig.DLT_TEMPLATE_PATIENT_MOBILE_VERIFICATION;
-    }
-
-    await SnsNotificationService.sendTransactionalSms(
-      formattedTo,
-      body,
-      templateId
-    );
-    return;
-  }
-
-  // Non-Indian international numbers routed to AWS SNS without DLT template ID
-  await SnsNotificationService.sendTransactionalSms(formattedTo, body);
-}
 
 /**
  * Every business-initiated WhatsApp message goes through a pre-approved Meta
@@ -78,7 +53,7 @@ export async function sendWhatsAppTemplate<K extends WhatsAppTemplateKey>(
 
 /**
  * One-time verification codes (patient login and clinic phone verification)
- * go out on WhatsApp instead of DLT SMS, through a Meta AUTHENTICATION
+ * go out on WhatsApp, through a Meta AUTHENTICATION
  * template with a "Copy code" button. Meta's API takes the code twice: as the
  * body's {{1}} and as the parameter of button 0.
  *
@@ -97,22 +72,7 @@ export async function sendWhatsAppOtp(to: string, code: string): Promise<void> {
   );
 }
 
-/**
- * Patient-facing appointment messaging. WhatsApp only.
- *
- * SMS was removed from this path deliberately. Only four DLT template ids exist
- * and all four are mobile verification (patient and admin, each with a resend);
- * appointment text went out through `sendSMS` with no template id at all. DLT
- * registration is mandatory for Indian A2P SMS, so those messages were an
- * unregistered send path rather than a working channel — and the failure was
- * swallowed by a catch-and-log, so nothing surfaced.
- *
- * WhatsApp carries this instead, through nine approved templates and the
- * outbox, which retries. If appointment SMS is wanted later, register the DLT
- * templates first; the send is the easy half.
- *
- * `body` is retained for the WhatsApp fallback log and future SMS reinstatement.
- */
+/** Patient-facing appointment messaging, WhatsApp only, queued through the retrying outbox; `body` is unused and kept for callers. */
 export async function sendAppointmentNotification(
   mobile: string,
   body: string,

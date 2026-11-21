@@ -4,7 +4,7 @@
  * Guards the fix for a real bug: rescheduling an appointment used to only
  * recalculate the queue's delay cache when notifications were enabled for
  * the clinic AND the patient had a mobile number on file (buried inside the
- * SMS/WhatsApp reminder gating in appointment.service.ts). A clinic with
+ * WhatsApp reminder gating in appointment.service.ts). A clinic with
  * notifications off, or a patient with no mobile, could reschedule to a new
  * time and leave the cached delay/turn-time projection stale for up to 24h —
  * the patient's "Appt. Time" (read fresh from the DB) would show the new
