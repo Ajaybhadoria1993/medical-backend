@@ -19,7 +19,7 @@ services:
         max-file: '5'
 
   app:
-    image: harhsitsharma/cms-backend:${IMAGE_TAG:-latest}
+    image: ajaybhadoria1993/medi-arogya-backend:${IMAGE_TAG:-latest}
     container_name: cms-backend-app
     restart: always
     ports:

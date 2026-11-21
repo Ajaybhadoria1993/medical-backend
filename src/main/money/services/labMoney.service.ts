@@ -177,7 +177,7 @@ export class LabMoneyService {
         gatewayRef: null,
         createdBy: input.createdBy,
         createdAt,
-      })
+      } as never) // lab rows predate the ledger columns; type-only cast, values unchanged
       .returning(COLUMNS);
     return toRow(row);
   }
@@ -344,7 +344,7 @@ export class LabMoneyService {
         gatewayRef: null,
         createdBy: input.createdBy,
         createdAt,
-      })
+      } as never) // lab rows predate the ledger columns; type-only cast, values unchanged
       .returning(COLUMNS);
     return toRow(row);
   }

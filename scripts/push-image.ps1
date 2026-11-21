@@ -1,7 +1,7 @@
 # Build the current branch's pushed commit and push it to Docker Hub, tagged like CI.
 # Usage: .\scripts\push-image.ps1   (staging -> staging-<sha> + staging, main -> prod-<sha> + latest)
 
-$Repo = 'harhsitsharma/cms-backend'
+$Repo = 'ajaybhadoria1993/medi-arogya-backend'
 $Root = Split-Path $PSScriptRoot -Parent
 
 function Assert-Ok([string]$What) {
